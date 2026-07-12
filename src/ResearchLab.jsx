@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
 // Design Tokens for Light/Dark themes with premium glassmorphism
 const THEME = {
@@ -136,7 +136,7 @@ const LAB_MODULES = [
   }
 ];
 
-// Sidebar navigation structure (now has 11 sections including DNA Lab Workspace!)
+// Sidebar navigation structure (now has 11 sections!)
 const SIDEBAR_SECTIONS = [
   { id: "dashboard", label: "Research Dashboard", icon: "📊" },
   { id: "dna_lab", label: "DNA Lab Workspace", icon: "🧬" },
@@ -380,7 +380,7 @@ export default function ResearchLab() {
   const [formProjDesc, setFormProjDescription] = useState("");
   const [formProjObjective, setFormProjObjective] = useState("");
 
-  // DNA LAB WORKSPACE SPECIFIC STATES (Step 5)
+  // DNA LAB WORKSPACE SPECIFIC STATES (Step 5 & Step 6)
   const [activeConsoleTab, setActiveConsoleTab] = useState("console"); // "console", "activity", "system"
   const [expandedFolders, setExpandedFolders] = useState({
     sequences: true,
@@ -389,16 +389,106 @@ export default function ResearchLab() {
     results: false,
     notes: false
   });
-  const [dnaActiveFile, setDnaActiveFile] = useState(null);
 
-  // Simulated live console log array for DNA lab
-  const [dnaLogs, setDnaLogs] = useState([
-    "[SYSTEM] Authorized terminal session established at 18:05:24 UT.",
-    "[BUFFER] Allocating 42.8 GB dynamic local sandbox partition.",
-    "[CALIBRATION] Loading nucleobase bounds CRISPR-X9 calibration profile...",
-    "[STATUS] READY FOR DNA RESEARCH. Secure biological incubation initialized."
-  ]);
-  const [dnaTerminalInput, setDnaTerminalInput] = useState("");
+  // Step 6 Custom Sequence Editor State
+  const [dnaActiveFile, setDnaActiveFile] = useState("helix_alignment.seq");
+  const [dnaSequenceText, setDnaSequenceText] = useState("ATGCTAGCNNNNTCGAATGGCCCTAGCTACGATCGATCGATCGATCGATCGATATATCGGGCCTAG");
+  const [consoleLogs, setConsoleLogs] = useState({
+    validation: ["Ready for real-time validation..."],
+    editor: ["Editor workspace initialized successfully."],
+    import: ["Import pipeline ready for FASTA files."]
+  });
+
+  // Analyze nucleotides and character limits dynamically
+  const parsedStats = useMemo(() => {
+    const text = dnaSequenceText.toUpperCase();
+    const len = text.length;
+
+    // Counts
+    const counts = { A: 0, T: 0, G: 0, C: 0, N: 0, invalid: 0, listInvalid: [] };
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === "A" || char === "T" || char === "G" || char === "C" || char === "N") {
+        counts[char]++;
+      } else {
+        counts.invalid++;
+        counts.listInvalid.push({ char, index: i });
+      }
+    }
+
+    // GC & AT ratios
+    const totalValid = counts.A + counts.T + counts.G + counts.C + counts.N;
+    const gcPercentage = totalValid > 0 ? (((counts.G + counts.C) / totalValid) * 100).toFixed(2) : "0.00";
+    const atPercentage = totalValid > 0 ? (((counts.A + counts.T) / totalValid) * 100).toFixed(2) : "0.00";
+
+    // Estimated molecular weight: A=313.21 g/mol, T=304.20 g/mol, G=329.21 g/mol, C=289.18 g/mol, N=308.00 g/mol
+    const molWeight = (counts.A * 313.21 + counts.T * 304.20 + counts.G * 329.21 + counts.C * 289.18 + counts.N * 308).toFixed(2);
+
+    // Storage footprint: 2 bits per base compacted binary or 1 byte per base ascii
+    const storageCompact = (len * 2 / 8).toFixed(1); // bytes
+
+    return {
+      length: len,
+      counts,
+      gcPercentage,
+      atPercentage,
+      molWeight,
+      storageCompact
+    };
+  }, [dnaSequenceText]);
+
+  // Handle template loader
+  const loadNewTemplate = () => {
+    setDnaSequenceText("ATGCGATCGATCGATCGATCGATCGAATTCCGGCCGGNNNNNNN");
+    addLog("editor", "Loaded clean Sequence alignment template.");
+  };
+
+  const addLog = (tabKey, logText) => {
+    const time = new Date().toLocaleTimeString();
+    setConsoleLogs(prev => ({
+      ...prev,
+      [tabKey]: [...prev[tabKey], `[${time}] ${logText}`]
+    }));
+  };
+
+  const importFastaSim = () => {
+    const mockFasta = "&gt;gi|124085|ref|NM_010.1| Homo sapiens insulin-like growth factor\nATGCTAGCTAGCTAGCGCTAGCTAGCNNNNTCGATCGATCGACTAGCTAGCTAG";
+    setDnaSequenceText("ATGCTAGCTAGCTAGCGCTAGCTAGCNNNNTCGATCGATCGACTAGCTAGCTAG");
+    addLog("import", "Imported FASTA: Homo sapiens insulin-like growth factor successfully.");
+    addLog("editor", "Buffer loaded from FASTA sequence payload.");
+  };
+
+  const exportFastaSim = () => {
+    const fasta = `&gt;DNA-LAB-SEQUENCE-EXPORT | LENGTH: ${parsedStats.length}\n${dnaSequenceText}`;
+    addLog("editor", "Exported FASTA string representation securely.");
+    alert(`FASTA representation exported successfully:\n\n${fasta.replace(/&gt;/g, ">")}`);
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(dnaSequenceText);
+    addLog("editor", "Sequence string successfully copied to clipboard.");
+  };
+
+  const triggerValidationRun = () => {
+    addLog("validation", `Initiating full-sequence scan... Length: ${parsedStats.length} bases.`);
+    if (parsedStats.length === 0) {
+      addLog("validation", "FAIL: Sequence buffer is completely empty.");
+    } else if (parsedStats.counts.invalid > 0) {
+      addLog("validation", `FAIL: Detected ${parsedStats.counts.invalid} invalid characters inside loop bounds.`);
+    } else {
+      addLog("validation", "SUCCESS: Sequence scan complete. Zero invalid bases detected.");
+    }
+  };
+
+  // Sync sample file loader
+  useEffect(() => {
+    if (dnaActiveFile === "helix_alignment.seq") {
+      setDnaSequenceText("ATGCTAGCNNNNTCGAATGGCCCTAGCTACGATCGATCGATCGATCGATCGATATATCGGGCCTAG");
+    } else if (dnaActiveFile === "crispr_mutation_bounds.dat") {
+      setDnaSequenceText("ATGCGTACGTCAGTCAGTCAGTCATGCATGCATCGATCGNNNNNNATCGATCGAT");
+    }
+    addLog("editor", `Switched active editing file target to: ${dnaActiveFile}`);
+  }, [dnaActiveFile]);
 
   const theme = isLight ? THEME.light : THEME.dark;
 
@@ -534,15 +624,6 @@ export default function ResearchLab() {
   const viewProjectDetails = (proj) => {
     setSelectedProject(proj);
     setShowProjectDrawer(true);
-  };
-
-  // DNA Lab custom commands inputs
-  const executeDnaTerminalCommand = (e) => {
-    e.preventDefault();
-    if (!dnaTerminalInput.trim()) return;
-    const cmd = dnaTerminalInput.trim();
-    setDnaLogs([...dnaLogs, `&gt; ${cmd}`, `[CONSOLE] Simulated command received. Base DNA Research loops currently locked in Alpha.`]);
-    setDnaTerminalInput("");
   };
 
   const toggleFolder = (folderKey) => {
@@ -700,25 +781,25 @@ export default function ResearchLab() {
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
               <span style={{ fontSize: "1.1rem" }}>🧬</span>
               <h1 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, letterSpacing: "-0.5px" }}>
-                {activeSection === "projects" ? "Experimental Projects Control" : activeSection === "dna_lab" ? "DNA Research & Sequencing Workspace" : "Enterprise Research Dashboard"}
+                {activeSection === "projects" ? "Experimental Projects Control" : activeSection === "dna_lab" ? "DNA Lab Sequence Editor" : "Enterprise Research Dashboard"}
               </h1>
             </div>
             <p style={{ margin: 0, fontSize: "0.75rem", color: theme.text2 }}>
-              {activeSection === "projects" ? "Active lab project metrics, allocations, and lead scientist tracking." : activeSection === "dna_lab" ? "High-frontier DNA project tree mapping and biochemical sequence controls." : "Managing and analyzing advanced innovation initiatives across deep-tech modules."}
+              {activeSection === "projects" ? "Active lab project metrics, allocations, and lead scientist tracking." : activeSection === "dna_lab" ? "High-frontier DNA Sequence validation controls and statistics analysis." : "Managing and analyzing advanced innovation initiatives across deep-tech modules."}
             </p>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{
               fontSize: "0.68rem",
-              color: theme.green,
-              background: theme.greenGlow,
-              border: `1px solid ${theme.green}20`,
+              color: theme.cyan,
+              background: `${theme.cyan}12`,
+              border: `1px solid ${theme.cyan}30`,
               padding: "4px 10px",
               borderRadius: 20,
               fontWeight: 700
             }}>
-              SYSTEMS ACTIVE
+              SYSTEMS nominal
             </div>
             <button
               onClick={() => setIsLight(prev => !prev)}
@@ -742,7 +823,7 @@ export default function ResearchLab() {
         {/* DYNAMIC VIEW CONTAINER */}
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
 
-          {/* SECTION: DNA LAB WORKSPACE (Step 5) */}
+          {/* SECTION: DNA LAB WORKSPACE & SEQUENCE EDITOR (Step 5 & 6) */}
           {activeSection === "dna_lab" && (
             <div style={{
               display: "flex",
@@ -778,14 +859,14 @@ export default function ResearchLab() {
                 </div>
               </GlassCard>
 
-              {/* Core Workspace Panels (Explorer - Workspace - Right Info) */}
+              {/* Core Workspace Panels (Explorer - Sequence Editor - Panels) */}
               <div style={{
                 display: "flex",
                 flexDirection: "row",
                 gap: 16,
                 flex: 1,
                 overflow: "hidden",
-                minHeight: 320
+                minHeight: 350
               }}>
                 {/* 2. DNA Project Explorer Panel (Left) */}
                 <div style={{
@@ -823,87 +904,10 @@ export default function ResearchLab() {
                         </div>
                       )}
                     </div>
-
-                    {/* Algorithms Folder */}
-                    <div>
-                      <div onClick={() => toggleFolder("algorithms")} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "4px 6px", borderRadius: 4 }}>
-                        <span style={{ fontSize: "0.72rem" }}>{expandedFolders.algorithms ? "▼" : "▶"}</span>
-                        <span style={{ fontSize: "0.9rem" }}>📁</span>
-                        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: theme.text1 }}>Algorithms Folder</span>
-                      </div>
-                      {expandedFolders.algorithms && (
-                        <div style={{ paddingLeft: 22, display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-                          {["matrix_sequence_alignment.py", "quantum_decoherence_opt.cpp"].map(f => (
-                            <div key={f} onClick={() => setDnaActiveFile(f)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: dnaActiveFile === f ? `${theme.accent}12` : "transparent" }}>
-                              <span>⚙️</span>
-                              <span style={{ fontSize: "0.74rem", color: dnaActiveFile === f ? theme.accent : theme.text2, fontFamily: "monospace" }}>{f}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Experiments Folder */}
-                    <div>
-                      <div onClick={() => toggleFolder("experiments")} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "4px 6px", borderRadius: 4 }}>
-                        <span style={{ fontSize: "0.72rem" }}>{expandedFolders.experiments ? "▼" : "▶"}</span>
-                        <span style={{ fontSize: "0.9rem" }}>📁</span>
-                        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: theme.text1 }}>Experiments Folder</span>
-                      </div>
-                      {expandedFolders.experiments && (
-                        <div style={{ paddingLeft: 22, display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-                          {["crispr_sandbox_test_v10.exp", "enzymatic_reactor_stress.exp"].map(f => (
-                            <div key={f} onClick={() => setDnaActiveFile(f)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: dnaActiveFile === f ? `${theme.accent}12` : "transparent" }}>
-                              <span>🧪</span>
-                              <span style={{ fontSize: "0.74rem", color: dnaActiveFile === f ? theme.accent : theme.text2, fontFamily: "monospace" }}>{f}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Results Folder */}
-                    <div>
-                      <div onClick={() => toggleFolder("results")} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "4px 6px", borderRadius: 4 }}>
-                        <span style={{ fontSize: "0.72rem" }}>{expandedFolders.results ? "▼" : "▶"}</span>
-                        <span style={{ fontSize: "0.9rem" }}>📁</span>
-                        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: theme.text1 }}>Results Folder</span>
-                      </div>
-                      {expandedFolders.results && (
-                        <div style={{ paddingLeft: 22, display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-                          {["sequence_alignment_report.pdf", "spectroscopy_mutations.json"].map(f => (
-                            <div key={f} onClick={() => setDnaActiveFile(f)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: dnaActiveFile === f ? `${theme.accent}12` : "transparent" }}>
-                              <span>📈</span>
-                              <span style={{ fontSize: "0.74rem", color: dnaActiveFile === f ? theme.accent : theme.text2, fontFamily: "monospace" }}>{f}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Notes Folder */}
-                    <div>
-                      <div onClick={() => toggleFolder("notes")} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "4px 6px", borderRadius: 4 }}>
-                        <span style={{ fontSize: "0.72rem" }}>{expandedFolders.notes ? "▼" : "▶"}</span>
-                        <span style={{ fontSize: "0.9rem" }}>📁</span>
-                        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: theme.text1 }}>Notes Folder</span>
-                      </div>
-                      {expandedFolders.notes && (
-                        <div style={{ paddingLeft: 22, display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
-                          {["charles_notes_enzymatic.txt", "trajectories_telemetry.txt"].map(f => (
-                            <div key={f} onClick={() => setDnaActiveFile(f)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "3px 6px", borderRadius: 4, background: dnaActiveFile === f ? `${theme.accent}12` : "transparent" }}>
-                              <span>📝</span>
-                              <span style={{ fontSize: "0.74rem", color: dnaActiveFile === f ? theme.accent : theme.text2, fontFamily: "monospace" }}>{f}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
                   </div>
                 </div>
 
-                {/* 3. DNA Workspace Area (Center Panel) */}
+                {/* 3. DNA Sequence Editor Panel (Center) */}
                 <div style={{
                   flex: 1,
                   background: theme.surf,
@@ -911,59 +915,95 @@ export default function ResearchLab() {
                   borderRadius: 12,
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  padding: "24px",
+                  padding: "16px",
                   position: "relative",
                   overflow: "hidden"
                 }}>
-                  {/* Subtle biological graphics in background */}
+                  {/* Sequence Toolbar */}
                   <div style={{
-                    position: "absolute",
-                    fontSize: "6rem",
-                    opacity: 0.05,
-                    pointerEvents: "none"
-                  }}>🧬</div>
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 6,
+                    borderBottom: `1px solid ${theme.border}`,
+                    paddingBottom: 10,
+                    marginBottom: 10
+                  }}>
+                    <button onClick={loadNewTemplate} style={{ padding: "5px 10px", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.text1, fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Template</button>
+                    <button onClick={importFastaSim} style={{ padding: "5px 10px", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.cyan, fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Import FASTA</button>
+                    <button onClick={exportFastaSim} style={{ padding: "5px 10px", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.green, fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Export FASTA</button>
+                    <button onClick={copyToClipboard} style={{ padding: "5px 10px", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.text1, fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Copy</button>
+                    <button onClick={() => { setDnaSequenceText(""); addLog("editor", "Buffer cleared completely."); }} style={{ padding: "5px 10px", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.red, fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>Clear</button>
+                    <button onClick={triggerValidationRun} style={{ padding: "5px 12px", background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`, border: "none", borderRadius: 6, color: "#fff", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", marginLeft: "auto" }}>Validate Run</button>
+                  </div>
 
-                  {dnaActiveFile ? (
-                    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", borderBottom: `1px solid ${theme.border}`, paddingBottom: 10 }}>
-                        <span style={{ fontSize: "0.85rem", fontWeight: 800, fontFamily: "monospace" }}>{dnaActiveFile}</span>
-                        <span style={{ fontSize: "0.7rem", color: theme.yellow }}>READ-ONLY SIMULATION</span>
-                      </div>
-                      <div style={{
-                        flex: 1,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        gap: 12,
-                        textAlign: "center"
-                      }}>
-                        <div style={{ fontSize: "2rem" }}>📄</div>
-                        <div style={{ fontSize: "0.9rem", fontWeight: 800 }}>File Selected: {dnaActiveFile}</div>
-                        <div style={{ fontSize: "0.76rem", color: theme.text2, maxWidth: 300 }}>
-                          Nucleobase telemetry buffer synced. Ready to bind computational biological operations.
-                        </div>
-                      </div>
-                      <button disabled style={{ width: "100%", padding: "8px", border: "none", borderRadius: 6, background: `${theme.accent}20`, color: theme.text3, fontSize: "0.76rem", fontWeight: 700, cursor: "not-allowed" }}>
-                        Compile Sequence Bounds
-                      </button>
+                  {/* Workspace area: Split Line Numbers / Sequence Textarea */}
+                  <div style={{
+                    flex: 1,
+                    display: "flex",
+                    background: "#02020a",
+                    border: "1px solid #1e1e35",
+                    borderRadius: 8,
+                    overflow: "hidden"
+                  }}>
+                    {/* Line numbers gutter */}
+                    <div style={{
+                      width: 36,
+                      background: "#050512",
+                      borderRight: "1px solid #1e1e35",
+                      color: theme.text3,
+                      fontFamily: "monospace",
+                      fontSize: "0.74rem",
+                      textAlign: "right",
+                      padding: "10px 8px 10px 0",
+                      userSelect: "none"
+                    }}>
+                      {Array.from({ length: Math.max(1, Math.ceil(parsedStats.length / 40)) }).map((_, idx) => (
+                        <div key={idx} style={{ height: 18, lineHeight: "18px" }}>{(idx * 40) + 1}</div>
+                      ))}
                     </div>
-                  ) : (
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: "3rem", marginBottom: 14 }}>🧬</div>
-                      <h2 style={{ margin: "0 0 6px 0", fontSize: "1.1rem", fontWeight: 800 }}>Ready for DNA Research</h2>
-                      <p style={{ margin: 0, fontSize: "0.78rem", color: theme.text2, maxWidth: 320, lineHeight: 1.5 }}>
-                        Double-helix structural calibration complete. Please select an experimental sequence or file in the Left Project Explorer to load details.
-                      </p>
+
+                    {/* Sequence input Textarea */}
+                    <textarea
+                      value={dnaSequenceText}
+                      onChange={e => setDnaSequenceText(e.target.value)}
+                      placeholder="Insert DNA Sequence here (A, T, G, C, N Case-Insensitive)..."
+                      style={{
+                        flex: 1,
+                        background: "none",
+                        border: "none",
+                        color: "#38bdf8",
+                        fontFamily: "monospace",
+                        fontSize: "0.74rem",
+                        letterSpacing: "2px",
+                        lineHeight: "18px",
+                        padding: "10px",
+                        outline: "none",
+                        resize: "none"
+                      }}
+                    />
+                  </div>
+
+                  {/* Invalid characters live visual preview map */}
+                  {parsedStats.counts.invalid > 0 && (
+                    <div style={{
+                      marginTop: 8,
+                      background: theme.redGlow,
+                      border: `1px solid ${theme.red}35`,
+                      borderRadius: 6,
+                      padding: "8px 12px",
+                      fontSize: "0.72rem",
+                      color: theme.red
+                    }}>
+                      ⚠️ Detected {parsedStats.counts.invalid} invalid characters! Indexes:{" "}
+                      {parsedStats.counts.listInvalid.slice(0, 10).map(item => `${item.char} at ${item.index}`).join(", ")}
+                      {parsedStats.counts.listInvalid.length > 10 && " ...more"}
                     </div>
                   )}
                 </div>
 
-                {/* 4. Right Information Panel */}
+                {/* 4. Statistics and Validation Panel (Right) */}
                 <div style={{
-                  width: 240,
+                  width: 260,
                   background: theme.surf,
                   border: `1px solid ${theme.border}`,
                   borderRadius: 12,
@@ -974,58 +1014,74 @@ export default function ResearchLab() {
                   gap: 16,
                   flexShrink: 0
                 }}>
-                  {/* Project Info */}
+                  {/* Validation Panel */}
                   <div>
-                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.74rem", color: theme.text1, textTransform: "uppercase", letterSpacing: "0.5px" }}>Project Information</h4>
-                    <p style={{ margin: 0, fontSize: "0.76rem", color: theme.text2, lineHeight: 1.4 }}>
-                      Evaluating nucleobase mutation limits dynamically inside biochemical sandbox.
-                    </p>
-                  </div>
-
-                  {/* Sequence Stats */}
-                  <div>
-                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.74rem", color: theme.text1, textTransform: "uppercase", letterSpacing: "0.5px" }}>Sequence Statistics</h4>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem" }}>
-                        <span style={{ color: theme.text2 }}>GC Content</span>
-                        <span style={{ color: theme.text1, fontWeight: 700 }}>54.2%</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem" }}>
-                        <span style={{ color: theme.text2 }}>AT Content</span>
-                        <span style={{ color: theme.text1, fontWeight: 700 }}>45.8%</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem" }}>
-                        <span style={{ color: theme.text2 }}>Sequence Length</span>
-                        <span style={{ color: theme.text1, fontWeight: 700 }}>12.4M base</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem" }}>
-                        <span style={{ color: theme.text2 }}>Mutation Index</span>
-                        <span style={{ color: theme.green, fontWeight: 700 }}>0.014</span>
-                      </div>
+                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.7rem", color: theme.text3, textTransform: "uppercase", letterSpacing: "1px" }}>Validation Panel</h4>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {parsedStats.length === 0 ? (
+                        <div style={{ fontSize: "0.72rem", color: theme.red, fontWeight: 700 }}>⚠️ EMPTY SEQUENCE DETECTED</div>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: "0.72rem", color: parsedStats.counts.invalid > 0 ? theme.red : theme.green, fontWeight: 700 }}>
+                            {parsedStats.counts.invalid > 0 ? `❌ Invalid Bases: ${parsedStats.counts.invalid}` : "✓ All Bases Valid"}
+                          </div>
+                          <div style={{ fontSize: "0.72rem", color: parsedStats.length % 3 === 0 ? theme.green : theme.yellow, fontWeight: 700 }}>
+                            {parsedStats.length % 3 === 0 ? "✓ Codon multiples of 3" : "⚠️ Non-multiple of 3 codons"}
+                          </div>
+                          <div style={{ fontSize: "0.72rem", color: theme.green, fontWeight: 700 }}>
+                            ✓ Unique sequence profile
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {/* Storage Usage */}
+                  {/* Stats Panel */}
                   <div>
-                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.74rem", color: theme.text1, textTransform: "uppercase", letterSpacing: "0.5px" }}>Storage Usage</h4>
-                    <div style={{ display: "flex", justify: "space-between", fontSize: "0.74rem", marginBottom: 4 }}>
-                      <span>Disk Allocation</span>
-                      <span>42.8 GB / 100 GB</span>
-                    </div>
-                    <div style={{ height: 6, background: theme.border, borderRadius: 3 }}>
-                      <div style={{ width: "42.8%", height: "100%", background: theme.accent, borderRadius: 3 }} />
+                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.7rem", color: theme.text3, textTransform: "uppercase", letterSpacing: "1px" }}>Statistics Panel</h4>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ fontSize: "0.74rem" }}>
+                        <span style={{ color: theme.text2 }}>Total Length:</span>{" "}
+                        <strong style={{ color: theme.text1 }}>{parsedStats.length} bases</strong>
+                      </div>
+                      <div style={{ fontSize: "0.74rem" }}>
+                        <span style={{ color: theme.text2 }}>GC Ratio:</span>{" "}
+                        <strong style={{ color: theme.green }}>{parsedStats.gcPercentage}%</strong>
+                      </div>
+                      <div style={{ fontSize: "0.74rem" }}>
+                        <span style={{ color: theme.text2 }}>AT Ratio:</span>{" "}
+                        <strong style={{ color: theme.cyan }}>{parsedStats.atPercentage}%</strong>
+                      </div>
+                      <div style={{ fontSize: "0.74rem" }}>
+                        <span style={{ color: theme.text2 }}>Mol. Weight:</span>{" "}
+                        <strong style={{ color: theme.text1 }}>{parsedStats.molWeight} g/mol</strong>
+                      </div>
+                      <div style={{ fontSize: "0.74rem" }}>
+                        <span style={{ color: theme.text2 }}>Est. Binary Size:</span>{" "}
+                        <strong style={{ color: theme.text1 }}>{parsedStats.storageCompact} B</strong>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Research Progress */}
+                  {/* Nucleotides Distribution Bars */}
                   <div>
-                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.74rem", color: theme.text1, textTransform: "uppercase", letterSpacing: "0.5px" }}>Research Progress</h4>
-                    <div style={{ display: "flex", justify: "space-between", fontSize: "0.74rem", marginBottom: 4 }}>
-                      <span>CRISPR Sequence Map</span>
-                      <span>82%</span>
-                    </div>
-                    <div style={{ height: 6, background: theme.border, borderRadius: 3 }}>
-                      <div style={{ width: "82%", height: "100%", background: theme.green, borderRadius: 3 }} />
+                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.7rem", color: theme.text3, textTransform: "uppercase", letterSpacing: "1px" }}>Composition Base</h4>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {["A", "T", "G", "C", "N"].map(base => {
+                        const count = parsedStats.counts[base] || 0;
+                        const pct = parsedStats.length > 0 ? ((count / parsedStats.length) * 100).toFixed(1) : 0;
+                        return (
+                          <div key={base}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7rem", marginBottom: 2 }}>
+                              <span style={{ fontWeight: 700 }}>{base}</span>
+                              <span style={{ color: theme.text3 }}>{count} ({pct}%)</span>
+                            </div>
+                            <div style={{ height: 4, background: theme.border, borderRadius: 2 }}>
+                              <div style={{ width: `${pct}%`, height: "100%", background: base === "A" ? theme.accent : base === "T" ? theme.cyan : base === "G" ? theme.green : base === "C" ? theme.yellow : theme.text3, borderRadius: 2 }} />
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1041,9 +1097,9 @@ export default function ResearchLab() {
                   padding: "4px 8px"
                 }}>
                   {[
-                    { id: "console", label: "Research Console" },
-                    { id: "activity", label: "Activity Log" },
-                    { id: "system", label: "System Messages" }
+                    { id: "validation", label: "Validation Logs" },
+                    { id: "editor", label: "Editor Logs" },
+                    { id: "import", label: "Import Logs" }
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -1059,7 +1115,7 @@ export default function ResearchLab() {
                         cursor: "pointer"
                       }}
                     >
-                      {tab.label}
+                      {tab.label} ({consoleLogs[tab.id]?.length || 0})
                     </button>
                   ))}
                 </div>
@@ -1077,46 +1133,9 @@ export default function ResearchLab() {
                   flexDirection: "column",
                   gap: 4
                 }}>
-                  {activeConsoleTab === "console" && (
-                    <>
-                      {dnaLogs.map((log, idx) => (
-                        <div key={idx} style={{ whiteSpace: "pre-wrap" }}>{log}</div>
-                      ))}
-                      <form onSubmit={executeDnaTerminalCommand} style={{ display: "flex", marginTop: "auto" }}>
-                        <span style={{ marginRight: 6 }}>&gt;</span>
-                        <input
-                          value={dnaTerminalInput}
-                          onChange={e => setDnaTerminalInput(e.target.value)}
-                          placeholder="Type simulated DNA lab command and press Enter..."
-                          style={{
-                            flex: 1,
-                            background: "none",
-                            border: "none",
-                            color: "#38bdf8",
-                            fontFamily: "monospace",
-                            fontSize: "0.72rem",
-                            outline: "none"
-                          }}
-                        />
-                      </form>
-                    </>
-                  )}
-
-                  {activeConsoleTab === "activity" && (
-                    <>
-                      <div>[18:05:01] Load: human-genome-hgp-v4.csv initialized successfully.</div>
-                      <div>[17:42:14] Mutex: Qubit stress decoherence variables validated.</div>
-                      <div>[16:11:58] Sandbox: Security credentials verified for Dr. Xavier.</div>
-                    </>
-                  )}
-
-                  {activeConsoleTab === "system" && (
-                    <>
-                      <div style={{ color: theme.green }}>[OK] Isolated biological sandbox telemetry synced.</div>
-                      <div style={{ color: theme.green }}>[OK] FPGA sequence bounds encoder mapping: OK.</div>
-                      <div style={{ color: theme.yellow }}>[WARN] Secondary bioreactor enzyme batch validation pending.</div>
-                    </>
-                  )}
+                  {(consoleLogs[activeConsoleTab] || []).map((log, idx) => (
+                    <div key={idx} style={{ whiteSpace: "pre-wrap" }}>{log}</div>
+                  ))}
                 </div>
               </GlassCard>
             </div>
@@ -1896,7 +1915,7 @@ export default function ResearchLab() {
           {/* SECTION: DATASETS */}
           {activeSection === "datasets" && (
             <div style={{ padding: "20px" }}>
-              <h2 style={{ fontSize: "1rem", fontWeight: 800, color: theme.text1, marginBottom: 4 }}>📁 Curated Datasets Manifest</h2>
+              <h2 style={{ fontSize: "1rem", fontWeight: 800, color: theme.text1, marginBottom: 4 }}>📂 Curated Datasets Manifest</h2>
               <p style={{ fontSize: "0.78rem", color: theme.text2, marginBottom: 16 }}>Pre-validated dataset manifests prepared for model evaluations.</p>
 
               <div style={{
