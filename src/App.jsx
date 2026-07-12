@@ -2,6 +2,7 @@ import {
   useState, useRef, useEffect, useCallback, useReducer, useMemo, lazy, Suspense
 } from "react";
 import * as XLSX from "xlsx";
+import ResearchLab from "./ResearchLab";
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
 // To use the Gemini backend proxy: set this to your running proxy URL.
@@ -2061,6 +2062,7 @@ export default function ApexOS() {
     { id: "planner",   icon: "🗂️", label: "Planner" },
     { id: "build",     icon: "🛠️", label: "Build" },
     { id: "research",  icon: "🔬", label: "Research" },
+    { id: "research_lab", icon: "🧬", label: "Research Lab" },
     { id: "reviews",   icon: "🔍", label: "Reviews" },
     { id: "memory",    icon: "🧠", label: "Memory" },
     { id: "analytics", icon: "📈", label: "Analytics" },
@@ -2493,6 +2495,11 @@ export default function ApexOS() {
               researcherStreamText={empStream}
               onOpenChat={() => { setActiveEmp("researcher"); setView("employees"); }}
               onSetGoal={(g) => { setAutoGoal(g); setView("dashboard"); }} />
+          )}
+
+          {/* ═══ RESEARCH LAB ═══ */}
+          {view === "research_lab" && (
+            <ResearchLab />
           )}
 
           {/* ═══ REVIEWS ═══ */}
