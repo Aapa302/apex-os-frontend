@@ -17,6 +17,7 @@ const THEME = {
     green: "#22d3a5",
     greenGlow: "rgba(34, 211, 165, 0.15)",
     red: "#f04060",
+    redGlow: "rgba(240, 64, 96, 0.15)",
     yellow: "#f5a623",
     yellowGlow: "rgba(245, 166, 35, 0.15)",
     cyan: "#00d4ff",
@@ -40,6 +41,7 @@ const THEME = {
     green: "#059669",
     greenGlow: "rgba(5, 150, 105, 0.15)",
     red: "#dc2626",
+    redGlow: "rgba(220, 38, 38, 0.15)",
     yellow: "#d97706",
     yellowGlow: "rgba(217, 119, 6, 0.15)",
     cyan: "#0891b2",
@@ -134,9 +136,10 @@ const LAB_MODULES = [
   }
 ];
 
-// Sidebar navigation structure (now has 9 sections, starting with Dashboard!)
+// Sidebar navigation structure (now has 10 sections including Projects!)
 const SIDEBAR_SECTIONS = [
   { id: "dashboard", label: "Research Dashboard", icon: "📊" },
+  { id: "projects", label: "Projects Control", icon: "💼" },
   { id: "dna_research", label: "DNA Research", icon: "🧬" },
   { id: "algorithms", label: "Algorithms", icon: "🧮" },
   { id: "ai_models", label: "AI Models", icon: "🧠" },
@@ -180,6 +183,148 @@ const GlassCard = ({ children, theme, style }) => (
   </div>
 );
 
+// Detail modal component for "Open Lab" buttons
+const LabDetailsModal = ({ isOpen, onClose, lab, theme, isLight }) => {
+  if (!isOpen || !lab) return null;
+
+  return (
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.7)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 10000,
+      backdropFilter: "blur(6px)",
+      animation: "fadeIn 0.2s ease"
+    }}>
+      <div style={{
+        background: theme.surf,
+        border: `1px solid ${theme.border2}`,
+        borderRadius: 16,
+        padding: 24,
+        width: 480,
+        maxWidth: "90vw",
+        boxShadow: `0 24px 48px ${theme.shadow}`,
+        position: "relative"
+      }}>
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute",
+            top: 16,
+            right: 16,
+            background: "none",
+            border: "none",
+            color: theme.text3,
+            fontSize: "1.2rem",
+            cursor: "pointer",
+            padding: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+        >✕</button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            background: `${theme.accent}15`,
+            border: `1px solid ${theme.accent}30`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 22
+          }}>{lab.icon}</div>
+          <div>
+            <div style={{ fontSize: "0.7rem", color: theme.accent, fontWeight: 700, textTransform: "uppercase" }}>{lab.category}</div>
+            <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: theme.text1 }}>{lab.title}</h3>
+          </div>
+        </div>
+
+        <p style={{ fontSize: "0.82rem", color: theme.text2, lineHeight: 1.6, marginBottom: 18 }}>
+          {lab.description}
+        </p>
+
+        <div style={{
+          background: theme.surf2,
+          borderRadius: 10,
+          padding: 14,
+          marginBottom: 18,
+          border: `1px solid ${theme.border}`
+        }}>
+          <h4 style={{ margin: "0 0 8px 0", fontSize: "0.7rem", color: theme.text1, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            Telemetry Simulation Specs
+          </h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {Object.entries(lab.stats).map(([key, val]) => (
+              <div key={key} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem" }}>
+                <span style={{ color: theme.text2, textTransform: "capitalize" }}>
+                  {key.replace(/([A-Z])/g, " $1")}
+                </span>
+                <span style={{ color: theme.text1, fontWeight: 700 }}>{val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Console view */}
+        <div style={{
+          background: isLight ? "#0f172a" : "#02020a",
+          border: `1px solid ${isLight ? "#334155" : "#1e1e35"}`,
+          borderRadius: 8,
+          padding: "10px 14px",
+          fontFamily: "monospace",
+          fontSize: "0.7rem",
+          color: "#38bdf8",
+          marginBottom: 20,
+          maxHeight: 110,
+          overflowY: "auto"
+        }}>
+          <div style={{ color: "#10b981" }}>[SECURE COMPILATION PIPELINE READY]</div>
+          <div>&gt; Initiating virtual diagnostics for {lab.title}...</div>
+          <div>&gt; Pipeline state: Awaiting implementation code.</div>
+          <div style={{ color: theme.yellow }}>&gt; Status: COMING SOON</div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1,
+              padding: "9px",
+              background: theme.surf2,
+              border: `1px solid ${theme.border2}`,
+              borderRadius: 8,
+              color: theme.text2,
+              fontWeight: 700,
+              fontSize: "0.8rem",
+              cursor: "pointer"
+            }}
+          >Close Detail</button>
+          <button
+            disabled
+            style={{
+              flex: 1,
+              padding: "9px",
+              background: `${theme.accent}30`,
+              border: "none",
+              borderRadius: 8,
+              color: theme.text3,
+              fontWeight: 700,
+              fontSize: "0.8rem",
+              cursor: "not-allowed"
+            }}
+          >Initialize Lab</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function ResearchLab() {
   const [isLight, setIsLight] = useState(false);
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -201,6 +346,39 @@ export default function ResearchLab() {
   const [newNoteTitle, setNewNoteTitle] = useState("");
   const [newNoteBody, setNewNoteBody] = useState("");
 
+  // Projects State
+  const [projectsList, setProjectsList] = useState([
+    { id: 1, name: "Project Genesis Map", category: "DNA Research", lead: "Dr. Charles Xavier", priority: "High", status: "Active", progress: 82, created: "2025-01-14", description: "Mapping nucleobase boundaries of genetic structural cells to map mutation limits.", objective: "Locate genetic sequences matching high resilience cells." },
+    { id: 2, name: "Project Singularity", category: "AI Models", lead: "Dr. Alan Turing", priority: "Critical", status: "Active", progress: 95, created: "2025-02-28", description: "Constructing modular deep neural network pipelines utilizing FP8 computing matrix.", objective: "Complete training bounds for a 180B parameters sequence." },
+    { id: 3, name: "Decoherence Shield", category: "Quantum Computing", lead: "Dr. Richard Feynman", priority: "High", status: "Paused", progress: 44, created: "2025-03-05", description: "Modulating qubit stress factors dynamically to stabilize entanglement arrays.", objective: "Stabilize qubit coherence intervals above 300μs limits." },
+    { id: 4, name: "Hexapedal Kinematics", category: "Robotics", lead: "Dr. Isaac Asimov", priority: "Medium", status: "Completed", progress: 100, created: "2024-11-20", description: "Simulating coordinate kinematics and path planning loops across joint coordinates.", objective: "Implement real-time path calibration feedback under 1ms." },
+    { id: 5, name: "Apollo Horizon Trajectory", category: "Space Tech", lead: "Dr. Katherine Johnson", priority: "High", status: "Active", progress: 73, created: "2025-04-12", description: "Plotting atmospheric trajectory maps and spacecraft telemetry logs.", objective: "Simulate atmospheric re-entry metrics securely." },
+    { id: 6, name: "Metabolic Biosynthesizer", category: "Biotech", lead: "Dr. Rosalind Franklin", priority: "Medium", status: "Active", progress: 58, created: "2025-05-01", description: "Synthesizing bio-manufacturing enzyme batches and modeling metabolic pathways.", objective: "Reach bioreactor Batch consistency levels above 99%." }
+  ]);
+
+  // Project Filtering States
+  const [projectSearch, setProjectSearch] = useState("");
+  const [projectCatFilter, setProjectCatFilter] = useState("All");
+  const [projectStatusFilter, setProjectStatusFilter] = useState("All");
+  const [projectPriorityFilter, setProjectPriorityFilter] = useState("All");
+
+  // Project Detail / Drawer states
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [showProjectDrawer, setShowProjectDrawer] = useState(false);
+
+  // New/Edit Project Form states
+  const [showProjectForm, setShowProjectForm] = useState(false);
+  const [projectFormMode, setProjectFormMode] = useState("new"); // "new" or "edit"
+  const [formProjId, setFormProjId] = useState(null);
+  const [formProjName, setFormProjName] = useState("");
+  const [formProjCategory, setFormProjCategory] = useState("DNA Research");
+  const [formProjLead, setFormProjLead] = useState("");
+  const [formProjPriority, setFormProjPriority] = useState("Medium");
+  const [formProjStatus, setFormProjStatus] = useState("Active");
+  const [formProjProgress, setFormProjProgress] = useState(0);
+  const [formProjDesc, setFormProjDescription] = useState("");
+  const [formProjObjective, setFormProjObjective] = useState("");
+
   const theme = isLight ? THEME.light : THEME.dark;
 
   // Filter sidebar sections based on search query
@@ -219,6 +397,18 @@ export default function ResearchLab() {
       return matchesSearch && matchesCat;
     });
   }, [moduleSearch, categoryFilter]);
+
+  // Filter Projects list based on controls
+  const filteredProjects = useMemo(() => {
+    return projectsList.filter(proj => {
+      const matchesSearch = proj.name.toLowerCase().includes(projectSearch.toLowerCase()) ||
+                            proj.lead.toLowerCase().includes(projectSearch.toLowerCase());
+      const matchesCat = projectCatFilter === "All" || proj.category === projectCatFilter;
+      const matchesStatus = projectStatusFilter === "All" || proj.status === projectStatusFilter;
+      const matchesPriority = projectPriorityFilter === "All" || proj.priority === projectPriorityFilter;
+      return matchesSearch && matchesCat && matchesStatus && matchesPriority;
+    });
+  }, [projectsList, projectSearch, projectCatFilter, projectStatusFilter, projectPriorityFilter]);
 
   const categories = ["All", "Biomedical", "Digital", "Engineering", "Special"];
 
@@ -243,6 +433,86 @@ export default function ResearchLab() {
     setUserNotes([note, ...userNotes]);
     setNewNoteTitle("");
     setNewNoteBody("");
+  };
+
+  // Open Form Modal for New Project
+  const openNewProjectForm = () => {
+    setProjectFormMode("new");
+    setFormProjId(null);
+    setFormProjName("");
+    setFormProjCategory("DNA Research");
+    setFormProjLead("");
+    setFormProjPriority("Medium");
+    setFormProjStatus("Active");
+    setFormProjProgress(0);
+    setFormProjDescription("");
+    setFormProjObjective("");
+    setShowProjectForm(true);
+  };
+
+  // Open Form Modal for Edit Project
+  const openEditProjectForm = (proj, e) => {
+    e.stopPropagation();
+    setProjectFormMode("edit");
+    setFormProjId(proj.id);
+    setFormProjName(proj.name);
+    setFormProjCategory(proj.category);
+    setFormProjLead(proj.lead);
+    setFormProjPriority(proj.priority);
+    setFormProjStatus(proj.status);
+    setFormProjProgress(proj.progress);
+    setFormProjDescription(proj.description || "");
+    setFormProjObjective(proj.objective || "");
+    setShowProjectForm(true);
+  };
+
+  // Save Project in State (New or Edit)
+  const saveProject = (e) => {
+    e.preventDefault();
+    if (!formProjName.trim() || !formProjLead.trim()) return;
+
+    if (projectFormMode === "new") {
+      const newProj = {
+        id: Date.now(),
+        name: formProjName,
+        category: formProjCategory,
+        lead: formProjLead,
+        priority: formProjPriority,
+        status: formProjStatus,
+        progress: parseInt(formProjProgress) || 0,
+        created: new Date().toISOString().split("T")[0],
+        description: formProjDesc,
+        objective: formProjObjective
+      };
+      setProjectsList([...projectsList, newProj]);
+    } else {
+      setProjectsList(projectsList.map(p => p.id === formProjId ? {
+        ...p,
+        name: formProjName,
+        category: formProjCategory,
+        lead: formProjLead,
+        priority: formProjPriority,
+        status: formProjStatus,
+        progress: parseInt(formProjProgress) || 0,
+        description: formProjDesc,
+        objective: formProjObjective
+      } : p));
+    }
+    setShowProjectForm(false);
+  };
+
+  // Archive Project (Remove/filter in local state)
+  const archiveProject = (projId, e) => {
+    e.stopPropagation();
+    if (confirm("Are you sure you want to archive this experimental project?")) {
+      setProjectsList(projectsList.filter(p => p.id !== projId));
+    }
+  };
+
+  // View Project Details
+  const viewProjectDetails = (proj) => {
+    setSelectedProject(proj);
+    setShowProjectDrawer(true);
   };
 
   return (
@@ -393,11 +663,11 @@ export default function ResearchLab() {
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
               <span style={{ fontSize: "1.1rem" }}>🧬</span>
               <h1 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, letterSpacing: "-0.5px" }}>
-                Enterprise Research Dashboard
+                {activeSection === "projects" ? "Experimental Projects Control" : "Enterprise Research Dashboard"}
               </h1>
             </div>
             <p style={{ margin: 0, fontSize: "0.75rem", color: theme.text2 }}>
-              Managing and analyzing advanced innovation initiatives across deep-tech modules.
+              {activeSection === "projects" ? "Active lab project metrics, allocations, and lead scientist tracking." : "Managing and analyzing advanced innovation initiatives across deep-tech modules."}
             </p>
           </div>
 
@@ -411,7 +681,7 @@ export default function ResearchLab() {
               borderRadius: 20,
               fontWeight: 700
             }}>
-              DASHBOARD v1.0
+              SYSTEMS ACTIVE
             </div>
             <button
               onClick={() => setIsLight(prev => !prev)}
@@ -468,15 +738,15 @@ export default function ResearchLab() {
                 </div>
               )}
 
-              {/* 1. Research Overview (Glassmorphism Cards) */}
+              {/* Research Overview (Glassmorphism Cards) */}
               <div style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
                 gap: 14
               }}>
                 {[
-                  { title: "Total Projects", value: "10", icon: "📁", color: theme.accent },
-                  { title: "Active Experiments", value: "4", icon: "🔬", color: theme.cyan },
+                  { title: "Total Projects", value: projectsList.length.toString(), icon: "💼", color: theme.accent },
+                  { title: "Active Experiments", value: projectsList.filter(p => p.status === "Active").length.toString(), icon: "🔬", color: theme.cyan },
                   { title: "Running Algorithms", value: "2", icon: "🧮", color: theme.green },
                   { title: "AI Models", value: "180B Base", icon: "🧠", color: theme.yellow },
                   { title: "Success Rate", value: "99.98%", icon: "📈", color: theme.cyan }
@@ -502,7 +772,7 @@ export default function ResearchLab() {
                 {/* LEFT MAIN PANELS */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-                  {/* 2. Recent Research Table */}
+                  {/* Recent Research Table */}
                   <GlassCard theme={theme}>
                     <h3 style={{ margin: "0 0 14px 0", fontSize: "0.95rem", fontWeight: 800 }}>📂 Recent Research Initiatives</h3>
                     <div style={{ overflowX: "auto" }}>
@@ -547,7 +817,7 @@ export default function ResearchLab() {
                     </div>
                   </GlassCard>
 
-                  {/* 5. Charts Section (CSS/SVG high-tech visualization) */}
+                  {/* Charts Section */}
                   <div style={{
                     display: "grid",
                     gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
@@ -623,7 +893,7 @@ export default function ResearchLab() {
                 {/* RIGHT SIDEBAR PANELS */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-                  {/* 3. Quick Actions */}
+                  {/* Quick Actions */}
                   <GlassCard theme={theme}>
                     <h3 style={{ margin: "0 0 12px 0", fontSize: "0.95rem", fontWeight: 800 }}>⚡ Quick Actions</h3>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -663,7 +933,7 @@ export default function ResearchLab() {
                     </div>
                   </GlassCard>
 
-                  {/* 4. Activity Timeline */}
+                  {/* Activity Timeline */}
                   <GlassCard theme={theme}>
                     <h3 style={{ margin: "0 0 14px 0", fontSize: "0.95rem", fontWeight: 800 }}>🕒 Activity Timeline</h3>
                     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -694,6 +964,249 @@ export default function ResearchLab() {
 
               </div>
 
+            </div>
+          )}
+
+          {/* SECTION 2: PROJECTS MANAGEMENT UI */}
+          {activeSection === "projects" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Projects Filter Controls */}
+              <GlassCard theme={theme} style={{ padding: "14px 18px" }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 12
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 260 }}>
+                    <input
+                      value={projectSearch}
+                      onChange={e => setProjectSearch(e.target.value)}
+                      placeholder="🔍 Search projects by name or scientist..."
+                      style={{
+                        background: theme.surf2,
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 8,
+                        padding: "8px 12px",
+                        color: theme.text1,
+                        fontSize: "0.8rem",
+                        width: "100%",
+                        outline: "none"
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                    {/* Category Filter */}
+                    <select
+                      value={projectCatFilter}
+                      onChange={e => setProjectCatFilter(e.target.value)}
+                      style={{
+                        background: theme.surf2,
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 8,
+                        padding: "7px 10px",
+                        color: theme.text2,
+                        fontSize: "0.76rem",
+                        cursor: "pointer",
+                        outline: "none"
+                      }}
+                    >
+                      <option value="All">All Categories</option>
+                      <option value="DNA Research">DNA Research</option>
+                      <option value="AI Models">AI Models</option>
+                      <option value="Quantum Computing">Quantum Computing</option>
+                      <option value="Robotics">Robotics</option>
+                      <option value="Space Tech">Space Tech</option>
+                      <option value="Biotech">Biotech</option>
+                    </select>
+
+                    {/* Status Filter */}
+                    <select
+                      value={projectStatusFilter}
+                      onChange={e => setProjectStatusFilter(e.target.value)}
+                      style={{
+                        background: theme.surf2,
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 8,
+                        padding: "7px 10px",
+                        color: theme.text2,
+                        fontSize: "0.76rem",
+                        cursor: "pointer",
+                        outline: "none"
+                      }}
+                    >
+                      <option value="All">All Statuses</option>
+                      <option value="Active">Active</option>
+                      <option value="Paused">Paused</option>
+                      <option value="Completed">Completed</option>
+                    </select>
+
+                    {/* Priority Filter */}
+                    <select
+                      value={projectPriorityFilter}
+                      onChange={e => setProjectPriorityFilter(e.target.value)}
+                      style={{
+                        background: theme.surf2,
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 8,
+                        padding: "7px 10px",
+                        color: theme.text2,
+                        fontSize: "0.76rem",
+                        cursor: "pointer",
+                        outline: "none"
+                      }}
+                    >
+                      <option value="All">All Priorities</option>
+                      <option value="Critical">Critical</option>
+                      <option value="High">High</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Low">Low</option>
+                    </select>
+
+                    {/* New Project Trigger */}
+                    <button
+                      onClick={openNewProjectForm}
+                      style={{
+                        padding: "8px 16px",
+                        background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`,
+                        border: "none",
+                        borderRadius: 8,
+                        color: "#fff",
+                        fontWeight: 700,
+                        fontSize: "0.78rem",
+                        cursor: "pointer"
+                      }}
+                    >
+                      + New Project
+                    </button>
+                  </div>
+                </div>
+              </GlassCard>
+
+              {/* Project Table list */}
+              <GlassCard theme={theme} style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+                    <thead>
+                      <tr style={{ background: theme.surf2, borderBottom: `1px solid ${theme.border}` }}>
+                        <th style={{ padding: "12px 14px", fontSize: "0.74rem", color: theme.text3 }}>Project Name</th>
+                        <th style={{ padding: "12px 14px", fontSize: "0.74rem", color: theme.text3 }}>Research Category</th>
+                        <th style={{ padding: "12px 14px", fontSize: "0.74rem", color: theme.text3 }}>Lead Scientist</th>
+                        <th style={{ padding: "12px 14px", fontSize: "0.74rem", color: theme.text3 }}>Priority</th>
+                        <th style={{ padding: "12px 14px", fontSize: "0.74rem", color: theme.text3 }}>Status</th>
+                        <th style={{ padding: "12px 14px", fontSize: "0.74rem", color: theme.text3 }}>Progress (%)</th>
+                        <th style={{ padding: "12px 14px", fontSize: "0.74rem", color: theme.text3 }}>Created Date</th>
+                        <th style={{ padding: "12px 14px", fontSize: "0.74rem", color: theme.text3, textAlign: "right" }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProjects.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" style={{ padding: "40px", textAlign: "center", color: theme.text3 }}>
+                            No active experimental projects match selected filter parameters.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredProjects.map((proj) => {
+                          const priorityColor = proj.priority === "Critical" ? theme.red : proj.priority === "High" ? theme.yellow : theme.accent;
+                          return (
+                            <tr
+                              key={proj.id}
+                              onClick={() => viewProjectDetails(proj)}
+                              style={{
+                                borderBottom: `1px solid ${theme.border}`,
+                                cursor: "pointer",
+                                transition: "background-color 0.15s"
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = theme.surf2; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+                            >
+                              <td style={{ padding: "14px", fontSize: "0.8rem", fontWeight: 700 }}>{proj.name}</td>
+                              <td style={{ padding: "14px", fontSize: "0.78rem", color: theme.text2 }}>{proj.category}</td>
+                              <td style={{ padding: "14px", fontSize: "0.78rem", color: theme.text2 }}>{proj.lead}</td>
+                              <td style={{ padding: "14px" }}>
+                                <span style={{
+                                  background: `${priorityColor}15`,
+                                  color: priorityColor,
+                                  border: `1px solid ${priorityColor}30`,
+                                  padding: "2px 8px",
+                                  borderRadius: 4,
+                                  fontSize: "0.64rem",
+                                  fontWeight: 800
+                                }}>{proj.priority}</span>
+                              </td>
+                              <td style={{ padding: "14px" }}>
+                                <span style={{
+                                  background: proj.status === "Completed" ? theme.greenGlow : proj.status === "Paused" ? theme.redGlow : theme.accentGlow,
+                                  color: proj.status === "Completed" ? theme.green : proj.status === "Paused" ? theme.red : theme.accent,
+                                  padding: "2px 8px",
+                                  borderRadius: 4,
+                                  fontSize: "0.64rem",
+                                  fontWeight: 800
+                                }}>{proj.status}</span>
+                              </td>
+                              <td style={{ padding: "14px", minWidth: 110 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <div style={{ height: 6, background: theme.border, borderRadius: 3, flex: 1, overflow: "hidden" }}>
+                                    <div style={{ width: `${proj.progress}%`, height: "100%", background: proj.progress === 100 ? theme.green : theme.accent }} />
+                                  </div>
+                                  <span style={{ fontSize: "0.72rem", color: theme.text2 }}>{proj.progress}%</span>
+                                </div>
+                              </td>
+                              <td style={{ padding: "14px", fontSize: "0.74rem", color: theme.text3 }}>{proj.created}</td>
+                              <td style={{ padding: "14px", textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                                  <button
+                                    onClick={() => viewProjectDetails(proj)}
+                                    title="View details"
+                                    style={{
+                                      background: theme.surf2,
+                                      border: `1px solid ${theme.border2}`,
+                                      borderRadius: 6,
+                                      color: theme.text1,
+                                      padding: "4px 8px",
+                                      fontSize: "0.72rem",
+                                      cursor: "pointer"
+                                    }}
+                                  >View</button>
+                                  <button
+                                    onClick={(e) => openEditProjectForm(proj, e)}
+                                    title="Edit settings"
+                                    style={{
+                                      background: theme.surf2,
+                                      border: `1px solid ${theme.border2}`,
+                                      borderRadius: 6,
+                                      color: theme.accent,
+                                      padding: "4px 8px",
+                                      fontSize: "0.72rem",
+                                      cursor: "pointer"
+                                    }}
+                                  >Edit</button>
+                                  <button
+                                    onClick={(e) => archiveProject(proj.id, e)}
+                                    title="Archive project"
+                                    style={{
+                                      background: theme.surf2,
+                                      border: `1px solid ${theme.border2}`,
+                                      borderRadius: 6,
+                                      color: theme.red,
+                                      padding: "4px 8px",
+                                      fontSize: "0.72rem",
+                                      cursor: "pointer"
+                                    }}
+                                  >Archive</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </GlassCard>
             </div>
           )}
 
@@ -1156,6 +1669,366 @@ export default function ResearchLab() {
         theme={theme}
         isLight={isLight}
       />
+
+      {/* PROJECT DETAILS SLIDE-OVER DRAWER */}
+      {showProjectDrawer && selectedProject && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.5)",
+          display: "flex",
+          justifyContent: "flex-end",
+          zIndex: 10001,
+          backdropFilter: "blur(4px)"
+        }} onClick={() => setShowProjectDrawer(false)}>
+          <div style={{
+            width: 440,
+            maxWidth: "90vw",
+            background: theme.surf,
+            borderLeft: `1px solid ${theme.border2}`,
+            height: "100%",
+            padding: "24px",
+            boxShadow: `-10px 0 30px ${theme.shadow}`,
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+            backdropFilter: "blur(14px)"
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.7rem", color: theme.accent, fontWeight: 700, textTransform: "uppercase" }}>{selectedProject.category}</span>
+              <button onClick={() => setShowProjectDrawer(false)} style={{ background: "none", border: "none", color: theme.text3, fontSize: "1.1rem", cursor: "pointer" }}>✕</button>
+            </div>
+
+            <div>
+              <h2 style={{ margin: "0 0 4px 0", fontSize: "1.2rem", fontWeight: 800 }}>{selectedProject.name}</h2>
+              <p style={{ margin: 0, fontSize: "0.72rem", color: theme.text3 }}>Created: {selectedProject.created}</p>
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1, background: theme.surf2, padding: "10px", borderRadius: 8, border: `1px solid ${theme.border}` }}>
+                <div style={{ fontSize: "0.64rem", color: theme.text3 }}>PRIORITY</div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 800, color: theme.accent }}>{selectedProject.priority}</div>
+              </div>
+              <div style={{ flex: 1, background: theme.surf2, padding: "10px", borderRadius: 8, border: `1px solid ${theme.border}` }}>
+                <div style={{ fontSize: "0.64rem", color: theme.text3 }}>STATUS</div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 800, color: theme.green }}>{selectedProject.status}</div>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.74rem", color: theme.text2, marginBottom: 5 }}>
+                <span>Completion progress</span>
+                <span style={{ fontWeight: 700 }}>{selectedProject.progress}%</span>
+              </div>
+              <div style={{ height: 8, background: theme.border, borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ width: `${selectedProject.progress}%`, height: "100%", background: selectedProject.progress === 100 ? theme.green : theme.accent }} />
+              </div>
+            </div>
+
+            <div>
+              <h4 style={{ margin: "0 0 6px 0", fontSize: "0.76rem", color: theme.text1, textTransform: "uppercase" }}>Project Description</h4>
+              <p style={{ margin: 0, fontSize: "0.8rem", color: theme.text2, lineHeight: 1.5 }}>{selectedProject.description || "No project description loaded yet."}</p>
+            </div>
+
+            <div>
+              <h4 style={{ margin: "0 0 6px 0", fontSize: "0.76rem", color: theme.text1, textTransform: "uppercase" }}>Scientific Objectives</h4>
+              <p style={{ margin: 0, fontSize: "0.8rem", color: theme.text2, lineHeight: 1.5 }}>{selectedProject.objective || "Optimize local computational sequence parameter matrices."}</p>
+            </div>
+
+            <div style={{
+              background: theme.surf2,
+              borderRadius: 10,
+              padding: 12,
+              border: `1px solid ${theme.border}`
+            }}>
+              <div style={{ fontSize: "0.74rem", fontWeight: 800, marginBottom: 6 }}>Lead Scientist Credentials</div>
+              <div style={{ fontSize: "0.8rem", color: theme.text1, fontWeight: 700 }}>{selectedProject.lead}</div>
+              <div style={{ fontSize: "0.72rem", color: theme.text3, marginTop: 2 }}>Senior Researcher, Deep-Tech Incubation Division. Verified clearance level 5.</div>
+            </div>
+
+            {/* Virtual Telemetry output */}
+            <div style={{
+              background: "#02020a",
+              border: "1px solid #1e1e35",
+              borderRadius: 8,
+              padding: "10px 12px",
+              fontFamily: "monospace",
+              fontSize: "0.68rem",
+              color: "#38bdf8",
+              maxHeight: 120,
+              overflowY: "auto"
+            }}>
+              <div style={{ color: "#10b981" }}>[VIRTUAL SECURE CHANNEL OPENED]</div>
+              <div>&gt; Syncing metrics for {selectedProject.name}...</div>
+              <div>&gt; Telemetry loop integrity: nominal.</div>
+              <div>&gt; Progress threshold: {selectedProject.progress}% stable.</div>
+            </div>
+
+            <button
+              onClick={() => setShowProjectDrawer(false)}
+              style={{
+                width: "100%",
+                padding: "10px",
+                background: theme.surf2,
+                border: `1px solid ${theme.border2}`,
+                borderRadius: 8,
+                color: theme.text1,
+                fontWeight: 700,
+                fontSize: "0.8rem",
+                cursor: "pointer",
+                marginTop: "auto"
+              }}
+            >Close Details</button>
+          </div>
+        </div>
+      )}
+
+      {/* NEW/EDIT PROJECT CREATION FORM MODAL */}
+      {showProjectForm && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.6)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10002,
+          backdropFilter: "blur(4px)"
+        }} onClick={() => setShowProjectForm(false)}>
+          <div style={{
+            background: theme.surf,
+            border: `1px solid ${theme.border2}`,
+            borderRadius: 16,
+            padding: 24,
+            width: 460,
+            maxWidth: "92vw",
+            boxShadow: `0 24px 48px ${theme.shadow}`,
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            backdropFilter: "blur(14px)"
+          }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 4px 0", fontSize: "1.05rem", fontWeight: 800 }}>
+              {projectFormMode === "new" ? "➕ Initialize New Research Project" : "📝 Edit Project Telemetry Parameters"}
+            </h3>
+
+            <form onSubmit={saveProject} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: theme.text2, textTransform: "uppercase", marginBottom: 4 }}>Project Name *</label>
+                <input
+                  required
+                  value={formProjName}
+                  onChange={e => setFormProjName(e.target.value)}
+                  placeholder="e.g. Project Singularity Map"
+                  style={{
+                    width: "100%",
+                    background: theme.surf2,
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    color: theme.text1,
+                    fontSize: "0.8rem",
+                    outline: "none",
+                    boxSizing: "border-box"
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.72rem", color: theme.text2, textTransform: "uppercase", marginBottom: 4 }}>Research Category</label>
+                  <select
+                    value={formProjCategory}
+                    onChange={e => setFormProjCategory(e.target.value)}
+                    style={{
+                      width: "100%",
+                      background: theme.surf2,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      color: theme.text2,
+                      fontSize: "0.8rem",
+                      outline: "none"
+                    }}
+                  >
+                    <option value="DNA Research">DNA Research</option>
+                    <option value="AI Models">AI Models</option>
+                    <option value="Quantum Computing">Quantum Computing</option>
+                    <option value="Robotics">Robotics</option>
+                    <option value="Space Tech">Space Tech</option>
+                    <option value="Biotech">Biotech</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.72rem", color: theme.text2, textTransform: "uppercase", marginBottom: 4 }}>Lead Scientist *</label>
+                  <input
+                    required
+                    value={formProjLead}
+                    onChange={e => setFormProjLead(e.target.value)}
+                    placeholder="e.g. Dr. Alan Turing"
+                    style={{
+                      width: "100%",
+                      background: theme.surf2,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      color: theme.text1,
+                      fontSize: "0.8rem",
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.72rem", color: theme.text2, textTransform: "uppercase", marginBottom: 4 }}>Priority</label>
+                  <select
+                    value={formProjPriority}
+                    onChange={e => setFormProjPriority(e.target.value)}
+                    style={{
+                      width: "100%",
+                      background: theme.surf2,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      color: theme.text2,
+                      fontSize: "0.8rem",
+                      outline: "none"
+                    }}
+                  >
+                    <option value="Critical">Critical</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.72rem", color: theme.text2, textTransform: "uppercase", marginBottom: 4 }}>Status</label>
+                  <select
+                    value={formProjStatus}
+                    onChange={e => setFormProjStatus(e.target.value)}
+                    style={{
+                      width: "100%",
+                      background: theme.surf2,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      color: theme.text2,
+                      fontSize: "0.8rem",
+                      outline: "none"
+                    }}
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Paused">Paused</option>
+                    <option value="Completed">Completed</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.72rem", color: theme.text2, textTransform: "uppercase", marginBottom: 4 }}>Progress (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formProjProgress}
+                    onChange={e => setFormProjProgress(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                    style={{
+                      width: "100%",
+                      background: theme.surf2,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      color: theme.text1,
+                      fontSize: "0.8rem",
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: theme.text2, textTransform: "uppercase", marginBottom: 4 }}>Project Description</label>
+                <textarea
+                  value={formProjDesc}
+                  onChange={e => setFormProjDescription(e.target.value)}
+                  placeholder="Summarize the core parameters and scope..."
+                  rows={2}
+                  style={{
+                    width: "100%",
+                    background: theme.surf2,
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    color: theme.text1,
+                    fontSize: "0.8rem",
+                    outline: "none",
+                    resize: "none",
+                    boxSizing: "border-box"
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: theme.text2, textTransform: "uppercase", marginBottom: 4 }}>Scientific Objective</label>
+                <input
+                  value={formProjObjective}
+                  onChange={e => setFormProjObjective(e.target.value)}
+                  placeholder="Define target threshold or accuracy goals..."
+                  style={{
+                    width: "100%",
+                    background: theme.surf2,
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    color: theme.text1,
+                    fontSize: "0.8rem",
+                    outline: "none",
+                    boxSizing: "border-box"
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowProjectForm(false)}
+                  style={{
+                    flex: 1,
+                    padding: "9px",
+                    background: theme.surf2,
+                    border: `1px solid ${theme.border2}`,
+                    borderRadius: 8,
+                    color: theme.text2,
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >Cancel</button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 1,
+                    padding: "9px",
+                    background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`,
+                    border: "none",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
+                    cursor: "pointer"
+                  }}
+                >Save Project</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes fadeIn {
