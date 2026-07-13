@@ -162,7 +162,7 @@ const StatCard = ({ title, value, icon, color, text2, border, bg }) => (
 );
 
 // Reusable modal for "Open Lab" details
-const LabDetailsModal = ({ isOpen, onClose, lab, theme, isLight }) => {
+const LabDetailsModal = ({ isOpen, onClose, lab, theme, isLight, onOpenDNA }) => {
   if (!isOpen || !lab) return null;
 
   return (
@@ -285,26 +285,34 @@ const LabDetailsModal = ({ isOpen, onClose, lab, theme, isLight }) => {
             }}
           >Close Detail</button>
           <button
-            disabled
+            disabled={lab.id !== "dna"}
+            onClick={() => {
+              if (lab.id === "dna" && onOpenDNA) {
+                onOpenDNA();
+                onClose();
+              }
+            }}
             style={{
               flex: 1,
               padding: "10px",
-              background: `${theme.accent}30`,
+              background: lab.id === "dna" ? `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})` : `${theme.accent}30`,
               border: "none",
               borderRadius: 9,
-              color: theme.text3,
+              color: lab.id === "dna" ? "#fff" : theme.text3,
               fontWeight: 700,
               fontSize: "0.82rem",
-              cursor: "not-allowed"
+              cursor: lab.id === "dna" ? "pointer" : "not-allowed"
             }}
-          >Initialize Lab</button>
+          >
+            {lab.id === "dna" ? "Initialize Algorithm Designer" : "Initialize Lab"}
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-export default function ResearchLab() {
+export default function ResearchLab({ onOpenDNA }) {
   const [isLight, setIsLight] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -627,6 +635,7 @@ export default function ResearchLab() {
         lab={activeLabDetail}
         theme={theme}
         isLight={isLight}
+        onOpenDNA={onOpenDNA}
       />
 
       <style>{`

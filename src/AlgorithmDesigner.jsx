@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 // Design tokens matching App.jsx and ResearchLab.jsx
 const T = {
@@ -47,7 +47,20 @@ const DEFAULT_ALGORITHMS = [
         variables: "o = gap open cost\ne = gap extension cost\nk = length of the gap",
         units: "Heuristic score units"
       }
-    ]
+    ],
+    pipeline: {
+      blocks: [
+        { id: "b1", type: "Input Data", x: 60, y: 160, params: "Format: FASTA\nSize: 4.8 MB", notes: "Primary genome raw sequence reads." },
+        { id: "b2", type: "Data Validation", x: 250, y: 160, params: "PhredThreshold: Q30", notes: "Filters out low-quality sequence reads." },
+        { id: "b3", type: "DNA Encoding", x: 440, y: 160, params: "Algorithm: Huffman-Bio\nBitsPerBase: 2", notes: "Compiles binary blocks into nucleobase sequences." },
+        { id: "b4", type: "Output", x: 630, y: 160, params: "SynthesisTarget: OligoArc", notes: "Synthesized product ready for physical chemical assembly." }
+      ],
+      connections: [
+        { id: "c1", from: "b1", to: "b2" },
+        { id: "c2", from: "b2", to: "b3" },
+        { id: "c3", from: "b3", to: "b4" }
+      ]
+    }
   },
   {
     id: "alg_2",
@@ -67,7 +80,18 @@ const DEFAULT_ALGORITHMS = [
         variables: "\u03c0 = guide access factor\n\u03b7 = nuclear concentration factor\n\u0394G = structural free energy binding state\nR = universal gas constant\nT = temperature in Kelvin",
         units: "Probability coefficient (0 - 1)"
       }
-    ]
+    ],
+    pipeline: {
+      blocks: [
+        { id: "b2_1", type: "Input Data", x: 80, y: 120, params: "Format: FASTA\nTarget: Cas9-sgRNA", notes: "Guide RNA match profiles." },
+        { id: "b2_2", type: "DNA Encoding", x: 280, y: 120, params: "Format: PAM-Custom", notes: "Translate matching coordinates." },
+        { id: "b2_3", type: "Storage Layer", x: 480, y: 120, params: "Format: Physical DNA", notes: "Storage sequence alignment parameters." }
+      ],
+      connections: [
+        { id: "c2_1", from: "b2_1", to: "b2_2" },
+        { id: "c2_2", from: "b2_2", to: "b2_3" }
+      ]
+    }
   },
   {
     id: "alg_3",
@@ -87,22 +111,60 @@ const DEFAULT_ALGORITHMS = [
         variables: "T_m = mechanical torque from enzyme translation\nd = outer helix cylinder diameter (e.g. 2.0 nm)",
         units: "Pascals (Pa) or Newtons/m\u00b2"
       }
-    ]
+    ],
+    pipeline: {
+      blocks: [
+        { id: "b3_1", type: "Input Data", x: 100, y: 150, params: "ForceProfile: Active", notes: "Simulation parameters input." }
+      ],
+      connections: []
+    }
   }
 ];
+
+const AVAILABLE_BLOCK_TYPES = [
+  "Input Data",
+  "Data Validation",
+  "Compression",
+  "DNA Encoding",
+  "Error Correction",
+  "Metadata Generator",
+  "Storage Layer",
+  "Retrieval Layer",
+  "DNA Decoding",
+  "Verification",
+  "Output"
+];
+
+// Description mappings for blocks
+const BLOCK_DESCRIPTIONS = {
+  "Input Data": "Specifies primary data source files or streams (e.g., FASTA, CSV, binary formats).",
+  "Data Validation": "Performs quality score filters, structural checksum audits, and sequencing error validations.",
+  "Compression": "Applies lossy or lossless digital data compression algorithms (e.g., LZW, Huffman coding).",
+  "DNA Encoding": "Encodes standard digital binary structures (0s and 1s) into biological nucleobases (A, C, G, T).",
+  "Error Correction": "Injects mathematical redundancy (e.g., Reed-Solomon, Hamming codes) to handle physical synthesis degradation.",
+  "Metadata Generator": "Creates custom structural identifiers, index parameters, and experiment descriptors.",
+  "Storage Layer": "Defines physical container parameters, mapping, or archival microplate placements.",
+  "Retrieval Layer": "Models microplate sequencing access interfaces and basecalling indexing guides.",
+  "DNA Decoding": "Reconstructs digital binary files back from mapped sequencings of nucleobase alignments.",
+  "Verification": "Validates final reconstructed payloads against original input digital signatures/checksums.",
+  "Output": "Specifies the terminal endpoint, such as molecular synthesis hardware or decoded output files."
+};
 
 export default function AlgorithmDesigner() {
   const [algorithms, setAlgorithms] = useState(DEFAULT_ALGORITHMS);
   const [selectedId, setSelectedId] = useState("alg_1");
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Algorithm Editor state
+  // Workspace active tab: "metadata", "formulas", "pipeline"
+  const [activeTab, setActiveTab] = useState("pipeline");
+
+  // ── 1. ALGORITHM METADATA STATE ──
   const [algName, setAlgName] = useState("");
   const [objective, setObjective] = useState("");
   const [problemStatement, setProblemStatement] = useState("");
   const [researchNotes, setResearchNotes] = useState("");
 
-  // Formula Editor state
+  // ── 2. FORMULA EDITOR STATE ──
   const [selectedFormulaId, setSelectedFormulaId] = useState("");
   const [formulaName, setFormulaName] = useState("");
   const [formulaExpression, setFormulaExpression] = useState("");
@@ -110,12 +172,36 @@ export default function AlgorithmDesigner() {
   const [formulaVariables, setFormulaVariables] = useState("");
   const [formulaUnits, setFormulaUnits] = useState("");
 
+  // ── 3. VISUAL PIPELINE BUILDER STATE ──
+  const [blocks, setBlocks] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [selectedBlockId, setSelectedFormulaBlockId] = useState(null);
+  const [selectedConnectionId, setSelectedConnectionId] = useState(null);
+
+  // Canvas Viewport transform (Zoom & Pan)
+  const [zoom, setZoom] = useState(1.0);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  // Connecting ports state
+  const [connectingFromBlockId, setConnectingFromBlockId] = useState(null);
+
+  // Undo/Redo Stacks
+  const [history, setHistory] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+
+  // Refs
+  const canvasRef = useRef(null);
+  const dragRef = useRef(null);
+
   const showToast = (msg, type = "success") => {
     setToastMessage({ msg, type });
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Sync state when active algorithm changes
+  // ── DYNAMIC SYNC WHEN ALGORITHM SELECTION CHANGES ──
   useEffect(() => {
     const active = algorithms.find(a => a.id === selectedId);
     if (active) {
@@ -124,19 +210,33 @@ export default function AlgorithmDesigner() {
       setProblemStatement(active.problemStatement || "");
       setResearchNotes(active.researchNotes || "");
 
-      // Sync active formula to the first formula of the algorithm if present, or clear it
+      // Load formulas
       const activeFormulas = active.formulas || [];
       if (activeFormulas.length > 0) {
         handleLoadFormula(activeFormulas[0]);
       } else {
         handleClearFormulaFields();
       }
+
+      // Load pipeline
+      const p = active.pipeline || { blocks: [], connections: [] };
+      setBlocks(p.blocks || []);
+      setConnections(p.connections || []);
+      setSelectedFormulaBlockId(null);
+      setSelectedConnectionId(null);
+      setHistory([]);
+      setRedoStack([]);
+      setZoom(1.0);
+      setPanX(0);
+      setPanY(0);
     } else {
       setAlgName("");
       setObjective("");
       setProblemStatement("");
       setResearchNotes("");
       handleClearFormulaFields();
+      setBlocks([]);
+      setConnections([]);
     }
   }, [selectedId, algorithms]);
 
@@ -152,10 +252,12 @@ export default function AlgorithmDesigner() {
     setProblemStatement("");
     setResearchNotes("");
     handleClearFormulaFields();
+    setBlocks([]);
+    setConnections([]);
     showToast("Cleared fields for new algorithm", "info");
   };
 
-  // Algorithm draft operations
+  // Save metadata changes back to the algorithms array
   const handleSaveAlgorithmDraft = (e) => {
     if (e) e.preventDefault();
     if (!algName.trim()) {
@@ -172,12 +274,14 @@ export default function AlgorithmDesigner() {
             objective,
             problemStatement,
             researchNotes,
-            recent: true
+            recent: true,
+            // persist current live formula and pipeline states as well
+            pipeline: { blocks, connections }
           };
         }
         return alg;
       }));
-      showToast("Algorithm draft updated successfully!", "success");
+      showToast("Algorithm draft saved successfully!", "success");
     } else {
       const newAlg = {
         id: `alg_${Date.now()}`,
@@ -188,7 +292,8 @@ export default function AlgorithmDesigner() {
         favorite: false,
         recent: true,
         category: "Custom DNA",
-        formulas: []
+        formulas: [],
+        pipeline: { blocks, connections }
       };
       setAlgorithms(prev => [newAlg, ...prev]);
       setSelectedId(newAlg.id);
@@ -227,7 +332,7 @@ export default function AlgorithmDesigner() {
     }));
   };
 
-  // Formula Editor operations
+  // ── FORMULA EDITOR OPERATIONS ──
   const handleLoadFormula = (formula) => {
     setSelectedFormulaId(formula.id);
     setFormulaName(formula.name || "");
@@ -273,7 +378,6 @@ export default function AlgorithmDesigner() {
       if (alg.id === selectedId) {
         const formulas = alg.formulas || [];
         if (selectedFormulaId) {
-          // Update existing formula
           return {
             ...alg,
             formulas: formulas.map(f => {
@@ -291,7 +395,6 @@ export default function AlgorithmDesigner() {
             })
           };
         } else {
-          // Create new formula
           const newFormula = {
             id: `f_${Date.now()}`,
             name: formulaName,
@@ -351,8 +454,6 @@ export default function AlgorithmDesigner() {
       if (alg.id === selectedId) {
         const formulas = alg.formulas || [];
         const nextFormulas = formulas.filter(f => f.id !== selectedFormulaId);
-
-        // Pick the next available formula if any, otherwise clear fields
         if (nextFormulas.length > 0) {
           handleLoadFormula(nextFormulas[0]);
         } else {
@@ -368,9 +469,325 @@ export default function AlgorithmDesigner() {
     }));
   };
 
-  // Derived variables
+  // ── VISUAL PIPELINE BUILDER OPERATIONS ──
+  const pushToHistory = (newBlocks, newConns) => {
+    setHistory(prev => [...prev, { blocks, connections }]);
+    setRedoStack([]); // Clear redo stack on new action
+  };
+
+  const handleUndo = () => {
+    if (history.length === 0) return;
+    const previous = history[history.length - 1];
+    setRedoStack(prev => [...prev, { blocks, connections }]);
+    setBlocks(previous.blocks);
+    setConnections(previous.connections);
+    setHistory(prev => prev.slice(0, -1));
+    showToast("Undo action completed.", "info");
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setHistory(prev => [...prev, { blocks, connections }]);
+    setBlocks(next.blocks);
+    setConnections(next.connections);
+    setRedoStack(prev => prev.slice(0, -1));
+    showToast("Redo action completed.", "info");
+  };
+
+  // Toolbox - add new block to canvas
+  const handleAddBlock = (type) => {
+    if (!selectedId) {
+      showToast("Please select or create an algorithm first.", "error");
+      return;
+    }
+    pushToHistory(blocks, connections);
+
+    // Position new node relative to pan offset to keep it visible
+    const baseOffset = 180;
+    const newBlock = {
+      id: `b_${Date.now()}`,
+      type,
+      x: Math.max(80, 200 - panX),
+      y: Math.max(80, 180 - panY),
+      params: `Block: ${type}\nParameters: Ready`,
+      notes: BLOCK_DESCRIPTIONS[type] || "No notes."
+    };
+
+    setBlocks(prev => [...prev, newBlock]);
+    setSelectedFormulaBlockId(newBlock.id);
+    showToast(`Added ${type} block.`, "success");
+  };
+
+  // Block dragging & Pan interactions
+  const handleBlockMouseDown = (e, blockId) => {
+    e.stopPropagation();
+    setSelectedFormulaBlockId(blockId);
+    setSelectedConnectionId(null);
+
+    const block = blocks.find(b => b.id === blockId);
+    if (!block) return;
+
+    dragRef.current = {
+      blockId,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: block.x,
+      initialY: block.y,
+      hasMoved: false
+    };
+
+    pushToHistory(blocks, connections);
+
+    document.addEventListener("mousemove", handleBlockMouseMove);
+    document.addEventListener("mouseup", handleBlockMouseUp);
+  };
+
+  const handleBlockMouseMove = (e) => {
+    if (!dragRef.current) return;
+    const { blockId, startX, startY, initialX, initialY } = dragRef.current;
+
+    const dx = (e.clientX - startX) / zoom;
+    const dy = (e.clientY - startY) / zoom;
+
+    dragRef.current.hasMoved = true;
+
+    setBlocks(prev => prev.map(b => {
+      if (b.id === blockId) {
+        return {
+          ...b,
+          x: Math.round(initialX + dx),
+          y: Math.round(initialY + dy)
+        };
+      }
+      return b;
+    }));
+  };
+
+  const handleBlockMouseUp = () => {
+    document.removeEventListener("mousemove", handleBlockMouseMove);
+    document.removeEventListener("mouseup", handleBlockMouseUp);
+
+    // If block didn't actually move, discard history push to keep stack clean
+    if (dragRef.current && !dragRef.current.hasMoved) {
+      setHistory(prev => prev.slice(0, -1));
+    }
+    dragRef.current = null;
+  };
+
+  // Pan Canvas
+  const handleCanvasMouseDown = (e) => {
+    if (e.button === 2 || e.shiftKey) { // Right click or shift-click to pan
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
+    }
+  };
+
+  const handleCanvasMouseMove = (e) => {
+    if (isPanning) {
+      setPanX(e.clientX - panStart.x);
+      setPanY(e.clientY - panStart.y);
+    }
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsPanning(false);
+  };
+
+  // Drag-to-Connect port handlers
+  const handlePortMouseDown = (e, blockId) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setConnectingFromBlockId(blockId);
+    document.addEventListener("mouseup", handleGlobalMouseUpForConnection);
+  };
+
+  const handlePortMouseUp = (e, targetBlockId) => {
+    e.stopPropagation();
+    if (connectingFromBlockId && connectingFromBlockId !== targetBlockId) {
+      // Check if connection already exists
+      const exists = connections.some(c => c.from === connectingFromBlockId && c.to === targetBlockId);
+      if (exists) {
+        showToast("Connection already exists.", "error");
+      } else {
+        pushToHistory(blocks, connections);
+        const newConn = {
+          id: `c_${Date.now()}`,
+          from: connectingFromBlockId,
+          to: targetBlockId
+        };
+        setConnections(prev => [...prev, newConn]);
+        showToast("Blocks connected successfully.", "success");
+      }
+    }
+    setConnectingFromBlockId(null);
+    document.removeEventListener("mouseup", handleGlobalMouseUpForConnection);
+  };
+
+  const handleGlobalMouseUpForConnection = () => {
+    setConnectingFromBlockId(null);
+    document.removeEventListener("mouseup", handleGlobalMouseUpForConnection);
+  };
+
+  // Zoom controls
+  const handleZoomIn = () => setZoom(z => Math.min(1.8, z + 0.1));
+  const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.1));
+  const handleZoomReset = () => {
+    setZoom(1.0);
+    setPanX(0);
+    setPanY(0);
+    showToast("Canvas viewport reset.", "info");
+  };
+
+  // Auto Layout algorithm (Simple Horizontal Rank positioning)
+  const handleAutoLayout = () => {
+    if (blocks.length === 0) return;
+    pushToHistory(blocks, connections);
+
+    // Topological sorting logic simplified: group items by sequential connections
+    const mappedX = {};
+    const processed = new Set();
+    let currentRank = 0;
+
+    // Start with blocks that have no input connections
+    let sources = blocks.filter(b => !connections.some(c => c.to === b.id));
+    if (sources.length === 0 && blocks.length > 0) {
+      sources = [blocks[0]];
+    }
+
+    let queue = [...sources];
+    while (queue.length > 0) {
+      const nextLevel = [];
+      queue.forEach(b => {
+        if (!processed.has(b.id)) {
+          processed.add(b.id);
+          mappedX[b.id] = 120 + currentRank * 210;
+
+          // Find output targets
+          const targets = connections.filter(c => c.from === b.id).map(c => c.to);
+          targets.forEach(tid => {
+            const targetBlock = blocks.find(node => node.id === tid);
+            if (targetBlock) nextLevel.push(targetBlock);
+          });
+        }
+      });
+      queue = nextLevel;
+      currentRank++;
+    }
+
+    // Set coordinates
+    setBlocks(prev => prev.map((b, idx) => {
+      const x = mappedX[b.id] || (120 + idx * 150);
+      const y = 180 + (idx % 2 === 0 ? 0 : 40); // slightly offset vertical staggered path
+      return { ...b, x, y };
+    }));
+
+    showToast("Auto Layout executed.", "info");
+  };
+
+  // Selection & deletion operations
+  const handleDeleteSelectedElement = () => {
+    if (selectedBlockId) {
+      pushToHistory(blocks, connections);
+      setBlocks(prev => prev.filter(b => b.id !== selectedBlockId));
+      setConnections(prev => prev.filter(c => c.from !== selectedBlockId && c.to !== selectedBlockId));
+      setSelectedFormulaBlockId(null);
+      showToast("Block and its connections deleted.", "success");
+    } else if (selectedConnectionId) {
+      pushToHistory(blocks, connections);
+      setConnections(prev => prev.filter(c => c.id !== selectedConnectionId));
+      setSelectedConnectionId(null);
+      showToast("Connection deleted.", "success");
+    } else {
+      showToast("Select a block or arrow to delete.", "error");
+    }
+  };
+
+  // Update selected block parameters/notes in properties panel
+  const handleUpdateBlockMeta = (key, value) => {
+    setBlocks(prev => prev.map(b => {
+      if (b.id === selectedBlockId) {
+        return { ...b, [key]: value };
+      }
+      return b;
+    }));
+  };
+
+  // ── PIPELINE VALIDATION ENGINE (Bottom Panel) ──
+  const getPipelineValidation = () => {
+    if (blocks.length === 0) {
+      return {
+        status: "Empty Workspace",
+        message: "No blocks placed. Add elements from the toolbox to start modeling.",
+        color: T.text3
+      };
+    }
+
+    // Verify if there are Input and Output blocks
+    const hasInput = blocks.some(b => b.type === "Input Data");
+    const hasOutput = blocks.some(b => b.type === "Output");
+
+    if (!hasInput) {
+      return {
+        status: "Warning Status",
+        message: "Missing 'Input Data' block. Valid pipeline flows must originate from an Input Data source.",
+        color: T.yellow
+      };
+    }
+    if (!hasOutput) {
+      return {
+        status: "Warning Status",
+        message: "Missing 'Output' terminal block. Set up a Storage Layer or Output block.",
+        color: T.yellow
+      };
+    }
+
+    // Check reachability from Input to Output via connections
+    const startBlocks = blocks.filter(b => b.type === "Input Data");
+    let reachable = false;
+
+    // Standard BFS traversal for connectivity checks
+    const visited = new Set();
+    const queue = startBlocks.map(b => b.id);
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      visited.add(curr);
+      const currBlock = blocks.find(b => b.id === curr);
+      if (currBlock?.type === "Output") {
+        reachable = true;
+        break;
+      }
+      const outbound = connections.filter(c => c.from === curr).map(c => c.to);
+      outbound.forEach(toId => {
+        if (!visited.has(toId)) {
+          queue.push(toId);
+        }
+      });
+    }
+
+    if (!reachable) {
+      return {
+        status: "Invalid Routing",
+        message: "Input Data blocks do not connect to any Output terminals. Draw connections between node ports.",
+        color: T.red
+      };
+    }
+
+    // Successful path validation
+    return {
+      status: "Pipeline Verified",
+      message: `System validation complete. Connected workflow path verified with ${blocks.length} active node modules.`,
+      color: T.green
+    };
+  };
+
+  const validation = getPipelineValidation();
+
+  // Active elements derived
   const activeAlgorithm = algorithms.find(a => a.id === selectedId) || null;
   const activeFormulas = activeAlgorithm?.formulas || [];
+  const selectedBlock = blocks.find(b => b.id === selectedBlockId) || null;
 
   return (
     <div style={{
@@ -381,39 +798,52 @@ export default function AlgorithmDesigner() {
       flexDirection: "column",
       fontFamily: "'Inter', system-ui, sans-serif"
     }}>
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div style={{
-          position: "fixed",
-          top: 20,
-          right: 20,
-          zIndex: 9999,
-          background: toastMessage.type === "error" ? "#2a0a10" : toastMessage.type === "info" ? "#0a1530" : "#002a1a",
-          border: `1px solid ${toastMessage.type === "error" ? T.red : toastMessage.type === "info" ? T.accent : T.green}`,
-          borderRadius: 8,
-          padding: "12px 20px",
-          color: T.text1,
-          fontSize: "0.84rem",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          animation: "slideIn 0.2s ease"
-        }}>
-          <span>{toastMessage.type === "error" ? "⚠️" : toastMessage.type === "info" ? "ℹ️" : "✅"}</span>
-          <span>{toastMessage.msg}</span>
-        </div>
-      )}
+      {/* Dynamic Tab Switcher Bar */}
+      <div style={{
+        background: T.surf,
+        borderBottom: `1px solid ${T.border}`,
+        padding: "0 24px",
+        display: "flex",
+        gap: 16,
+        alignItems: "center",
+        height: "50px",
+        flexShrink: 0
+      }}>
+        {[
+          { id: "pipeline", label: "🎨 Visual Pipeline Builder", color: T.cyan },
+          { id: "formulas", label: "🧬 Mathematical Formulas", color: T.pink },
+          { id: "metadata", label: "📝 Metadata Draft Editor", color: T.accent }
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              padding: "0 16px",
+              height: "100%",
+              background: "none",
+              border: "none",
+              borderBottom: activeTab === t.id ? `3px solid ${t.color}` : "3px solid transparent",
+              color: activeTab === t.id ? T.text1 : T.text2,
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "all 0.15s"
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Responsive Workspace Wrapper */}
+      {/* Main Workspace Wrapper */}
       <div style={{
         display: "flex",
         flex: 1,
         flexDirection: "row",
         flexWrap: "wrap",
-        minHeight: "calc(100vh - 60px)"
+        minHeight: "calc(100vh - 110px)"
       }}>
-        {/* ── SIDEBAR PANEL ── */}
+        {/* ── ALGORITHM SIDEBAR SELECTOR ── */}
         <aside style={{
           width: "280px",
           background: T.surf,
@@ -437,7 +867,7 @@ export default function AlgorithmDesigner() {
               fontWeight: 700,
               fontSize: "0.82rem",
               cursor: "pointer",
-              transition: "transform 0.1s, opacity 0.15s"
+              transition: "opacity 0.15s"
             }}
             onMouseEnter={e => e.currentTarget.style.opacity = 0.9}
             onMouseLeave={e => e.currentTarget.style.opacity = 1}
@@ -447,13 +877,9 @@ export default function AlgorithmDesigner() {
 
           {/* Section: My Algorithms */}
           <div>
-            <h4 style={{
-              fontSize: "0.74rem",
-              color: T.text3,
-              textTransform: "uppercase",
-              letterSpacing: "1px",
-              margin: "0 0 10px 0"
-            }}>My Algorithms ({algorithms.length})</h4>
+            <h4 style={{ fontSize: "0.74rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 10px 0" }}>
+              My Algorithms ({algorithms.length})
+            </h4>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {algorithms.map(alg => (
                 <div
@@ -484,14 +910,7 @@ export default function AlgorithmDesigner() {
                   </div>
                   <button
                     onClick={(e) => toggleFavorite(alg.id, e)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: alg.favorite ? T.yellow : T.text3,
-                      cursor: "pointer",
-                      fontSize: "1rem",
-                      padding: 0
-                    }}
+                    style={{ background: "none", border: "none", color: alg.favorite ? T.yellow : T.text3, cursor: "pointer", fontSize: "1rem", padding: 0 }}
                   >
                     ★
                   </button>
@@ -502,13 +921,7 @@ export default function AlgorithmDesigner() {
 
           {/* Section: Recent */}
           <div>
-            <h4 style={{
-              fontSize: "0.74rem",
-              color: T.text3,
-              textTransform: "uppercase",
-              letterSpacing: "1px",
-              margin: "0 0 10px 0"
-            }}>Recent</h4>
+            <h4 style={{ fontSize: "0.74rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 10px 0" }}>Recent</h4>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {algorithms.filter(a => a.recent).map(alg => (
                 <div
@@ -523,415 +936,665 @@ export default function AlgorithmDesigner() {
                     transition: "all 0.15s"
                   }}
                 >
-                  <div style={{
-                    fontSize: "0.78rem",
-                    fontWeight: 500,
-                    color: T.text2,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis"
-                  }}>{alg.name || "Untitled Draft"}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Section: Favorites */}
-          <div>
-            <h4 style={{
-              fontSize: "0.74rem",
-              color: T.text3,
-              textTransform: "uppercase",
-              letterSpacing: "1px",
-              margin: "0 0 10px 0"
-            }}>Favorites</h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {algorithms.filter(a => a.favorite).map(alg => (
-                <div
-                  key={alg.id}
-                  onClick={() => handleSelectAlgorithm(alg)}
-                  style={{
-                    background: T.surf2,
-                    border: `1px solid ${selectedId === alg.id ? T.accent : T.border}`,
-                    borderRadius: 8,
-                    padding: "8px 12px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    transition: "all 0.15s"
-                  }}
-                >
-                  <span style={{
-                    fontSize: "0.78rem",
-                    color: T.text2,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    marginRight: 8,
-                    flex: 1
-                  }}>{alg.name || "Untitled Draft"}</span>
-                  <span style={{ color: T.yellow, fontSize: "0.85rem" }}>★</span>
+                  <div style={{ fontSize: "0.78rem", fontWeight: 500, color: T.text2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{alg.name || "Untitled Draft"}</div>
                 </div>
               ))}
             </div>
           </div>
         </aside>
 
-        {/* ── MAIN WORKSPACE ── */}
-        <div className="designer-grid" style={{
+        {/* ── TAB DYNAMIC CONTENTS ── */}
+        <div style={{
           flex: 1,
-          padding: "24px",
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "24px",
+          display: "flex",
+          flexDirection: "column",
           minWidth: 0,
-          boxSizing: "border-box"
+          background: T.bg
         }}>
-          {/* Style for stacking on small screens */}
-          <style>{`
-            @media (max-width: 1024px) {
-              .designer-grid {
-                grid-template-columns: 1fr !important;
-              }
-            }
-          `}</style>
 
-          {/* COLUMN 1: ALGORITHM DESIGNS */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {/* Header Title */}
-            <div style={{
-              background: T.surf,
-              border: `1px solid ${T.border2}`,
-              borderRadius: 12,
-              padding: "20px"
-            }}>
-              <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: T.text1 }}>
-                {selectedId ? "Edit DNA Algorithm Design" : "New DNA Algorithm Design"}
-              </h2>
-              <p style={{ margin: "4px 0 0 0", fontSize: "0.78rem", color: T.text2 }}>
-                Workspace for mapping dynamic alignment constraints, logic sequences, and optimization objectives.
-              </p>
-            </div>
-
-            {/* Editor fields */}
-            <div style={{
-              background: T.surf,
-              border: `1px solid ${T.border2}`,
-              borderRadius: 12,
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px"
-            }}>
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Algorithm Name *</label>
-                <input
-                  type="text"
-                  value={algName}
-                  onChange={e => setAlgName(e.target.value)}
-                  placeholder="e.g. Nucleobase Sequence Aligner v2.1"
-                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
-                />
+          {/* ═══ TAB 1: METADATA DRAFT EDITOR ═══ */}
+          {activeTab === "metadata" && (
+            <main style={{ padding: "24px", boxSizing: "border-box", maxWidth: "800px", width: "100%", margin: "0 auto" }}>
+              <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "20px", marginBottom: "20px" }}>
+                <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: T.text1 }}>📝 Metadata Editor</h2>
+                <p style={{ margin: "4px 0 0 0", fontSize: "0.78rem", color: T.text2 }}>Specify high-level specifications and research parameters.</p>
               </div>
 
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Objective</label>
-                <input
-                  type="text"
-                  value={objective}
-                  onChange={e => setObjective(e.target.value)}
-                  placeholder="e.g. Reduce sequence matching alignment latency to < 10ms"
-                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Problem Statement</label>
-                <textarea
-                  rows={4}
-                  value={problemStatement}
-                  onChange={e => setProblemStatement(e.target.value)}
-                  placeholder="Describe the scientific/biological challenge this algorithm addresses..."
-                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Research Notes</label>
-                <textarea
-                  rows={6}
-                  value={researchNotes}
-                  onChange={e => setResearchNotes(e.target.value)}
-                  placeholder="Enter literature citations, heuristic constraints, or molecular parameters..."
-                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
-                <button
-                  onClick={handleSaveAlgorithmDraft}
-                  style={{
-                    padding: "11px 24px",
-                    background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
-                    border: "none",
-                    borderRadius: 8,
-                    color: "#fff",
-                    fontWeight: 700,
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    transition: "opacity 0.15s"
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = 0.9}
-                  onMouseLeave={e => e.currentTarget.style.opacity = 1}
-                >
-                  Save Draft
-                </button>
-                <button
-                  onClick={handleCancelAlgorithm}
-                  style={{
-                    padding: "11px 24px",
-                    background: T.surf2,
-                    border: `1px solid ${T.border2}`,
-                    borderRadius: 8,
-                    color: T.text2,
-                    fontWeight: 700,
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    transition: "all 0.15s"
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.background = "#1e1e35";
-                    e.currentTarget.style.color = T.text1;
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.background = T.surf2;
-                    e.currentTarget.style.color = T.text2;
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* COLUMN 2: FORMULA EDITOR PANEL */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {/* Panel Card */}
-            <div style={{
-              background: T.surf,
-              border: `1px solid ${T.accent}35`,
-              borderRadius: 12,
-              padding: "20px",
-              boxShadow: `0 0 20px ${T.accent}0a`
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <form onSubmit={handleSaveAlgorithmDraft} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: T.text1 }}>
-                    🧬 Formula Editor
-                  </h3>
-                  <p style={{ margin: "4px 0 0 0", fontSize: "0.76rem", color: T.text2 }}>
-                    Manage model expressions and scientific variable notations for the current design.
-                  </p>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Algorithm Name *</label>
+                  <input
+                    type="text"
+                    value={algName}
+                    onChange={e => setAlgName(e.target.value)}
+                    placeholder="e.g. DNA Alignment Model v1.0"
+                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
+                  />
                 </div>
-                {/* Active algorithm formula selector dropdown */}
-                {activeAlgorithm && (
-                  <select
-                    value={selectedFormulaId}
-                    onChange={e => {
-                      const f = activeFormulas.find(fo => fo.id === e.target.value);
-                      if (f) handleLoadFormula(f);
-                      else handleClearFormulaFields();
-                    }}
+
+                <div>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Objective</label>
+                  <input
+                    type="text"
+                    value={objective}
+                    onChange={e => setObjective(e.target.value)}
+                    placeholder="Describe design objectives..."
+                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Problem Statement</label>
+                  <textarea
+                    rows={4}
+                    value={problemStatement}
+                    onChange={e => setProblemStatement(e.target.value)}
+                    placeholder="State the challenge being solved..."
+                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Research Notes</label>
+                  <textarea
+                    rows={5}
+                    value={researchNotes}
+                    onChange={e => setResearchNotes(e.target.value)}
+                    placeholder="Literature citations..."
+                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                  <button type="submit" style={{ padding: "11px 24px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer" }}>Save Draft</button>
+                  <button type="button" onClick={handleCancelAlgorithm} style={{ padding: "11px 24px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, color: T.text2, fontWeight: 700, fontSize: "0.85rem", cursor: "pointer" }}>Cancel</button>
+                </div>
+              </form>
+            </main>
+          )}
+
+          {/* ═══ TAB 2: MATHEMATICAL FORMULAS ═══ */}
+          {activeTab === "formulas" && (
+            <main style={{ padding: "24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", boxSizing: "border-box" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: T.text1 }}>🧬 Mathematical Formula Editor</h3>
+                      <p style={{ margin: "4px 0 0 0", fontSize: "0.76rem", color: T.text2 }}>Design analytical modeling expressions.</p>
+                    </div>
+                    {activeAlgorithm && (
+                      <select
+                        value={selectedFormulaId}
+                        onChange={e => {
+                          const f = activeFormulas.find(fo => fo.id === e.target.value);
+                          if (f) handleLoadFormula(f);
+                          else handleClearFormulaFields();
+                        }}
+                        style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, padding: "6px 12px", color: T.text1, fontSize: "0.78rem", outline: "none", cursor: "pointer" }}
+                      >
+                        <option value="">-- Select Formula --</option>
+                        {activeFormulas.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", borderBottom: `1px solid ${T.border2}`, paddingBottom: "14px" }}>
+                    <button onClick={handleNewFormula} style={{ padding: "7px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.cyan, fontWeight: 700, fontSize: "0.74rem", cursor: "pointer" }}>+ New Formula</button>
+                    <button onClick={handleSaveFormula} style={{ padding: "7px 12px", background: `${T.green}18`, border: `1px solid ${T.green}40`, borderRadius: 6, color: T.green, fontWeight: 700, fontSize: "0.74rem", cursor: "pointer" }}>✓ Save Formula</button>
+                    <button onClick={handleDuplicateFormula} style={{ padding: "7px 12px", background: `${T.accent}18`, border: `1px solid ${T.accent}40`, borderRadius: 6, color: T.text1, fontWeight: 700, fontSize: "0.74rem", cursor: "pointer" }}>📋 Duplicate</button>
+                    <button onClick={handleDeleteFormula} style={{ padding: "7px 12px", background: `${T.red}18`, border: `1px solid ${T.red}40`, borderRadius: 6, color: T.red, fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", marginLeft: "auto" }}>🗑 Delete</button>
+                  </div>
+
+                  <div>
+                    <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Formula Name *</label>
+                    <input type="text" value={formulaName} onChange={e => setFormulaName(e.target.value)} placeholder="e.g. Affinity Score" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.84rem", outline: "none" }} />
+                  </div>
+
+                  <div>
+                    <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Mathematical Expression *</label>
+                    <input type="text" value={formulaExpression} onChange={e => setFormulaExpression(e.target.value)} placeholder="e.g. S = Matches / Length" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.cyan, fontSize: "0.95rem", fontFamily: "monospace", outline: "none" }} />
+                  </div>
+
+                  <div>
+                    <label style={{ color: T.text3, fontSize: "0.68rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Formula Expression Live Preview</label>
+                    <div style={{ background: "#02020a", border: `1px solid ${T.border2}`, borderRadius: 8, padding: "16px", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "56px", fontFamily: "monospace", fontSize: "1.1rem", color: formulaExpression ? T.cyan : T.text3, boxShadow: "inset 0 4px 12px rgba(0,0,0,0.8)" }}>
+                      {formulaExpression || "Awaiting mathematical expression input..."}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Description</label>
+                    <textarea rows={2} value={formulaDescription} onChange={e => setFormulaDescription(e.target.value)} placeholder="Description of biological mechanism..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.84rem", outline: "none", resize: "none", fontFamily: "inherit" }} />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                    <div>
+                      <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Variables</label>
+                      <textarea rows={3} value={formulaVariables} onChange={e => setFormulaVariables(e.target.value)} placeholder="M = match count..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.82rem", outline: "none", resize: "vertical", fontFamily: "monospace" }} />
+                    </div>
+                    <div>
+                      <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Units</label>
+                      <input type="text" value={formulaUnits} onChange={e => setFormulaUnits(e.target.value)} placeholder="e.g. score ratio" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.84rem", outline: "none" }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </main>
+          )}
+
+          {/* ═══ TAB 3: VISUAL WORKFLOW CANVAS (PIPELINE BUILDER) ═══ */}
+          {activeTab === "pipeline" && (
+            <div style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "row",
+              overflow: "hidden",
+              position: "relative"
+            }}>
+              {/* Canvas Center Area */}
+              <div style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                position: "relative",
+                overflow: "hidden",
+                borderRight: `1px solid ${T.border}`
+              }}>
+                {/* TOOLBOX HEADER: Flow block insertion buttons */}
+                <div style={{
+                  padding: "10px 16px",
+                  background: T.surf,
+                  borderBottom: `1px solid ${T.border2}`,
+                  display: "flex",
+                  gap: 8,
+                  overflowX: "auto",
+                  alignItems: "center",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0
+                }}>
+                  <span style={{ fontSize: "0.72rem", color: T.text3, fontWeight: 700, textTransform: "uppercase", marginRight: 6 }}>Toolbox</span>
+                  {AVAILABLE_BLOCK_TYPES.map(type => (
+                    <button
+                      key={type}
+                      onClick={() => handleAddBlock(type)}
+                      style={{
+                        padding: "5px 11px",
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: 6,
+                        color: T.text1,
+                        fontSize: "0.72rem",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all 0.1s"
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = T.accent;
+                        e.currentTarget.style.background = `${T.accent}12`;
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = T.border2;
+                        e.currentTarget.style.background = T.surf2;
+                      }}
+                    >
+                      + {type}
+                    </button>
+                  ))}
+                </div>
+
+                {/* WORKFLOW EDITOR BAR: Undo, Redo, Zoom, Auto Layout */}
+                <div style={{
+                  padding: "10px 16px",
+                  background: T.surf,
+                  borderBottom: `1px solid ${T.border}`,
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  flexShrink: 0
+                }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button disabled={history.length === 0} onClick={handleUndo} style={{ padding: "6px 12px", background: history.length === 0 ? "none" : T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: history.length === 0 ? T.text3 : T.text1, fontSize: "0.74rem", cursor: history.length === 0 ? "default" : "pointer" }}>↩ Undo</button>
+                    <button disabled={redoStack.length === 0} onClick={handleRedo} style={{ padding: "6px 12px", background: redoStack.length === 0 ? "none" : T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: redoStack.length === 0 ? T.text3 : T.text1, fontSize: "0.74rem", cursor: redoStack.length === 0 ? "default" : "pointer" }}>↪ Redo</button>
+                  </div>
+
+                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
+
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <button onClick={handleZoomIn} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", cursor: "pointer" }}>➕ Zoom In</button>
+                    <span style={{ fontSize: "0.74rem", color: T.text2, minWidth: "36px", textAlign: "center" }}>{Math.round(zoom * 100)}%</span>
+                    <button onClick={handleZoomOut} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", cursor: "pointer" }}>➖ Zoom Out</button>
+                    <button onClick={handleZoomReset} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text2, fontSize: "0.74rem", cursor: "pointer" }}>⊙ Fit</button>
+                  </div>
+
+                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
+
+                  <button
+                    onClick={handleAutoLayout}
                     style={{
-                      background: T.surf2,
-                      border: `1px solid ${T.border2}`,
-                      borderRadius: 6,
                       padding: "6px 12px",
-                      color: T.text1,
-                      fontSize: "0.78rem",
-                      outline: "none",
+                      background: `${T.cyan}12`,
+                      border: `1px solid ${T.cyan}40`,
+                      borderRadius: 6,
+                      color: T.cyan,
+                      fontSize: "0.74rem",
+                      fontWeight: 700,
                       cursor: "pointer"
                     }}
                   >
-                    <option value="">-- Select Formula --</option>
-                    {activeFormulas.map(f => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
+                    🪄 Auto Layout
+                  </button>
 
-            {/* Formula Fields Form */}
-            <div style={{
-              background: T.surf,
-              border: `1px solid ${T.border2}`,
-              borderRadius: 12,
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px"
-            }}>
-              {/* Formula Editor Actions Row */}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", borderBottom: `1px solid ${T.border2}`, paddingBottom: "14px", marginBottom: "4px" }}>
-                <button
-                  onClick={handleNewFormula}
+                  <button
+                    onClick={handleDeleteSelectedElement}
+                    disabled={!selectedBlockId && !selectedConnectionId}
+                    style={{
+                      padding: "6px 12px",
+                      background: (!selectedBlockId && !selectedConnectionId) ? "none" : `${T.red}18`,
+                      border: `1px solid ${(!selectedBlockId && !selectedConnectionId) ? T.border2 : T.red + "40"}`,
+                      borderRadius: 6,
+                      color: (!selectedBlockId && !selectedConnectionId) ? T.text3 : T.red,
+                      fontSize: "0.74rem",
+                      fontWeight: 700,
+                      cursor: (!selectedBlockId && !selectedConnectionId) ? "default" : "pointer",
+                      marginLeft: "auto"
+                    }}
+                  >
+                    🗑 Delete Selected
+                  </button>
+                </div>
+
+                {/* THE ACTUAL WORKFLOW CANVAS */}
+                <div
+                  ref={canvasRef}
+                  onMouseDown={handleCanvasMouseDown}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseUp={handleCanvasMouseUp}
                   style={{
-                    padding: "7px 12px",
-                    background: T.surf2,
+                    flex: 1,
+                    position: "relative",
+                    overflow: "hidden",
+                    cursor: isPanning ? "grabbing" : "default",
+                    userSelect: "none"
+                  }}
+                >
+                  {/* GRID BACKGROUND PATTERN */}
+                  <div style={{
+                    position: "absolute",
+                    inset: 0,
+                    backgroundImage: `radial-gradient(${T.border2} 1px, transparent 1px)`,
+                    backgroundSize: "24px 24px",
+                    opacity: 0.8
+                  }} />
+
+                  {/* TRANSFORM WRAPPER CONTAINER (ZOOM & PAN) */}
+                  <div style={{
+                    position: "absolute",
+                    inset: 0,
+                    transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`,
+                    transformOrigin: "top left",
+                    transition: isPanning ? "none" : "transform 0.1s ease"
+                  }}>
+                    {/* SVG GRAPH ARROW CONNECTIONS LAYOUT */}
+                    <svg style={{
+                      position: "absolute",
+                      width: "3000px",
+                      height: "2000px",
+                      pointerEvents: "none",
+                      overflow: "visible",
+                      zIndex: 1
+                    }}>
+                      <defs>
+                        {/* Define gorgeous arrowhead marker */}
+                        <marker
+                          id="arrowhead"
+                          viewBox="0 0 10 10"
+                          refX="6"
+                          refY="5"
+                          markerWidth="6"
+                          markerHeight="6"
+                          orient="auto-start-reverse"
+                        >
+                          <path d="M 0 1 L 10 5 L 0 9 z" fill={T.cyan} />
+                        </marker>
+                      </defs>
+
+                      {/* Render lines for active arrow connections */}
+                      {connections.map(conn => {
+                        const fromNode = blocks.find(b => b.id === conn.from);
+                        const toNode = blocks.find(b => b.id === conn.to);
+                        if (!fromNode || !toNode) return null;
+
+                        // Port locations (from block output face: Right, to block input face: Left)
+                        const x1 = fromNode.x + 160;
+                        const y1 = fromNode.y + 40;
+                        const x2 = toNode.x;
+                        const y2 = toNode.y + 40;
+
+                        // Smooth Cubic Bezier Spline
+                        const dx = Math.abs(x2 - x1) * 0.5;
+                        const pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+
+                        const isSelected = selectedConnectionId === conn.id;
+
+                        return (
+                          <g key={conn.id} style={{ pointerEvents: "all" }}>
+                            {/* Larger transparent overlay stroke to make it easy to click and select connection line */}
+                            <path
+                              d={pathD}
+                              stroke="transparent"
+                              strokeWidth={12}
+                              fill="none"
+                              cursor="pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedConnectionId(conn.id);
+                                setSelectedFormulaBlockId(null);
+                              }}
+                            />
+                            {/* Styled visible line path with arrowhead */}
+                            <path
+                              d={pathD}
+                              stroke={isSelected ? T.cyan : `${T.cyan}99`}
+                              strokeWidth={isSelected ? 4 : 2}
+                              fill="none"
+                              markerEnd="url(#arrowhead)"
+                            />
+                          </g>
+                        );
+                      })}
+                    </svg>
+
+                    {/* Draggable HTML Block nodes on top of SVG */}
+                    {blocks.map(block => {
+                      const isSelected = selectedBlockId === block.id;
+                      return (
+                        <div
+                          key={block.id}
+                          style={{
+                            position: "absolute",
+                            left: block.x,
+                            top: block.y,
+                            width: "160px",
+                            height: "80px",
+                            background: isSelected ? T.surf2 : T.surf,
+                            border: `2px solid ${isSelected ? T.cyan : T.border2}`,
+                            borderRadius: "10px",
+                            zIndex: isSelected ? 10 : 5,
+                            display: "flex",
+                            flexDirection: "column",
+                            overflow: "hidden",
+                            boxShadow: isSelected ? `0 0 16px ${T.cyan}25` : "0 4px 12px rgba(0,0,0,0.5)",
+                            cursor: "grab"
+                          }}
+                          onMouseDown={(e) => handleBlockMouseDown(e, block.id)}
+                        >
+                          {/* Block Header */}
+                          <div style={{
+                            background: `${T.border}b0`,
+                            padding: "6px 10px",
+                            borderBottom: `1px solid ${T.border2}`,
+                            fontWeight: 700,
+                            fontSize: "0.72rem",
+                            color: isSelected ? T.cyan : T.text2,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis"
+                          }}>
+                            {block.type}
+                          </div>
+
+                          {/* Block Body Details */}
+                          <div style={{
+                            flex: 1,
+                            padding: "6px 10px",
+                            fontSize: "0.64rem",
+                            color: T.text3,
+                            display: "flex",
+                            alignItems: "center"
+                          }}>
+                            <div style={{
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis"
+                            }}>
+                              ID: {block.id.slice(0, 5)}...
+                              {block.params && (
+                                <div style={{ color: T.text2, marginTop: 2, fontSize: "0.6rem" }}>
+                                  {block.params.split("\n")[0]}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* CONNECTOR PORTS */}
+                          {/* Input Port (Left side) */}
+                          <div
+                            onMouseUp={(e) => handlePortMouseUp(e, block.id)}
+                            style={{
+                              position: "absolute",
+                              left: "-6px",
+                              top: "34px",
+                              width: "12px",
+                              height: "12px",
+                              borderRadius: "50%",
+                              background: T.surf2,
+                              border: `2px solid ${T.cyan}`,
+                              zIndex: 20,
+                              cursor: "pointer"
+                            }}
+                            title="Input Port"
+                          />
+
+                          {/* Output Port (Right side) */}
+                          <div
+                            onMouseDown={(e) => handlePortMouseDown(e, block.id)}
+                            style={{
+                              position: "absolute",
+                              right: "-6px",
+                              top: "34px",
+                              width: "12px",
+                              height: "12px",
+                              borderRadius: "50%",
+                              background: T.cyan,
+                              border: `2px solid ${T.surf}`,
+                              zIndex: 20,
+                              cursor: "pointer"
+                            }}
+                            title="Drag output connection"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* DYNAMIC CANVAS MINI MAP CARD */}
+                  <div style={{
+                    position: "absolute",
+                    bottom: 16,
+                    right: 16,
+                    width: "120px",
+                    height: "80px",
+                    background: T.glass,
                     border: `1px solid ${T.border2}`,
-                    borderRadius: 6,
-                    color: T.cyan,
-                    fontWeight: 700,
-                    fontSize: "0.74rem",
-                    cursor: "pointer"
-                  }}
-                >
-                  + New Formula
-                </button>
-                <button
-                  onClick={handleSaveFormula}
-                  style={{
-                    padding: "7px 12px",
-                    background: `${T.green}18`,
-                    border: `1px solid ${T.green}40`,
-                    borderRadius: 6,
-                    color: T.green,
-                    fontWeight: 700,
-                    fontSize: "0.74rem",
-                    cursor: "pointer"
-                  }}
-                >
-                  ✓ Save Formula
-                </button>
-                <button
-                  onClick={handleDuplicateFormula}
-                  style={{
-                    padding: "7px 12px",
-                    background: `${T.accent}18`,
-                    border: `1px solid ${T.accent}40`,
-                    borderRadius: 6,
-                    color: T.text1,
-                    fontWeight: 700,
-                    fontSize: "0.74rem",
-                    cursor: "pointer"
-                  }}
-                >
-                  📋 Duplicate
-                </button>
-                <button
-                  onClick={handleDeleteFormula}
-                  style={{
-                    padding: "7px 12px",
-                    background: `${T.red}18`,
-                    border: `1px solid ${T.red}40`,
-                    borderRadius: 6,
-                    color: T.red,
-                    fontWeight: 700,
-                    fontSize: "0.74rem",
-                    cursor: "pointer",
-                    marginLeft: "auto"
-                  }}
-                >
-                  🗑 Delete
-                </button>
-              </div>
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    pointerEvents: "none",
+                    zIndex: 30,
+                    backdropFilter: "blur(6px)"
+                  }}>
+                    {/* Small grid inside Mini Map */}
+                    <div style={{
+                      position: "absolute",
+                      inset: 0,
+                      backgroundImage: `radial-gradient(${T.border} 1px, transparent 1px)`,
+                      backgroundSize: "8px 8px"
+                    }} />
 
-              {/* Formula Name */}
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Formula Name *</label>
-                <input
-                  type="text"
-                  value={formulaName}
-                  onChange={e => setFormulaName(e.target.value)}
-                  placeholder="e.g. Affinity Constant Index"
-                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.84rem", outline: "none", boxSizing: "border-box" }}
-                />
-              </div>
+                    {/* Mapped Nodes thumbnail representations */}
+                    {blocks.map(b => (
+                      <div
+                        key={b.id}
+                        style={{
+                          position: "absolute",
+                          // Thumbnail ratio scaled down 10x (0.1x scale)
+                          left: `${Math.max(2, Math.min(100, b.x * 0.12 + 20))}%`,
+                          top: `${Math.max(2, Math.min(70, b.y * 0.12 + 20))}%`,
+                          width: "16px",
+                          height: "8px",
+                          background: selectedBlockId === b.id ? T.cyan : T.text3,
+                          borderRadius: "1px",
+                          opacity: 0.8
+                        }}
+                      />
+                    ))}
 
-              {/* Mathematical Expression */}
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Mathematical Expression *</label>
-                <input
-                  type="text"
-                  value={formulaExpression}
-                  onChange={e => setFormulaExpression(e.target.value)}
-                  placeholder="e.g. K_d = [A][B] / [AB]"
-                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.cyan, fontSize: "0.95rem", fontFamily: "monospace", outline: "none", boxSizing: "border-box" }}
-                />
-              </div>
+                    <div style={{
+                      position: "absolute",
+                      bottom: 4,
+                      left: 6,
+                      fontSize: "0.58rem",
+                      color: T.text3,
+                      fontWeight: 700
+                    }}>
+                      MINI MAP
+                    </div>
+                  </div>
+                </div>
 
-              {/* LIVE PREVIEW AREA */}
-              <div>
-                <label style={{ color: T.text3, fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Formula Expression Live Preview</label>
+                {/* BOTTOM PANEL: Pipeline messages & Validation Status */}
                 <div style={{
-                  background: "#02020a",
-                  border: `1px solid ${T.border2}`,
-                  borderRadius: 8,
-                  padding: "16px",
+                  height: "72px",
+                  background: T.surf,
+                  borderTop: `1px solid ${T.border}`,
+                  padding: "12px 18px",
                   display: "flex",
+                  gap: 16,
                   alignItems: "center",
-                  justifyContent: "center",
-                  minHeight: "56px",
-                  fontFamily: "monospace",
-                  fontSize: "1.1rem",
-                  color: formulaExpression ? T.cyan : T.text3,
-                  boxShadow: "inset 0 4px 12px rgba(0,0,0,0.8)",
-                  textAlign: "center"
+                  flexShrink: 0
                 }}>
-                  {formulaExpression || "Awaiting mathematical expression input..."}
+                  <div style={{
+                    width: "12px",
+                    height: "12px",
+                    borderRadius: "50%",
+                    background: validation.color,
+                    boxShadow: `0 0 10px ${validation.color}`
+                  }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "0.72rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>
+                      {validation.status}
+                    </div>
+                    <div style={{ fontSize: "0.8rem", color: T.text1, marginTop: 2, fontWeight: 500 }}>
+                      {validation.message}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "0.68rem", color: T.text3, textAlign: "right" }}>
+                    SYSTEM NOMINAL<br />
+                    Pipeline Validation Engine v1.0
+                  </div>
                 </div>
               </div>
 
-              {/* Description */}
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Description</label>
-                <textarea
-                  rows={2}
-                  value={formulaDescription}
-                  onChange={e => setFormulaDescription(e.target.value)}
-                  placeholder="Summarize the chemical or biological mechanics represented by this expression..."
-                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.84rem", outline: "none", boxSizing: "border-box", resize: "none", fontFamily: "inherit" }}
-                />
-              </div>
+              {/* RIGHT PANEL: SELECTED BLOCK PROPERTIES */}
+              <aside style={{
+                width: "300px",
+                background: T.surf,
+                padding: "20px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                flexShrink: 0,
+                boxSizing: "border-box"
+              }}>
+                <h3 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: 800, color: T.text1 }}>
+                  ⚙️ Block Properties
+                </h3>
 
-              {/* Variables and Units Split Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Variables</label>
-                  <textarea
-                    rows={3}
-                    value={formulaVariables}
-                    onChange={e => setFormulaVariables(e.target.value)}
-                    placeholder="e.g. [A] = solute concentration"
-                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.82rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "monospace" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6, fontWeight: 600 }}>Units</label>
-                  <input
-                    type="text"
-                    value={formulaUnits}
-                    onChange={e => setFormulaUnits(e.target.value)}
-                    placeholder="e.g. mol/L"
-                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.84rem", outline: "none", boxSizing: "border-box" }}
-                  />
-                </div>
-              </div>
+                {selectedBlock ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {/* Block meta */}
+                    <div style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px" }}>
+                      <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Type</div>
+                      <div style={{ fontSize: "0.86rem", fontWeight: 700, color: T.cyan, marginTop: 2 }}>{selectedBlock.type}</div>
+                      <div style={{ fontSize: "0.62rem", color: T.text3, marginTop: 4 }}>ID: {selectedBlock.id}</div>
+                    </div>
+
+                    {/* Block Description */}
+                    <div>
+                      <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 4 }}>Block Description</div>
+                      <div style={{ fontSize: "0.78rem", color: T.text2, lineHeight: 1.5 }}>
+                        {BLOCK_DESCRIPTIONS[selectedBlock.type] || "No description available."}
+                      </div>
+                    </div>
+
+                    {/* Block parameters editable input */}
+                    <div>
+                      <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Block Parameters</label>
+                      <textarea
+                        rows={4}
+                        value={selectedBlock.params}
+                        onChange={(e) => handleUpdateBlockMeta("params", e.target.value)}
+                        placeholder="e.g. key: value"
+                        style={{
+                          width: "100%",
+                          background: T.surf2,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: 8,
+                          padding: "10px 12px",
+                          color: T.text1,
+                          fontSize: "0.8rem",
+                          fontFamily: "monospace",
+                          outline: "none",
+                          resize: "vertical",
+                          boxSizing: "border-box"
+                        }}
+                      />
+                    </div>
+
+                    {/* Block notes editable input */}
+                    <div>
+                      <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Design Notes</label>
+                      <textarea
+                        rows={5}
+                        value={selectedBlock.notes}
+                        onChange={(e) => handleUpdateBlockMeta("notes", e.target.value)}
+                        placeholder="Add modeling/design notes here..."
+                        style={{
+                          width: "100%",
+                          background: T.surf2,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: 8,
+                          padding: "10px 12px",
+                          color: T.text2,
+                          fontSize: "0.8rem",
+                          outline: "none",
+                          resize: "vertical",
+                          boxSizing: "border-box",
+                          fontFamily: "inherit"
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    textAlign: "center",
+                    padding: "40px 10px",
+                    color: T.text3,
+                    fontSize: "0.8rem",
+                    border: `1px dashed ${T.border2}`,
+                    borderRadius: 10
+                  }}>
+                    Select a node module on the canvas to inspect or edit its properties.
+                  </div>
+                )}
+              </aside>
             </div>
-          </div>
+          )}
 
         </div>
       </div>
-
-      <style>{`
-        @keyframes slideIn {
-          from { opacity: 0; transform: translateY(-10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 }
