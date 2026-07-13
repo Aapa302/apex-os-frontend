@@ -60,7 +60,33 @@ const DEFAULT_ALGORITHMS = [
         { id: "c2", from: "b2", to: "b3" },
         { id: "c3", from: "b3", to: "b4" }
       ]
-    }
+    },
+    versions: [
+      {
+        id: "v_1_1_0",
+        number: "v1.1.0",
+        date: "2026-07-13",
+        author: "Sarah Kim",
+        description: "Added affine gap extension coefficient calculations and validated mismatch weights.",
+        status: "Draft"
+      },
+      {
+        id: "v_1_0_1",
+        number: "v1.0.1",
+        date: "2026-07-10",
+        author: "Alex Chen",
+        description: "Fixed local traceback pointer indexing issue for high-throughput fasta files.",
+        status: "Review"
+      },
+      {
+        id: "v_1_0_0",
+        number: "v1.0.0",
+        date: "2026-07-01",
+        author: "Sarah Kim",
+        description: "Initial release of base aligner featuring primary score matrices and standard dynamic routing.",
+        status: "Approved"
+      }
+    ]
   },
   {
     id: "alg_2",
@@ -91,7 +117,17 @@ const DEFAULT_ALGORITHMS = [
         { id: "c2_1", from: "b2_1", to: "b2_2" },
         { id: "c2_2", from: "b2_2", to: "b2_3" }
       ]
-    }
+    },
+    versions: [
+      {
+        id: "v_2_0_0",
+        number: "v2.0.0",
+        date: "2026-07-08",
+        author: "Dr. Mei Lin",
+        description: "First production release of Cas9 matching model with coordinate indices.",
+        status: "Approved"
+      }
+    ]
   },
   {
     id: "alg_3",
@@ -117,7 +153,8 @@ const DEFAULT_ALGORITHMS = [
         { id: "b3_1", type: "Input Data", x: 100, y: 150, params: "ForceProfile: Active", notes: "Simulation parameters input." }
       ],
       connections: []
-    }
+    },
+    versions: []
   }
 ];
 
@@ -162,8 +199,8 @@ export default function AlgorithmDesigner() {
   const [selectedId, setSelectedId] = useState("alg_1");
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Workspace active tab: "pipeline", "flowchart", "formulas", "metadata"
-  const [activeTab, setActiveTab] = useState("flowchart");
+  // Workspace active tab: "version_history", "flowchart", "pipeline", "formulas", "metadata"
+  const [activeTab, setActiveTab] = useState("version_history");
 
   // ── 1. ALGORITHM METADATA STATE ──
   const [algName, setAlgName] = useState("");
@@ -187,6 +224,15 @@ export default function AlgorithmDesigner() {
 
   // Canvas Viewport transform (Zoom & Pan)
   const [zoom, setZoom] = useState(1.0);
+
+  const handleZoomIn = () => setZoom(z => Math.min(1.8, z + 0.1));
+  const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.1));
+  const handleZoomReset = () => {
+    setZoom(1.0);
+    setPanX(0);
+    setPanY(0);
+    showToast("Canvas viewport reset.", "info");
+  };
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
@@ -202,6 +248,10 @@ export default function AlgorithmDesigner() {
   // ── 4. VISUAL FLOWCHART STATE (STEP 7D - DISPLAY ONLY) ──
   const [flowchartZoom, setFlowchartZoom] = useState(1.0);
   const [selectedFlowchartBlockId, setSelectedFlowchartBlockId] = useState(null);
+
+  // ── 5. VERSION HISTORY FILTERS STATE (STEP 7E) ──
+  const [versionSearch, setVersionSearch] = useState("");
+  const [versionStatusFilter, setVersionStatusFilter] = useState("All");
 
   // Refs
   const canvasRef = useRef(null);
@@ -242,6 +292,8 @@ export default function AlgorithmDesigner() {
       setPanX(0);
       setPanY(0);
       setFlowchartZoom(1.0);
+      setVersionSearch("");
+      setVersionStatusFilter("All");
     } else {
       setAlgName("");
       setObjective("");
@@ -307,7 +359,8 @@ export default function AlgorithmDesigner() {
         recent: true,
         category: "Custom DNA",
         formulas: [],
-        pipeline: { blocks, connections }
+        pipeline: { blocks, connections },
+        versions: []
       };
       setAlgorithms(prev => [newAlg, ...prev]);
       setSelectedId(newAlg.id);
@@ -636,15 +689,6 @@ export default function AlgorithmDesigner() {
     document.removeEventListener("mouseup", handleGlobalMouseUpForConnection);
   };
 
-  const handleZoomIn = () => setZoom(z => Math.min(1.8, z + 0.1));
-  const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.1));
-  const handleZoomReset = () => {
-    setZoom(1.0);
-    setPanX(0);
-    setPanY(0);
-    showToast("Canvas viewport reset.", "info");
-  };
-
   const handleAutoLayout = () => {
     if (blocks.length === 0) return;
     pushToHistory(blocks, connections);
@@ -764,10 +808,18 @@ export default function AlgorithmDesigner() {
   // Active elements derived
   const activeAlgorithm = algorithms.find(a => a.id === selectedId) || null;
   const activeFormulas = activeAlgorithm?.formulas || [];
+  const activeVersions = activeAlgorithm?.versions || [];
+  const selectedFlowchartBlock = FLOWCHART_PLACEHOLDER_BLOCKS.find(b => b.id === selectedFlowchartBlockId) || null;
   const selectedBlock = blocks.find(b => b.id === selectedBlockId) || null;
 
-  // Selected flowchart block
-  const selectedFlowchartBlock = FLOWCHART_PLACEHOLDER_BLOCKS.find(b => b.id === selectedFlowchartBlockId) || null;
+  // Filter version history list based on search and status filters
+  const filteredVersions = activeVersions.filter(v => {
+    const matchesSearch = v.number.toLowerCase().includes(versionSearch.toLowerCase()) ||
+                          v.author.toLowerCase().includes(versionSearch.toLowerCase()) ||
+                          v.description.toLowerCase().includes(versionSearch.toLowerCase());
+    const matchesStatus = versionStatusFilter === "All" || v.status === versionStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div style={{
@@ -790,6 +842,7 @@ export default function AlgorithmDesigner() {
         flexShrink: 0
       }}>
         {[
+          { id: "version_history", label: "📋 Version History", color: T.accent2 },
           { id: "flowchart", label: "📊 Flowchart UI", color: T.yellow },
           { id: "pipeline", label: "🎨 Visual Pipeline Builder", color: T.cyan },
           { id: "formulas", label: "🧬 Mathematical Formulas", color: T.pink },
@@ -1187,379 +1240,332 @@ export default function AlgorithmDesigner() {
             </div>
           )}
 
-          {/* ═══ TAB 4: VISUAL FLOWCHART BUILDER (STEP 7D - DISPLAY ONLY) ═══ */}
+          {/* ═══ TAB 4: VISUAL FLOWCHART BUILDER ═══ */}
           {activeTab === "flowchart" && (
-            <div style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "row",
-              overflow: "hidden",
-              position: "relative"
-            }}>
-              {/* Canvas Center Area */}
-              <div style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                position: "relative",
-                overflow: "hidden",
-                borderRight: `1px solid ${T.border}`
-              }}>
-                {/* TOOLBAR: Show status text & toolbar buttons */}
-                <div style={{
-                  padding: "12px 20px",
-                  background: T.surf,
-                  borderBottom: `1px solid ${T.border}`,
-                  display: "flex",
-                  gap: 16,
-                  alignItems: "center",
-                  flexShrink: 0
-                }}>
-                  {/* Status Indicator */}
+            <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", position: "relative" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden", borderRight: `1px solid ${T.border}` }}>
+                <div style={{ padding: "12px 20px", background: T.surf, borderBottom: `1px solid ${T.border}`, display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.green, boxShadow: `0 0 8px ${T.green}` }} />
-                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: T.green, letterSpacing: "0.5px" }}>
-                      Flowchart Builder Ready
-                    </span>
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: T.green, letterSpacing: "0.5px" }}>Flowchart Builder Ready</span>
                   </div>
-
                   <div style={{ height: "16px", width: "1px", background: T.border2 }} />
-
-                  {/* Flowchart toolbar buttons */}
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      onClick={() => showToast("Add Block action triggered (Placeholder only)", "info")}
-                      style={{
-                        padding: "6px 12px",
-                        background: T.surf2,
-                        border: `1px solid ${T.border2}`,
-                        borderRadius: 6,
-                        color: T.text1,
-                        fontSize: "0.74rem",
-                        fontWeight: 600,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Add Block
-                    </button>
-                    <button
-                      onClick={() => showToast("Delete Block action triggered (Placeholder only)", "info")}
-                      style={{
-                        padding: "6px 12px",
-                        background: T.surf2,
-                        border: `1px solid ${T.border2}`,
-                        borderRadius: 6,
-                        color: T.text1,
-                        fontSize: "0.74rem",
-                        fontWeight: 600,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Delete Block
-                    </button>
-                    <button
-                      onClick={() => {
-                        setFlowchartZoom(z => Math.min(1.5, z + 0.1));
-                        showToast("Zoomed In", "info");
-                      }}
-                      style={{
-                        padding: "6px 12px",
-                        background: T.surf2,
-                        border: `1px solid ${T.border2}`,
-                        borderRadius: 6,
-                        color: T.text1,
-                        fontSize: "0.74rem",
-                        fontWeight: 600,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Zoom In
-                    </button>
-                    <button
-                      onClick={() => {
-                        setFlowchartZoom(z => Math.max(0.6, z - 0.1));
-                        showToast("Zoomed Out", "info");
-                      }}
-                      style={{
-                        padding: "6px 12px",
-                        background: T.surf2,
-                        border: `1px solid ${T.border2}`,
-                        borderRadius: 6,
-                        color: T.text1,
-                        fontSize: "0.74rem",
-                        fontWeight: 600,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Zoom Out
-                    </button>
-                    <button
-                      onClick={() => {
-                        setFlowchartZoom(1.0);
-                        showToast("Reset Flowchart View", "info");
-                      }}
-                      style={{
-                        padding: "6px 12px",
-                        background: T.surf2,
-                        border: `1px solid ${T.border2}`,
-                        borderRadius: 6,
-                        color: T.text2,
-                        fontSize: "0.74rem",
-                        fontWeight: 600,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Reset View
-                    </button>
+                    <button onClick={() => showToast("Add Block action triggered (Placeholder only)", "info")} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Add Block</button>
+                    <button onClick={() => showToast("Delete Block action triggered (Placeholder only)", "info")} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Delete Block</button>
+                    <button onClick={() => { setFlowchartZoom(z => Math.min(1.5, z + 0.1)); showToast("Zoomed In", "info"); }} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Zoom In</button>
+                    <button onClick={() => { setFlowchartZoom(z => Math.max(0.6, z - 0.1)); showToast("Zoomed Out", "info"); }} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Zoom Out</button>
+                    <button onClick={() => { setFlowchartZoom(1.0); showToast("Reset Flowchart View", "info"); }} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text2, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Reset View</button>
                   </div>
                 </div>
 
-                {/* FLOWCHART CANVAS */}
-                <div style={{
-                  flex: 1,
-                  position: "relative",
-                  overflow: "hidden"
-                }}>
-                  {/* GRID BACKGROUND PATTERN */}
-                  <div style={{
-                    position: "absolute",
-                    inset: 0,
-                    backgroundImage: `radial-gradient(${T.border2} 1px, transparent 1px)`,
-                    backgroundSize: "20px 24px",
-                    opacity: 0.8
-                  }} />
-
-                  {/* FLOWCHART CONTENT WITH VIEW SCALE */}
-                  <div style={{
-                    position: "absolute",
-                    inset: 0,
-                    transform: `scale(${flowchartZoom})`,
-                    transformOrigin: "top left",
-                    transition: "transform 0.15s ease",
-                    padding: "30px",
-                    boxSizing: "border-box"
-                  }}>
-                    {/* SVG Flow lines background */}
-                    <svg style={{
-                      position: "absolute",
-                      width: "100%",
-                      height: "100%",
-                      pointerEvents: "none",
-                      zIndex: 1,
-                      overflow: "visible"
-                    }}>
-                      {/* Straight arrow connections between sequential placeholders */}
+                <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${T.border2} 1px, transparent 1px)`, backgroundSize: "20px 24px", opacity: 0.8 }} />
+                  <div style={{ position: "absolute", inset: 0, transform: `scale(${flowchartZoom})`, transformOrigin: "top left", transition: "transform 0.15s ease", padding: "30px", boxSizing: "border-box" }}>
+                    <svg style={{ position: "absolute", width: "100%", height: "100%", pointerEvents: "none", zIndex: 1, overflow: "visible" }}>
                       <g>
-                        {/* Start (y=100) -> Process (y=150) */}
                         <line x1="240" y1="90" x2="240" y2="150" stroke={T.text3} strokeWidth={2} />
                         <polygon points="240,150 236,142 244,142" fill={T.text3} />
-
-                        {/* Process (y=190) -> Decision (y=260) */}
                         <line x1="240" y1="200" x2="240" y2="260" stroke={T.text3} strokeWidth={2} />
                         <polygon points="240,260 236,252 244,252" fill={T.text3} />
-
-                        {/* Decision (y=340) -> End (y=390) */}
                         <line x1="240" y1="340" x2="240" y2="390" stroke={T.text3} strokeWidth={2} />
                         <polygon points="240,390 236,382 244,382" fill={T.text3} />
                       </g>
                     </svg>
 
-                    {/* FLOWCHART PLACEHOLDER BLOCKS */}
                     {FLOWCHART_PLACEHOLDER_BLOCKS.map(block => {
                       const isSelected = selectedFlowchartBlockId === block.id;
-
-                      // Choose style shapes depending on block type
                       let shapeStyle = {};
                       if (block.type === "Start" || block.type === "End") {
-                        // Capsule/Pill shape
-                        shapeStyle = {
-                          borderRadius: "24px",
-                          width: "120px",
-                          height: "40px"
-                        };
+                        shapeStyle = { borderRadius: "24px", width: "120px", height: "40px" };
                       } else if (block.type === "Decision") {
-                        // Diamond shape rendered as rotated square
-                        shapeStyle = {
-                          width: "80px",
-                          height: "80px",
-                          transform: "rotate(45deg)",
-                          borderRadius: "6px"
-                        };
+                        shapeStyle = { width: "80px", height: "80px", transform: "rotate(45deg)", borderRadius: "6px" };
                       } else {
-                        // Process rectangle shape
-                        shapeStyle = {
-                          borderRadius: "6px",
-                          width: "200px",
-                          height: "50px"
-                        };
+                        shapeStyle = { borderRadius: "6px", width: "200px", height: "50px" };
                       }
-
-                      // Adjust coordinates so diamond matches center
                       const xCoord = block.type === "Decision" ? block.x + 60 : block.x;
                       const yCoord = block.y;
-
                       return (
-                        <div
-                          key={block.id}
-                          onClick={() => setSelectedFlowchartBlockId(isSelected ? null : block.id)}
-                          style={{
-                            position: "absolute",
-                            left: xCoord,
-                            top: yCoord,
-                            zIndex: 10,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            cursor: "pointer",
-                            transition: "all 0.15s",
-                            ...shapeStyle,
-                            background: isSelected ? T.surf2 : T.surf,
-                            border: `2px solid ${
-                              isSelected
-                                ? T.cyan
-                                : block.type === "Start"
-                                ? T.green
-                                : block.type === "End"
-                                ? T.red
-                                : block.type === "Decision"
-                                ? T.yellow
-                                : T.accent
-                            }`,
-                            boxShadow: isSelected ? `0 0 16px ${T.cyan}35` : "0 4px 8px rgba(0,0,0,0.4)"
-                          }}
-                        >
-                          {/* Inner contents */}
-                          <div style={{
-                            // Un-rotate text for Decision diamond shape
-                            transform: block.type === "Decision" ? "rotate(-45deg)" : "none",
-                            fontSize: "0.78rem",
-                            fontWeight: 700,
-                            color: isSelected ? T.cyan : T.text1,
-                            textAlign: "center",
-                            padding: "6px"
-                          }}>
-                            {block.type}
-                          </div>
+                        <div key={block.id} onClick={() => setSelectedFlowchartBlockId(isSelected ? null : block.id)} style={{ position: "absolute", left: xCoord, top: yCoord, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s", ...shapeStyle, background: isSelected ? T.surf2 : T.surf, border: `2px solid ${isSelected ? T.cyan : block.type === "Start" ? T.green : block.type === "End" ? T.red : block.type === "Decision" ? T.yellow : T.accent}`, boxShadow: isSelected ? `0 0 16px ${T.cyan}35` : "0 4px 8px rgba(0,0,0,0.4)" }}>
+                          <div style={{ transform: block.type === "Decision" ? "rotate(-45deg)" : "none", fontSize: "0.78rem", fontWeight: 700, color: isSelected ? T.cyan : T.text1, textAlign: "center", padding: "6px" }}>{block.type}</div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
 
-                {/* BOTTOM PANEL: Validation Status Mockup */}
-                <div style={{
-                  height: "72px",
-                  background: T.surf,
-                  borderTop: `1px solid ${T.border}`,
-                  padding: "12px 18px",
-                  display: "flex",
-                  gap: 16,
-                  alignItems: "center",
-                  flexShrink: 0
-                }}>
-                  <div style={{
-                    width: "12px",
-                    height: "12px",
-                    borderRadius: "50%",
-                    background: T.green,
-                    boxShadow: `0 0 10px ${T.green}`
-                  }} />
+                <div style={{ height: "72px", background: T.surf, borderTop: `1px solid ${T.border}`, padding: "12px 18px", display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
+                  <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: T.green, boxShadow: `0 0 10px ${T.green}` }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "0.72rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>
-                      FLOWCHART MOCKUP READY
-                    </div>
-                    <div style={{ fontSize: "0.8rem", color: T.text1, marginTop: 2, fontWeight: 500 }}>
-                      ✓ Displaying placeholder blocks only. Dragging and connectors are disabled.
-                    </div>
+                    <div style={{ fontSize: "0.72rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>FLOWCHART MOCKUP READY</div>
+                    <div style={{ fontSize: "0.8rem", color: T.text1, marginTop: 2, fontWeight: 500 }}>✓ Displaying placeholder blocks only. Dragging and connectors are disabled.</div>
                   </div>
-                  <div style={{ fontSize: "0.68rem", color: T.text3, textAlign: "right" }}>
-                    PREVIEW MODE<br />
-                    Flowchart Visual Grid Layout
-                  </div>
+                  <div style={{ fontSize: "0.68rem", color: T.text3, textAlign: "right" }}>PREVIEW MODE<br />Flowchart Visual Grid Layout</div>
                 </div>
               </div>
 
-              {/* RIGHT PROPERTIES PANEL */}
-              <aside style={{
-                width: "300px",
-                background: T.surf,
-                padding: "20px",
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-                flexShrink: 0,
-                boxSizing: "border-box"
-              }}>
-                <h3 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: 800, color: T.text1 }}>
-                  ⚙️ Flowchart Properties
-                </h3>
-
+              <aside style={{ width: "300px", background: T.surf, padding: "20px", display: "flex", flexDirection: "column", gap: 16, flexShrink: 0, boxSizing: "border-box" }}>
+                <h3 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: 800, color: T.text1 }}>⚙️ Flowchart Properties</h3>
                 {selectedFlowchartBlock ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    {/* Block meta */}
                     <div style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px" }}>
                       <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Type</div>
-                      <div style={{
-                        fontSize: "0.86rem",
-                        fontWeight: 700,
-                        color:
-                          selectedFlowchartBlock.type === "Start"
-                            ? T.green
-                            : selectedFlowchartBlock.type === "End"
-                            ? T.red
-                            : selectedFlowchartBlock.type === "Decision"
-                            ? T.yellow
-                            : T.accent,
-                        marginTop: 2
-                      }}>{selectedFlowchartBlock.type}</div>
+                      <div style={{ fontSize: "0.86rem", fontWeight: 700, color: selectedFlowchartBlock.type === "Start" ? T.green : selectedFlowchartBlock.type === "End" ? T.red : selectedFlowchartBlock.type === "Decision" ? T.yellow : T.accent, marginTop: 2 }}>{selectedFlowchartBlock.type}</div>
                       <div style={{ fontSize: "0.62rem", color: T.text3, marginTop: 4 }}>ID: {selectedFlowchartBlock.id}</div>
                     </div>
-
-                    {/* Block Description */}
                     <div>
                       <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 4 }}>Block Description</div>
-                      <div style={{ fontSize: "0.78rem", color: T.text2, lineHeight: 1.5 }}>
-                        {selectedFlowchartBlock.description}
-                      </div>
+                      <div style={{ fontSize: "0.78rem", color: T.text2, lineHeight: 1.5 }}>{selectedFlowchartBlock.description}</div>
                     </div>
-
-                    {/* Block parameters editable input */}
                     <div>
                       <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Block Parameters</label>
-                      <textarea
-                        rows={3}
-                        defaultValue="Read-only parameter preview"
-                        disabled
-                        style={{
-                          width: "100%",
-                          background: T.surf2,
-                          border: `1px solid ${T.border2}`,
-                          borderRadius: 8,
-                          padding: "10px 12px",
-                          color: T.text3,
-                          fontSize: "0.8rem",
-                          fontFamily: "monospace",
-                          outline: "none",
-                          resize: "none",
-                          cursor: "not-allowed",
-                          boxSizing: "border-box"
-                        }}
-                      />
+                      <textarea rows={3} defaultValue="Read-only parameter preview" disabled style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text3, fontSize: "0.8rem", fontFamily: "monospace", outline: "none", resize: "none", cursor: "not-allowed", boxSizing: "border-box" }} />
                     </div>
                   </div>
                 ) : (
-                  <div style={{
-                    textAlign: "center",
-                    padding: "40px 10px",
-                    color: T.text3,
-                    fontSize: "0.8rem",
-                    border: `1px dashed ${T.border2}`,
-                    borderRadius: 10
-                  }}>
-                    Select a placeholder shape on the canvas to inspect its block specifications.
-                  </div>
+                  <div style={{ textAlign: "center", padding: "40px 10px", color: T.text3, fontSize: "0.8rem", border: `1px dashed ${T.border2}`, borderRadius: 10 }}>Select a placeholder shape on the canvas to inspect its block specifications.</div>
                 )}
               </aside>
+            </div>
+          )}
+
+          {/* ═══ TAB 5: VERSION HISTORY PANEL (STEP 7E) ═══ */}
+          {activeTab === "version_history" && (
+            <div style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              padding: "24px",
+              boxSizing: "border-box",
+              overflowY: "auto"
+            }}>
+              {/* Toolbar & Filters Header */}
+              <div style={{
+                background: T.surf,
+                border: `1px solid ${T.border2}`,
+                borderRadius: 12,
+                padding: "16px 20px",
+                marginBottom: "20px",
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 16
+              }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: T.text1 }}>
+                    📋 Version History Timeline
+                  </h3>
+                  <p style={{ margin: "4px 0 0 0", fontSize: "0.76rem", color: T.text2 }}>
+                    Audit trail of all finalized sequence model releases and active drafts.
+                  </p>
+                </div>
+
+                {/* Filters */}
+                <div style={{
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  flexWrap: "wrap"
+                }}>
+                  {/* Search box */}
+                  <input
+                    type="text"
+                    value={versionSearch}
+                    onChange={e => setVersionSearch(e.target.value)}
+                    placeholder="🔍 Search versions..."
+                    style={{
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: 8,
+                      padding: "8px 14px",
+                      color: T.text1,
+                      fontSize: "0.82rem",
+                      outline: "none",
+                      width: "180px"
+                    }}
+                  />
+
+                  {/* Status Filter */}
+                  <select
+                    value={versionStatusFilter}
+                    onChange={e => setVersionStatusFilter(e.target.value)}
+                    style={{
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: 8,
+                      padding: "8px 14px",
+                      color: T.text1,
+                      fontSize: "0.82rem",
+                      outline: "none",
+                      cursor: "pointer"
+                    }}
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Draft">Draft</option>
+                    <option value="Review">Review</option>
+                    <option value="Approved">Approved</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* TIMELINE LIST */}
+              {filteredVersions.length === 0 ? (
+                <div style={{
+                  textAlign: "center",
+                  padding: "60px 20px",
+                  color: T.text3,
+                  background: T.surf,
+                  border: `1px solid ${T.border2}`,
+                  borderRadius: 12
+                }}>
+                  <div style={{ fontSize: "2rem", marginBottom: 10 }}>📋</div>
+                  <div>No version history items match the active filters for this algorithm.</div>
+                </div>
+              ) : (
+                <div style={{
+                  position: "relative",
+                  paddingLeft: "24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "24px"
+                }}>
+                  {/* Timeline connecting vertical vertical line */}
+                  <div style={{
+                    position: "absolute",
+                    left: "7px",
+                    top: "14px",
+                    bottom: "14px",
+                    width: "2px",
+                    background: T.border2
+                  }} />
+
+                  {/* Render version cards */}
+                  {filteredVersions.map(v => {
+                    // Match colors depending on status
+                    const statusColor = v.status === "Approved" ? T.green : v.status === "Review" ? T.cyan : T.yellow;
+
+                    return (
+                      <div
+                        key={v.id}
+                        style={{
+                          position: "relative",
+                          background: T.surf,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: 12,
+                          padding: "18px 20px",
+                          display: "flex",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: 16
+                        }}
+                      >
+                        {/* Timeline circle point */}
+                        <div style={{
+                          position: "absolute",
+                          left: "-21px",
+                          top: "22px",
+                          width: "10px",
+                          height: "10px",
+                          borderRadius: "50%",
+                          background: statusColor,
+                          boxShadow: `0 0 8px ${statusColor}`,
+                          zIndex: 5
+                        }} />
+
+                        {/* Version details column */}
+                        <div style={{ flex: 1, minWidth: "260px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
+                            <span style={{
+                              fontSize: "1rem",
+                              fontWeight: 800,
+                              color: T.text1
+                            }}>{v.number}</span>
+
+                            {/* Status badge */}
+                            <span style={{
+                              fontSize: "0.66rem",
+                              fontWeight: 800,
+                              textTransform: "uppercase",
+                              padding: "2px 8px",
+                              borderRadius: "4px",
+                              background: `${statusColor}15`,
+                              border: `1px solid ${statusColor}40`,
+                              color: statusColor
+                            }}>{v.status}</span>
+                          </div>
+
+                          {/* Date and Author */}
+                          <div style={{ fontSize: "0.74rem", color: T.text3, marginBottom: 8 }}>
+                            Released on <strong style={{ color: T.text2 }}>{v.date}</strong> by <strong style={{ color: T.text2 }}>{v.author}</strong>
+                          </div>
+
+                          {/* Description */}
+                          <p style={{ margin: 0, fontSize: "0.82rem", color: T.text2, lineHeight: 1.5 }}>
+                            {v.description}
+                          </p>
+                        </div>
+
+                        {/* Timeline Card Action Buttons */}
+                        <div style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "center"
+                        }}>
+                          <button
+                            onClick={() => showToast(`View details for release: ${v.number}`, "info")}
+                            style={{
+                              padding: "6px 12px",
+                              background: T.surf2,
+                              border: `1px solid ${T.border2}`,
+                              borderRadius: 6,
+                              color: T.text1,
+                              fontSize: "0.74rem",
+                              fontWeight: 600,
+                              cursor: "pointer"
+                            }}
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={() => showToast(`Compare current draft with release: ${v.number}`, "info")}
+                            style={{
+                              padding: "6px 12px",
+                              background: T.surf2,
+                              border: `1px solid ${T.border2}`,
+                              borderRadius: 6,
+                              color: T.text1,
+                              fontSize: "0.74rem",
+                              fontWeight: 600,
+                              cursor: "pointer"
+                            }}
+                          >
+                            Compare
+                          </button>
+                          <button
+                            onClick={() => showToast(`Restore operation simulated: ${v.number} parameters loaded.`, "success")}
+                            style={{
+                              padding: "6px 12px",
+                              background: `${T.accent}12`,
+                              border: `1px solid ${T.accent}40`,
+                              borderRadius: 6,
+                              color: T.text1,
+                              fontSize: "0.74rem",
+                              fontWeight: 600,
+                              cursor: "pointer"
+                            }}
+                          >
+                            Restore
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
