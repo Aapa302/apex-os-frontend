@@ -3,6 +3,7 @@ import {
 } from "react";
 import * as XLSX from "xlsx";
 import ResearchLab from "./ResearchLab";
+import AlgorithmDesigner from "./AlgorithmDesigner";
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
 // To use the Gemini backend proxy: set this to your running proxy URL.
@@ -2063,6 +2064,7 @@ export default function ApexOS() {
     { id: "build",     icon: "🛠️", label: "Build" },
     { id: "research",  icon: "🔬", label: "Research" },
     { id: "research_lab", icon: "🧬", label: "Research Lab" },
+    { id: "algorithm_designer", icon: "🧬", label: "Algorithm Designer" },
     { id: "reviews",   icon: "🔍", label: "Reviews" },
     { id: "memory",    icon: "🧠", label: "Memory" },
     { id: "analytics", icon: "📈", label: "Analytics" },
@@ -2500,6 +2502,11 @@ export default function ApexOS() {
           {/* ═══ RESEARCH LAB ═══ */}
           {view === "research_lab" && (
             <ResearchLab />
+          )}
+
+          {/* ═══ ALGORITHM DESIGNER ═══ */}
+          {view === "algorithm_designer" && (
+            <AlgorithmDesigner />
           )}
 
           {/* ═══ REVIEWS ═══ */}
