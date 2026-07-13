@@ -150,13 +150,20 @@ const BLOCK_DESCRIPTIONS = {
   "Output": "Specifies the terminal endpoint, such as molecular synthesis hardware or decoded output files."
 };
 
+const FLOWCHART_PLACEHOLDER_BLOCKS = [
+  { id: "f_start", type: "Start", x: 180, y: 50, description: "Entry coordinate: Initializes alignment parameter values." },
+  { id: "f_process", type: "Process", x: 140, y: 150, description: "Applies dynamic programming heuristics (Smith-Waterman score iteration)." },
+  { id: "f_decision", type: "Decision", x: 130, y: 260, description: "Evaluates score boundary limits against target parameters." },
+  { id: "f_end", type: "End", x: 180, y: 390, description: "Saves finalized alignment results and returns metadata map." }
+];
+
 export default function AlgorithmDesigner() {
   const [algorithms, setAlgorithms] = useState(DEFAULT_ALGORITHMS);
   const [selectedId, setSelectedId] = useState("alg_1");
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Workspace active tab: "metadata", "formulas", "pipeline"
-  const [activeTab, setActiveTab] = useState("pipeline");
+  // Workspace active tab: "pipeline", "flowchart", "formulas", "metadata"
+  const [activeTab, setActiveTab] = useState("flowchart");
 
   // ── 1. ALGORITHM METADATA STATE ──
   const [algName, setAlgName] = useState("");
@@ -192,6 +199,10 @@ export default function AlgorithmDesigner() {
   const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
 
+  // ── 4. VISUAL FLOWCHART STATE (STEP 7D - DISPLAY ONLY) ──
+  const [flowchartZoom, setFlowchartZoom] = useState(1.0);
+  const [selectedFlowchartBlockId, setSelectedFlowchartBlockId] = useState(null);
+
   // Refs
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
@@ -224,11 +235,13 @@ export default function AlgorithmDesigner() {
       setConnections(p.connections || []);
       setSelectedFormulaBlockId(null);
       setSelectedConnectionId(null);
+      setSelectedFlowchartBlockId(null);
       setHistory([]);
       setRedoStack([]);
       setZoom(1.0);
       setPanX(0);
       setPanY(0);
+      setFlowchartZoom(1.0);
     } else {
       setAlgName("");
       setObjective("");
@@ -237,6 +250,7 @@ export default function AlgorithmDesigner() {
       handleClearFormulaFields();
       setBlocks([]);
       setConnections([]);
+      setSelectedFlowchartBlockId(null);
     }
   }, [selectedId, algorithms]);
 
@@ -254,6 +268,7 @@ export default function AlgorithmDesigner() {
     handleClearFormulaFields();
     setBlocks([]);
     setConnections([]);
+    setSelectedFlowchartBlockId(null);
     showToast("Cleared fields for new algorithm", "info");
   };
 
@@ -275,7 +290,6 @@ export default function AlgorithmDesigner() {
             problemStatement,
             researchNotes,
             recent: true,
-            // persist current live formula and pipeline states as well
             pipeline: { blocks, connections }
           };
         }
@@ -472,7 +486,7 @@ export default function AlgorithmDesigner() {
   // ── VISUAL PIPELINE BUILDER OPERATIONS ──
   const pushToHistory = (newBlocks, newConns) => {
     setHistory(prev => [...prev, { blocks, connections }]);
-    setRedoStack([]); // Clear redo stack on new action
+    setRedoStack([]);
   };
 
   const handleUndo = () => {
@@ -495,7 +509,6 @@ export default function AlgorithmDesigner() {
     showToast("Redo action completed.", "info");
   };
 
-  // Toolbox - add new block to canvas
   const handleAddBlock = (type) => {
     if (!selectedId) {
       showToast("Please select or create an algorithm first.", "error");
@@ -503,8 +516,6 @@ export default function AlgorithmDesigner() {
     }
     pushToHistory(blocks, connections);
 
-    // Position new node relative to pan offset to keep it visible
-    const baseOffset = 180;
     const newBlock = {
       id: `b_${Date.now()}`,
       type,
@@ -567,17 +578,14 @@ export default function AlgorithmDesigner() {
   const handleBlockMouseUp = () => {
     document.removeEventListener("mousemove", handleBlockMouseMove);
     document.removeEventListener("mouseup", handleBlockMouseUp);
-
-    // If block didn't actually move, discard history push to keep stack clean
     if (dragRef.current && !dragRef.current.hasMoved) {
       setHistory(prev => prev.slice(0, -1));
     }
     dragRef.current = null;
   };
 
-  // Pan Canvas
   const handleCanvasMouseDown = (e) => {
-    if (e.button === 2 || e.shiftKey) { // Right click or shift-click to pan
+    if (e.button === 2 || e.shiftKey) {
       e.preventDefault();
       setIsPanning(true);
       setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
@@ -595,7 +603,6 @@ export default function AlgorithmDesigner() {
     setIsPanning(false);
   };
 
-  // Drag-to-Connect port handlers
   const handlePortMouseDown = (e, blockId) => {
     e.stopPropagation();
     e.preventDefault();
@@ -606,7 +613,6 @@ export default function AlgorithmDesigner() {
   const handlePortMouseUp = (e, targetBlockId) => {
     e.stopPropagation();
     if (connectingFromBlockId && connectingFromBlockId !== targetBlockId) {
-      // Check if connection already exists
       const exists = connections.some(c => c.from === connectingFromBlockId && c.to === targetBlockId);
       if (exists) {
         showToast("Connection already exists.", "error");
@@ -630,7 +636,6 @@ export default function AlgorithmDesigner() {
     document.removeEventListener("mouseup", handleGlobalMouseUpForConnection);
   };
 
-  // Zoom controls
   const handleZoomIn = () => setZoom(z => Math.min(1.8, z + 0.1));
   const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.1));
   const handleZoomReset = () => {
@@ -640,17 +645,14 @@ export default function AlgorithmDesigner() {
     showToast("Canvas viewport reset.", "info");
   };
 
-  // Auto Layout algorithm (Simple Horizontal Rank positioning)
   const handleAutoLayout = () => {
     if (blocks.length === 0) return;
     pushToHistory(blocks, connections);
 
-    // Topological sorting logic simplified: group items by sequential connections
     const mappedX = {};
     const processed = new Set();
     let currentRank = 0;
 
-    // Start with blocks that have no input connections
     let sources = blocks.filter(b => !connections.some(c => c.to === b.id));
     if (sources.length === 0 && blocks.length > 0) {
       sources = [blocks[0]];
@@ -663,8 +665,6 @@ export default function AlgorithmDesigner() {
         if (!processed.has(b.id)) {
           processed.add(b.id);
           mappedX[b.id] = 120 + currentRank * 210;
-
-          // Find output targets
           const targets = connections.filter(c => c.from === b.id).map(c => c.to);
           targets.forEach(tid => {
             const targetBlock = blocks.find(node => node.id === tid);
@@ -676,17 +676,15 @@ export default function AlgorithmDesigner() {
       currentRank++;
     }
 
-    // Set coordinates
     setBlocks(prev => prev.map((b, idx) => {
       const x = mappedX[b.id] || (120 + idx * 150);
-      const y = 180 + (idx % 2 === 0 ? 0 : 40); // slightly offset vertical staggered path
+      const y = 180 + (idx % 2 === 0 ? 0 : 40);
       return { ...b, x, y };
     }));
 
     showToast("Auto Layout executed.", "info");
   };
 
-  // Selection & deletion operations
   const handleDeleteSelectedElement = () => {
     if (selectedBlockId) {
       pushToHistory(blocks, connections);
@@ -704,7 +702,6 @@ export default function AlgorithmDesigner() {
     }
   };
 
-  // Update selected block parameters/notes in properties panel
   const handleUpdateBlockMeta = (key, value) => {
     setBlocks(prev => prev.map(b => {
       if (b.id === selectedBlockId) {
@@ -724,30 +721,19 @@ export default function AlgorithmDesigner() {
       };
     }
 
-    // Verify if there are Input and Output blocks
     const hasInput = blocks.some(b => b.type === "Input Data");
     const hasOutput = blocks.some(b => b.type === "Output");
 
     if (!hasInput) {
-      return {
-        status: "Warning Status",
-        message: "Missing 'Input Data' block. Valid pipeline flows must originate from an Input Data source.",
-        color: T.yellow
-      };
+      return { status: "Warning Status", message: "Missing 'Input Data' block. Valid pipeline flows must originate from an Input Data source.", color: T.yellow };
     }
     if (!hasOutput) {
-      return {
-        status: "Warning Status",
-        message: "Missing 'Output' terminal block. Set up a Storage Layer or Output block.",
-        color: T.yellow
-      };
+      return { status: "Warning Status", message: "Missing 'Output' terminal block. Set up a Storage Layer or Output block.", color: T.yellow };
     }
 
-    // Check reachability from Input to Output via connections
     const startBlocks = blocks.filter(b => b.type === "Input Data");
     let reachable = false;
 
-    // Standard BFS traversal for connectivity checks
     const visited = new Set();
     const queue = startBlocks.map(b => b.id);
     while (queue.length > 0) {
@@ -767,19 +753,10 @@ export default function AlgorithmDesigner() {
     }
 
     if (!reachable) {
-      return {
-        status: "Invalid Routing",
-        message: "Input Data blocks do not connect to any Output terminals. Draw connections between node ports.",
-        color: T.red
-      };
+      return { status: "Invalid Routing", message: "Input Data blocks do not connect to any Output terminals. Draw connections between node ports.", color: T.red };
     }
 
-    // Successful path validation
-    return {
-      status: "Pipeline Verified",
-      message: `System validation complete. Connected workflow path verified with ${blocks.length} active node modules.`,
-      color: T.green
-    };
+    return { status: "Pipeline Verified", message: `System validation complete. Connected workflow path verified with ${blocks.length} active node modules.`, color: T.green };
   };
 
   const validation = getPipelineValidation();
@@ -788,6 +765,9 @@ export default function AlgorithmDesigner() {
   const activeAlgorithm = algorithms.find(a => a.id === selectedId) || null;
   const activeFormulas = activeAlgorithm?.formulas || [];
   const selectedBlock = blocks.find(b => b.id === selectedBlockId) || null;
+
+  // Selected flowchart block
+  const selectedFlowchartBlock = FLOWCHART_PLACEHOLDER_BLOCKS.find(b => b.id === selectedFlowchartBlockId) || null;
 
   return (
     <div style={{
@@ -810,6 +790,7 @@ export default function AlgorithmDesigner() {
         flexShrink: 0
       }}>
         {[
+          { id: "flowchart", label: "📊 Flowchart UI", color: T.yellow },
           { id: "pipeline", label: "🎨 Visual Pipeline Builder", color: T.cyan },
           { id: "formulas", label: "🧬 Mathematical Formulas", color: T.pink },
           { id: "metadata", label: "📝 Metadata Draft Editor", color: T.accent }
@@ -1087,6 +1068,127 @@ export default function AlgorithmDesigner() {
 
           {/* ═══ TAB 3: VISUAL WORKFLOW CANVAS (PIPELINE BUILDER) ═══ */}
           {activeTab === "pipeline" && (
+            <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", position: "relative" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden", borderRight: `1px solid ${T.border}` }}>
+                <div style={{ padding: "10px 16px", background: T.surf, borderBottom: `1px solid ${T.border2}`, display: "flex", gap: 8, overflowX: "auto", alignItems: "center", whiteSpace: "nowrap", flexShrink: 0 }}>
+                  <span style={{ fontSize: "0.72rem", color: T.text3, fontWeight: 700, textTransform: "uppercase", marginRight: 6 }}>Toolbox</span>
+                  {AVAILABLE_BLOCK_TYPES.map(type => (
+                    <button key={type} onClick={() => handleAddBlock(type)} style={{ padding: "5px 11px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.72rem", fontWeight: 600, cursor: "pointer" }}>+ {type}</button>
+                  ))}
+                </div>
+
+                <div style={{ padding: "10px 16px", background: T.surf, borderBottom: `1px solid ${T.border}`, display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button disabled={history.length === 0} onClick={handleUndo} style={{ padding: "6px 12px", background: history.length === 0 ? "none" : T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: history.length === 0 ? T.text3 : T.text1, fontSize: "0.74rem", cursor: history.length === 0 ? "default" : "pointer" }}>↩ Undo</button>
+                    <button disabled={redoStack.length === 0} onClick={handleRedo} style={{ padding: "6px 12px", background: redoStack.length === 0 ? "none" : T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: redoStack.length === 0 ? T.text3 : T.text1, fontSize: "0.74rem", cursor: redoStack.length === 0 ? "default" : "pointer" }}>↪ Redo</button>
+                  </div>
+                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <button onClick={handleZoomIn} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", cursor: "pointer" }}>➕ Zoom In</button>
+                    <span style={{ fontSize: "0.74rem", color: T.text2, minWidth: "36px", textAlign: "center" }}>{Math.round(zoom * 100)}%</span>
+                    <button onClick={handleZoomOut} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", cursor: "pointer" }}>➖ Zoom Out</button>
+                    <button onClick={handleZoomReset} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text2, fontSize: "0.74rem", cursor: "pointer" }}>⊙ Fit</button>
+                  </div>
+                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
+                  <button onClick={handleAutoLayout} style={{ padding: "6px 12px", background: `${T.cyan}12`, border: `1px solid ${T.cyan}40`, borderRadius: 6, color: T.cyan, fontSize: "0.74rem", fontWeight: 700, cursor: "pointer" }}>🪄 Auto Layout</button>
+                  <button onClick={handleDeleteSelectedElement} disabled={!selectedBlockId && !selectedConnectionId} style={{ padding: "6px 12px", background: (!selectedBlockId && !selectedConnectionId) ? "none" : `${T.red}18`, border: `1px solid ${(!selectedBlockId && !selectedConnectionId) ? T.border2 : T.red + "40"}`, borderRadius: 6, color: (!selectedBlockId && !selectedConnectionId) ? T.text3 : T.red, fontSize: "0.74rem", fontWeight: 700, cursor: (!selectedBlockId && !selectedConnectionId) ? "default" : "pointer", marginLeft: "auto" }}>🗑 Delete Selected</button>
+                </div>
+
+                <div ref={canvasRef} onMouseDown={handleCanvasMouseDown} onMouseMove={handleCanvasMouseMove} onMouseUp={handleCanvasMouseUp} style={{ flex: 1, position: "relative", overflow: "hidden", cursor: isPanning ? "grabbing" : "default", userSelect: "none" }}>
+                  <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${T.border2} 1px, transparent 1px)`, backgroundSize: "24px 24px", opacity: 0.8 }} />
+                  <div style={{ position: "absolute", inset: 0, transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`, transformOrigin: "top left", transition: isPanning ? "none" : "transform 0.1s ease" }}>
+                    <svg style={{ position: "absolute", width: "3000px", height: "2000px", pointerEvents: "none", overflow: "visible", zIndex: 1 }}>
+                      <defs>
+                        <marker id="arrowhead" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill={T.cyan} /></marker>
+                      </defs>
+                      {connections.map(conn => {
+                        const fromNode = blocks.find(b => b.id === conn.from);
+                        const toNode = blocks.find(b => b.id === conn.to);
+                        if (!fromNode || !toNode) return null;
+                        const x1 = fromNode.x + 160;
+                        const y1 = fromNode.y + 40;
+                        const x2 = toNode.x;
+                        const y2 = toNode.y + 40;
+                        const dx = Math.abs(x2 - x1) * 0.5;
+                        const pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+                        const isSelected = selectedConnectionId === conn.id;
+                        return (
+                          <g key={conn.id} style={{ pointerEvents: "all" }}>
+                            <path d={pathD} stroke="transparent" strokeWidth={12} fill="none" cursor="pointer" onClick={(e) => { e.stopPropagation(); setSelectedConnectionId(conn.id); setSelectedFormulaBlockId(null); }} />
+                            <path d={pathD} stroke={isSelected ? T.cyan : `${T.cyan}99`} strokeWidth={isSelected ? 4 : 2} fill="none" markerEnd="url(#arrowhead)" />
+                          </g>
+                        );
+                      })}
+                    </svg>
+
+                    {blocks.map(block => {
+                      const isSelected = selectedBlockId === block.id;
+                      return (
+                        <div key={block.id} style={{ position: "absolute", left: block.x, top: block.y, width: "160px", height: "80px", background: isSelected ? T.surf2 : T.surf, border: `2px solid ${isSelected ? T.cyan : T.border2}`, borderRadius: "10px", zIndex: isSelected ? 10 : 5, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: isSelected ? `0 0 16px ${T.cyan}25` : "0 4px 12px rgba(0,0,0,0.5)" }} onMouseDown={(e) => handleBlockMouseDown(e, block.id)}>
+                          <div style={{ background: `${T.border}b0`, padding: "6px 10px", borderBottom: `1px solid ${T.border2}`, fontWeight: 700, fontSize: "0.72rem", color: isSelected ? T.cyan : T.text2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{block.type}</div>
+                          <div style={{ flex: 1, padding: "6px 10px", fontSize: "0.64rem", color: T.text3, display: "flex", alignItems: "center" }}>
+                            <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              ID: {block.id.slice(0, 5)}...
+                              {block.params && <div style={{ color: T.text2, marginTop: 2, fontSize: "0.6rem" }}>{block.params.split("\n")[0]}</div>}
+                            </div>
+                          </div>
+                          <div onMouseUp={(e) => handlePortMouseUp(e, block.id)} style={{ position: "absolute", left: "-6px", top: "34px", width: "12px", height: "12px", borderRadius: "50%", background: T.surf2, border: `2px solid ${T.cyan}`, zIndex: 20, cursor: "pointer" }} />
+                          <div onMouseDown={(e) => handlePortMouseDown(e, block.id)} style={{ position: "absolute", right: "-6px", top: "34px", width: "12px", height: "12px", borderRadius: "50%", background: T.cyan, border: `2px solid ${T.surf}`, zIndex: 20, cursor: "pointer" }} />
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ position: "absolute", bottom: 16, right: 16, width: "120px", height: "80px", background: T.glass, border: `1px solid ${T.border2}`, borderRadius: 8, overflow: "hidden", pointerEvents: "none", zIndex: 30, backdropFilter: "blur(6px)" }}>
+                    <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${T.border} 1px, transparent 1px)`, backgroundSize: "8px 8px" }} />
+                    {blocks.map(b => (
+                      <div key={b.id} style={{ position: "absolute", left: `${Math.max(2, Math.min(100, b.x * 0.12 + 20))}%`, top: `${Math.max(2, Math.min(70, b.y * 0.12 + 20))}%`, width: "16px", height: "8px", background: selectedBlockId === b.id ? T.cyan : T.text3, borderRadius: "1px", opacity: 0.8 }} />
+                    ))}
+                    <div style={{ position: "absolute", bottom: 4, left: 6, fontSize: "0.58rem", color: T.text3, fontWeight: 700 }}>MINI MAP</div>
+                  </div>
+                </div>
+
+                <div style={{ height: "72px", background: T.surf, borderTop: `1px solid ${T.border}`, padding: "12px 18px", display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
+                  <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: validation.color, boxShadow: `0 0 10px ${validation.color}` }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "0.72rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>{validation.status}</div>
+                    <div style={{ fontSize: "0.8rem", color: T.text1, marginTop: 2, fontWeight: 500 }}>{validation.message}</div>
+                  </div>
+                  <div style={{ fontSize: "0.68rem", color: T.text3, textAlign: "right" }}>SYSTEM NOMINAL<br />Pipeline Validation Engine v1.0</div>
+                </div>
+              </div>
+
+              <aside style={{ width: "300px", background: T.surf, padding: "20px", display: "flex", flexDirection: "column", gap: 16, flexShrink: 0, boxSizing: "border-box" }}>
+                <h3 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: 800, color: T.text1 }}>⚙️ Block Properties</h3>
+                {selectedBlock ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px" }}>
+                      <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Type</div>
+                      <div style={{ fontSize: "0.86rem", fontWeight: 700, color: T.cyan, marginTop: 2 }}>{selectedBlock.type}</div>
+                      <div style={{ fontSize: "0.62rem", color: T.text3, marginTop: 4 }}>ID: {selectedBlock.id}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 4 }}>Block Description</div>
+                      <div style={{ fontSize: "0.78rem", color: T.text2, lineHeight: 1.5 }}>{BLOCK_DESCRIPTIONS[selectedBlock.type] || "No description available."}</div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Block Parameters</label>
+                      <textarea rows={4} value={selectedBlock.params} onChange={(e) => handleUpdateBlockMeta("params", e.target.value)} placeholder="e.g. key: value" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.8rem", fontFamily: "monospace", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Design Notes</label>
+                      <textarea rows={5} value={selectedBlock.notes} onChange={(e) => handleUpdateBlockMeta("notes", e.target.value)} placeholder="Add modeling/design notes here..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text2, fontSize: "0.8rem", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }} />
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: "center", padding: "40px 10px", color: T.text3, fontSize: "0.8rem", border: `1px dashed ${T.border2}`, borderRadius: 10 }}>Select a node module on the canvas to inspect or edit its properties.</div>
+                )}
+              </aside>
+            </div>
+          )}
+
+          {/* ═══ TAB 4: VISUAL FLOWCHART BUILDER (STEP 7D - DISPLAY ONLY) ═══ */}
+          {activeTab === "flowchart" && (
             <div style={{
               flex: 1,
               display: "flex",
@@ -1103,368 +1205,248 @@ export default function AlgorithmDesigner() {
                 overflow: "hidden",
                 borderRight: `1px solid ${T.border}`
               }}>
-                {/* TOOLBOX HEADER: Flow block insertion buttons */}
+                {/* TOOLBAR: Show status text & toolbar buttons */}
                 <div style={{
-                  padding: "10px 16px",
+                  padding: "12px 20px",
                   background: T.surf,
-                  borderBottom: `1px solid ${T.border2}`,
+                  borderBottom: `1px solid ${T.border}`,
                   display: "flex",
-                  gap: 8,
-                  overflowX: "auto",
+                  gap: 16,
                   alignItems: "center",
-                  whiteSpace: "nowrap",
                   flexShrink: 0
                 }}>
-                  <span style={{ fontSize: "0.72rem", color: T.text3, fontWeight: 700, textTransform: "uppercase", marginRight: 6 }}>Toolbox</span>
-                  {AVAILABLE_BLOCK_TYPES.map(type => (
+                  {/* Status Indicator */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.green, boxShadow: `0 0 8px ${T.green}` }} />
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: T.green, letterSpacing: "0.5px" }}>
+                      Flowchart Builder Ready
+                    </span>
+                  </div>
+
+                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
+
+                  {/* Flowchart toolbar buttons */}
+                  <div style={{ display: "flex", gap: 8 }}>
                     <button
-                      key={type}
-                      onClick={() => handleAddBlock(type)}
+                      onClick={() => showToast("Add Block action triggered (Placeholder only)", "info")}
                       style={{
-                        padding: "5px 11px",
+                        padding: "6px 12px",
                         background: T.surf2,
                         border: `1px solid ${T.border2}`,
                         borderRadius: 6,
                         color: T.text1,
-                        fontSize: "0.72rem",
+                        fontSize: "0.74rem",
                         fontWeight: 600,
-                        cursor: "pointer",
-                        transition: "all 0.1s"
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.borderColor = T.accent;
-                        e.currentTarget.style.background = `${T.accent}12`;
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.borderColor = T.border2;
-                        e.currentTarget.style.background = T.surf2;
+                        cursor: "pointer"
                       }}
                     >
-                      + {type}
+                      Add Block
                     </button>
-                  ))}
+                    <button
+                      onClick={() => showToast("Delete Block action triggered (Placeholder only)", "info")}
+                      style={{
+                        padding: "6px 12px",
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: 6,
+                        color: T.text1,
+                        fontSize: "0.74rem",
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Delete Block
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFlowchartZoom(z => Math.min(1.5, z + 0.1));
+                        showToast("Zoomed In", "info");
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: 6,
+                        color: T.text1,
+                        fontSize: "0.74rem",
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Zoom In
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFlowchartZoom(z => Math.max(0.6, z - 0.1));
+                        showToast("Zoomed Out", "info");
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: 6,
+                        color: T.text1,
+                        fontSize: "0.74rem",
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Zoom Out
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFlowchartZoom(1.0);
+                        showToast("Reset Flowchart View", "info");
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: 6,
+                        color: T.text2,
+                        fontSize: "0.74rem",
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Reset View
+                    </button>
+                  </div>
                 </div>
 
-                {/* WORKFLOW EDITOR BAR: Undo, Redo, Zoom, Auto Layout */}
+                {/* FLOWCHART CANVAS */}
                 <div style={{
-                  padding: "10px 16px",
-                  background: T.surf,
-                  borderBottom: `1px solid ${T.border}`,
-                  display: "flex",
-                  gap: 12,
-                  alignItems: "center",
-                  flexShrink: 0
+                  flex: 1,
+                  position: "relative",
+                  overflow: "hidden"
                 }}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button disabled={history.length === 0} onClick={handleUndo} style={{ padding: "6px 12px", background: history.length === 0 ? "none" : T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: history.length === 0 ? T.text3 : T.text1, fontSize: "0.74rem", cursor: history.length === 0 ? "default" : "pointer" }}>↩ Undo</button>
-                    <button disabled={redoStack.length === 0} onClick={handleRedo} style={{ padding: "6px 12px", background: redoStack.length === 0 ? "none" : T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: redoStack.length === 0 ? T.text3 : T.text1, fontSize: "0.74rem", cursor: redoStack.length === 0 ? "default" : "pointer" }}>↪ Redo</button>
-                  </div>
-
-                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
-
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <button onClick={handleZoomIn} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", cursor: "pointer" }}>➕ Zoom In</button>
-                    <span style={{ fontSize: "0.74rem", color: T.text2, minWidth: "36px", textAlign: "center" }}>{Math.round(zoom * 100)}%</span>
-                    <button onClick={handleZoomOut} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", cursor: "pointer" }}>➖ Zoom Out</button>
-                    <button onClick={handleZoomReset} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text2, fontSize: "0.74rem", cursor: "pointer" }}>⊙ Fit</button>
-                  </div>
-
-                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
-
-                  <button
-                    onClick={handleAutoLayout}
-                    style={{
-                      padding: "6px 12px",
-                      background: `${T.cyan}12`,
-                      border: `1px solid ${T.cyan}40`,
-                      borderRadius: 6,
-                      color: T.cyan,
-                      fontSize: "0.74rem",
-                      fontWeight: 700,
-                      cursor: "pointer"
-                    }}
-                  >
-                    🪄 Auto Layout
-                  </button>
-
-                  <button
-                    onClick={handleDeleteSelectedElement}
-                    disabled={!selectedBlockId && !selectedConnectionId}
-                    style={{
-                      padding: "6px 12px",
-                      background: (!selectedBlockId && !selectedConnectionId) ? "none" : `${T.red}18`,
-                      border: `1px solid ${(!selectedBlockId && !selectedConnectionId) ? T.border2 : T.red + "40"}`,
-                      borderRadius: 6,
-                      color: (!selectedBlockId && !selectedConnectionId) ? T.text3 : T.red,
-                      fontSize: "0.74rem",
-                      fontWeight: 700,
-                      cursor: (!selectedBlockId && !selectedConnectionId) ? "default" : "pointer",
-                      marginLeft: "auto"
-                    }}
-                  >
-                    🗑 Delete Selected
-                  </button>
-                </div>
-
-                {/* THE ACTUAL WORKFLOW CANVAS */}
-                <div
-                  ref={canvasRef}
-                  onMouseDown={handleCanvasMouseDown}
-                  onMouseMove={handleCanvasMouseMove}
-                  onMouseUp={handleCanvasMouseUp}
-                  style={{
-                    flex: 1,
-                    position: "relative",
-                    overflow: "hidden",
-                    cursor: isPanning ? "grabbing" : "default",
-                    userSelect: "none"
-                  }}
-                >
                   {/* GRID BACKGROUND PATTERN */}
                   <div style={{
                     position: "absolute",
                     inset: 0,
                     backgroundImage: `radial-gradient(${T.border2} 1px, transparent 1px)`,
-                    backgroundSize: "24px 24px",
+                    backgroundSize: "20px 24px",
                     opacity: 0.8
                   }} />
 
-                  {/* TRANSFORM WRAPPER CONTAINER (ZOOM & PAN) */}
+                  {/* FLOWCHART CONTENT WITH VIEW SCALE */}
                   <div style={{
                     position: "absolute",
                     inset: 0,
-                    transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`,
+                    transform: `scale(${flowchartZoom})`,
                     transformOrigin: "top left",
-                    transition: isPanning ? "none" : "transform 0.1s ease"
+                    transition: "transform 0.15s ease",
+                    padding: "30px",
+                    boxSizing: "border-box"
                   }}>
-                    {/* SVG GRAPH ARROW CONNECTIONS LAYOUT */}
+                    {/* SVG Flow lines background */}
                     <svg style={{
                       position: "absolute",
-                      width: "3000px",
-                      height: "2000px",
+                      width: "100%",
+                      height: "100%",
                       pointerEvents: "none",
-                      overflow: "visible",
-                      zIndex: 1
+                      zIndex: 1,
+                      overflow: "visible"
                     }}>
-                      <defs>
-                        {/* Define gorgeous arrowhead marker */}
-                        <marker
-                          id="arrowhead"
-                          viewBox="0 0 10 10"
-                          refX="6"
-                          refY="5"
-                          markerWidth="6"
-                          markerHeight="6"
-                          orient="auto-start-reverse"
-                        >
-                          <path d="M 0 1 L 10 5 L 0 9 z" fill={T.cyan} />
-                        </marker>
-                      </defs>
+                      {/* Straight arrow connections between sequential placeholders */}
+                      <g>
+                        {/* Start (y=100) -> Process (y=150) */}
+                        <line x1="240" y1="90" x2="240" y2="150" stroke={T.text3} strokeWidth={2} />
+                        <polygon points="240,150 236,142 244,142" fill={T.text3} />
 
-                      {/* Render lines for active arrow connections */}
-                      {connections.map(conn => {
-                        const fromNode = blocks.find(b => b.id === conn.from);
-                        const toNode = blocks.find(b => b.id === conn.to);
-                        if (!fromNode || !toNode) return null;
+                        {/* Process (y=190) -> Decision (y=260) */}
+                        <line x1="240" y1="200" x2="240" y2="260" stroke={T.text3} strokeWidth={2} />
+                        <polygon points="240,260 236,252 244,252" fill={T.text3} />
 
-                        // Port locations (from block output face: Right, to block input face: Left)
-                        const x1 = fromNode.x + 160;
-                        const y1 = fromNode.y + 40;
-                        const x2 = toNode.x;
-                        const y2 = toNode.y + 40;
-
-                        // Smooth Cubic Bezier Spline
-                        const dx = Math.abs(x2 - x1) * 0.5;
-                        const pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-
-                        const isSelected = selectedConnectionId === conn.id;
-
-                        return (
-                          <g key={conn.id} style={{ pointerEvents: "all" }}>
-                            {/* Larger transparent overlay stroke to make it easy to click and select connection line */}
-                            <path
-                              d={pathD}
-                              stroke="transparent"
-                              strokeWidth={12}
-                              fill="none"
-                              cursor="pointer"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedConnectionId(conn.id);
-                                setSelectedFormulaBlockId(null);
-                              }}
-                            />
-                            {/* Styled visible line path with arrowhead */}
-                            <path
-                              d={pathD}
-                              stroke={isSelected ? T.cyan : `${T.cyan}99`}
-                              strokeWidth={isSelected ? 4 : 2}
-                              fill="none"
-                              markerEnd="url(#arrowhead)"
-                            />
-                          </g>
-                        );
-                      })}
+                        {/* Decision (y=340) -> End (y=390) */}
+                        <line x1="240" y1="340" x2="240" y2="390" stroke={T.text3} strokeWidth={2} />
+                        <polygon points="240,390 236,382 244,382" fill={T.text3} />
+                      </g>
                     </svg>
 
-                    {/* Draggable HTML Block nodes on top of SVG */}
-                    {blocks.map(block => {
-                      const isSelected = selectedBlockId === block.id;
+                    {/* FLOWCHART PLACEHOLDER BLOCKS */}
+                    {FLOWCHART_PLACEHOLDER_BLOCKS.map(block => {
+                      const isSelected = selectedFlowchartBlockId === block.id;
+
+                      // Choose style shapes depending on block type
+                      let shapeStyle = {};
+                      if (block.type === "Start" || block.type === "End") {
+                        // Capsule/Pill shape
+                        shapeStyle = {
+                          borderRadius: "24px",
+                          width: "120px",
+                          height: "40px"
+                        };
+                      } else if (block.type === "Decision") {
+                        // Diamond shape rendered as rotated square
+                        shapeStyle = {
+                          width: "80px",
+                          height: "80px",
+                          transform: "rotate(45deg)",
+                          borderRadius: "6px"
+                        };
+                      } else {
+                        // Process rectangle shape
+                        shapeStyle = {
+                          borderRadius: "6px",
+                          width: "200px",
+                          height: "50px"
+                        };
+                      }
+
+                      // Adjust coordinates so diamond matches center
+                      const xCoord = block.type === "Decision" ? block.x + 60 : block.x;
+                      const yCoord = block.y;
+
                       return (
                         <div
                           key={block.id}
+                          onClick={() => setSelectedFlowchartBlockId(isSelected ? null : block.id)}
                           style={{
                             position: "absolute",
-                            left: block.x,
-                            top: block.y,
-                            width: "160px",
-                            height: "80px",
-                            background: isSelected ? T.surf2 : T.surf,
-                            border: `2px solid ${isSelected ? T.cyan : T.border2}`,
-                            borderRadius: "10px",
-                            zIndex: isSelected ? 10 : 5,
+                            left: xCoord,
+                            top: yCoord,
+                            zIndex: 10,
                             display: "flex",
-                            flexDirection: "column",
-                            overflow: "hidden",
-                            boxShadow: isSelected ? `0 0 16px ${T.cyan}25` : "0 4px 12px rgba(0,0,0,0.5)",
-                            cursor: "grab"
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            transition: "all 0.15s",
+                            ...shapeStyle,
+                            background: isSelected ? T.surf2 : T.surf,
+                            border: `2px solid ${
+                              isSelected
+                                ? T.cyan
+                                : block.type === "Start"
+                                ? T.green
+                                : block.type === "End"
+                                ? T.red
+                                : block.type === "Decision"
+                                ? T.yellow
+                                : T.accent
+                            }`,
+                            boxShadow: isSelected ? `0 0 16px ${T.cyan}35` : "0 4px 8px rgba(0,0,0,0.4)"
                           }}
-                          onMouseDown={(e) => handleBlockMouseDown(e, block.id)}
                         >
-                          {/* Block Header */}
+                          {/* Inner contents */}
                           <div style={{
-                            background: `${T.border}b0`,
-                            padding: "6px 10px",
-                            borderBottom: `1px solid ${T.border2}`,
+                            // Un-rotate text for Decision diamond shape
+                            transform: block.type === "Decision" ? "rotate(-45deg)" : "none",
+                            fontSize: "0.78rem",
                             fontWeight: 700,
-                            fontSize: "0.72rem",
-                            color: isSelected ? T.cyan : T.text2,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis"
+                            color: isSelected ? T.cyan : T.text1,
+                            textAlign: "center",
+                            padding: "6px"
                           }}>
                             {block.type}
                           </div>
-
-                          {/* Block Body Details */}
-                          <div style={{
-                            flex: 1,
-                            padding: "6px 10px",
-                            fontSize: "0.64rem",
-                            color: T.text3,
-                            display: "flex",
-                            alignItems: "center"
-                          }}>
-                            <div style={{
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis"
-                            }}>
-                              ID: {block.id.slice(0, 5)}...
-                              {block.params && (
-                                <div style={{ color: T.text2, marginTop: 2, fontSize: "0.6rem" }}>
-                                  {block.params.split("\n")[0]}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* CONNECTOR PORTS */}
-                          {/* Input Port (Left side) */}
-                          <div
-                            onMouseUp={(e) => handlePortMouseUp(e, block.id)}
-                            style={{
-                              position: "absolute",
-                              left: "-6px",
-                              top: "34px",
-                              width: "12px",
-                              height: "12px",
-                              borderRadius: "50%",
-                              background: T.surf2,
-                              border: `2px solid ${T.cyan}`,
-                              zIndex: 20,
-                              cursor: "pointer"
-                            }}
-                            title="Input Port"
-                          />
-
-                          {/* Output Port (Right side) */}
-                          <div
-                            onMouseDown={(e) => handlePortMouseDown(e, block.id)}
-                            style={{
-                              position: "absolute",
-                              right: "-6px",
-                              top: "34px",
-                              width: "12px",
-                              height: "12px",
-                              borderRadius: "50%",
-                              background: T.cyan,
-                              border: `2px solid ${T.surf}`,
-                              zIndex: 20,
-                              cursor: "pointer"
-                            }}
-                            title="Drag output connection"
-                          />
                         </div>
                       );
                     })}
                   </div>
-
-                  {/* DYNAMIC CANVAS MINI MAP CARD */}
-                  <div style={{
-                    position: "absolute",
-                    bottom: 16,
-                    right: 16,
-                    width: "120px",
-                    height: "80px",
-                    background: T.glass,
-                    border: `1px solid ${T.border2}`,
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    pointerEvents: "none",
-                    zIndex: 30,
-                    backdropFilter: "blur(6px)"
-                  }}>
-                    {/* Small grid inside Mini Map */}
-                    <div style={{
-                      position: "absolute",
-                      inset: 0,
-                      backgroundImage: `radial-gradient(${T.border} 1px, transparent 1px)`,
-                      backgroundSize: "8px 8px"
-                    }} />
-
-                    {/* Mapped Nodes thumbnail representations */}
-                    {blocks.map(b => (
-                      <div
-                        key={b.id}
-                        style={{
-                          position: "absolute",
-                          // Thumbnail ratio scaled down 10x (0.1x scale)
-                          left: `${Math.max(2, Math.min(100, b.x * 0.12 + 20))}%`,
-                          top: `${Math.max(2, Math.min(70, b.y * 0.12 + 20))}%`,
-                          width: "16px",
-                          height: "8px",
-                          background: selectedBlockId === b.id ? T.cyan : T.text3,
-                          borderRadius: "1px",
-                          opacity: 0.8
-                        }}
-                      />
-                    ))}
-
-                    <div style={{
-                      position: "absolute",
-                      bottom: 4,
-                      left: 6,
-                      fontSize: "0.58rem",
-                      color: T.text3,
-                      fontWeight: 700
-                    }}>
-                      MINI MAP
-                    </div>
-                  </div>
                 </div>
 
-                {/* BOTTOM PANEL: Pipeline messages & Validation Status */}
+                {/* BOTTOM PANEL: Validation Status Mockup */}
                 <div style={{
                   height: "72px",
                   background: T.surf,
@@ -1479,25 +1461,25 @@ export default function AlgorithmDesigner() {
                     width: "12px",
                     height: "12px",
                     borderRadius: "50%",
-                    background: validation.color,
-                    boxShadow: `0 0 10px ${validation.color}`
+                    background: T.green,
+                    boxShadow: `0 0 10px ${T.green}`
                   }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: "0.72rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>
-                      {validation.status}
+                      FLOWCHART MOCKUP READY
                     </div>
                     <div style={{ fontSize: "0.8rem", color: T.text1, marginTop: 2, fontWeight: 500 }}>
-                      {validation.message}
+                      ✓ Displaying placeholder blocks only. Dragging and connectors are disabled.
                     </div>
                   </div>
                   <div style={{ fontSize: "0.68rem", color: T.text3, textAlign: "right" }}>
-                    SYSTEM NOMINAL<br />
-                    Pipeline Validation Engine v1.0
+                    PREVIEW MODE<br />
+                    Flowchart Visual Grid Layout
                   </div>
                 </div>
               </div>
 
-              {/* RIGHT PANEL: SELECTED BLOCK PROPERTIES */}
+              {/* RIGHT PROPERTIES PANEL */}
               <aside style={{
                 width: "300px",
                 background: T.surf,
@@ -1509,23 +1491,35 @@ export default function AlgorithmDesigner() {
                 boxSizing: "border-box"
               }}>
                 <h3 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: 800, color: T.text1 }}>
-                  ⚙️ Block Properties
+                  ⚙️ Flowchart Properties
                 </h3>
 
-                {selectedBlock ? (
+                {selectedFlowchartBlock ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {/* Block meta */}
                     <div style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px" }}>
                       <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Type</div>
-                      <div style={{ fontSize: "0.86rem", fontWeight: 700, color: T.cyan, marginTop: 2 }}>{selectedBlock.type}</div>
-                      <div style={{ fontSize: "0.62rem", color: T.text3, marginTop: 4 }}>ID: {selectedBlock.id}</div>
+                      <div style={{
+                        fontSize: "0.86rem",
+                        fontWeight: 700,
+                        color:
+                          selectedFlowchartBlock.type === "Start"
+                            ? T.green
+                            : selectedFlowchartBlock.type === "End"
+                            ? T.red
+                            : selectedFlowchartBlock.type === "Decision"
+                            ? T.yellow
+                            : T.accent,
+                        marginTop: 2
+                      }}>{selectedFlowchartBlock.type}</div>
+                      <div style={{ fontSize: "0.62rem", color: T.text3, marginTop: 4 }}>ID: {selectedFlowchartBlock.id}</div>
                     </div>
 
                     {/* Block Description */}
                     <div>
                       <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 4 }}>Block Description</div>
                       <div style={{ fontSize: "0.78rem", color: T.text2, lineHeight: 1.5 }}>
-                        {BLOCK_DESCRIPTIONS[selectedBlock.type] || "No description available."}
+                        {selectedFlowchartBlock.description}
                       </div>
                     </div>
 
@@ -1533,46 +1527,22 @@ export default function AlgorithmDesigner() {
                     <div>
                       <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Block Parameters</label>
                       <textarea
-                        rows={4}
-                        value={selectedBlock.params}
-                        onChange={(e) => handleUpdateBlockMeta("params", e.target.value)}
-                        placeholder="e.g. key: value"
+                        rows={3}
+                        defaultValue="Read-only parameter preview"
+                        disabled
                         style={{
                           width: "100%",
                           background: T.surf2,
                           border: `1px solid ${T.border2}`,
                           borderRadius: 8,
                           padding: "10px 12px",
-                          color: T.text1,
+                          color: T.text3,
                           fontSize: "0.8rem",
                           fontFamily: "monospace",
                           outline: "none",
-                          resize: "vertical",
+                          resize: "none",
+                          cursor: "not-allowed",
                           boxSizing: "border-box"
-                        }}
-                      />
-                    </div>
-
-                    {/* Block notes editable input */}
-                    <div>
-                      <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Design Notes</label>
-                      <textarea
-                        rows={5}
-                        value={selectedBlock.notes}
-                        onChange={(e) => handleUpdateBlockMeta("notes", e.target.value)}
-                        placeholder="Add modeling/design notes here..."
-                        style={{
-                          width: "100%",
-                          background: T.surf2,
-                          border: `1px solid ${T.border2}`,
-                          borderRadius: 8,
-                          padding: "10px 12px",
-                          color: T.text2,
-                          fontSize: "0.8rem",
-                          outline: "none",
-                          resize: "vertical",
-                          boxSizing: "border-box",
-                          fontFamily: "inherit"
                         }}
                       />
                     </div>
@@ -1586,7 +1556,7 @@ export default function AlgorithmDesigner() {
                     border: `1px dashed ${T.border2}`,
                     borderRadius: 10
                   }}>
-                    Select a node module on the canvas to inspect or edit its properties.
+                    Select a placeholder shape on the canvas to inspect its block specifications.
                   </div>
                 )}
               </aside>
