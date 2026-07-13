@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
+import Sidebar from "./components/Sidebar";
+import AlgorithmHeader from "./components/AlgorithmHeader";
+import WorkspacePanel from "./components/WorkspacePanel";
+import FormulaEditor from "./components/FormulaEditor";
+import PipelineCanvas from "./components/PipelineCanvas";
+import FlowchartCanvas from "./components/FlowchartCanvas";
+import VersionHistory from "./components/VersionHistory";
+import ReviewValidation from "./components/ReviewValidation";
 
 // Design tokens matching App.jsx and ResearchLab.jsx
 const T = {
@@ -185,21 +193,6 @@ const DEFAULT_ALGORITHMS = [
   }
 ];
 
-const AVAILABLE_BLOCK_TYPES = [
-  "Input Data",
-  "Data Validation",
-  "Compression",
-  "DNA Encoding",
-  "Error Correction",
-  "Metadata Generator",
-  "Storage Layer",
-  "Retrieval Layer",
-  "DNA Decoding",
-  "Verification",
-  "Output"
-];
-
-// Description mappings for blocks
 const BLOCK_DESCRIPTIONS = {
   "Input Data": "Specifies primary data source files or streams (e.g., FASTA, CSV, binary formats).",
   "Data Validation": "Performs quality score filters, structural checksum audits, and sequencing error validations.",
@@ -213,13 +206,6 @@ const BLOCK_DESCRIPTIONS = {
   "Verification": "Validates final reconstructed payloads against original input digital signatures/checksums.",
   "Output": "Specifies the terminal endpoint, such as molecular synthesis hardware or decoded output files."
 };
-
-const FLOWCHART_PLACEHOLDER_BLOCKS = [
-  { id: "f_start", type: "Start", x: 180, y: 50, description: "Entry coordinate: Initializes alignment parameter values." },
-  { id: "f_process", type: "Process", x: 140, y: 150, description: "Applies dynamic programming heuristics (Smith-Waterman score iteration)." },
-  { id: "f_decision", type: "Decision", x: 130, y: 260, description: "Evaluates score boundary limits against target parameters." },
-  { id: "f_end", type: "End", x: 180, y: 390, description: "Saves finalized alignment results and returns metadata map." }
-];
 
 export default function AlgorithmDesigner() {
   const [algorithms, setAlgorithms] = useState(DEFAULT_ALGORITHMS);
@@ -276,13 +262,19 @@ export default function AlgorithmDesigner() {
   const [reviewRecommendation, setReviewRecommendation] = useState("");
   const [approvalStatus, setApprovalStatus] = useState("Approved");
 
-  // Refs
-  const canvasRef = useRef(null);
-  const dragRef = useRef(null);
-
   const showToast = (msg, type = "success") => {
     setToastMessage({ msg, type });
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Zoom handlers definition
+  const handleZoomIn = () => setZoom(z => Math.min(1.8, z + 0.1));
+  const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.1));
+  const handleZoomReset = () => {
+    setZoom(1.0);
+    setPanX(0);
+    setPanY(0);
+    showToast("Canvas viewport reset.", "info");
   };
 
   // ── DYNAMIC SYNC WHEN ALGORITHM SELECTION CHANGES ──
@@ -633,121 +625,24 @@ export default function AlgorithmDesigner() {
     showToast(`Added ${type} block.`, "success");
   };
 
-  // Block dragging & Pan interactions
-  const handleBlockMouseDown = (e, blockId) => {
-    e.stopPropagation();
-    setSelectedFormulaBlockId(blockId);
-    setSelectedConnectionId(null);
-
-    const block = blocks.find(b => b.id === blockId);
-    if (!block) return;
-
-    dragRef.current = {
-      blockId,
-      startX: e.clientX,
-      startY: e.clientY,
-      initialX: block.x,
-      initialY: block.y,
-      hasMoved: false
-    };
-
-    pushToHistory(blocks, connections);
-
-    document.addEventListener("mousemove", handleBlockMouseMove);
-    document.addEventListener("mouseup", handleBlockMouseUp);
-  };
-
-  const handleBlockMouseMove = (e) => {
-    if (!dragRef.current) return;
-    const { blockId, startX, startY, initialX, initialY } = dragRef.current;
-
-    const dx = (e.clientX - startX) / zoom;
-    const dy = (e.clientY - startY) / zoom;
-
-    dragRef.current.hasMoved = true;
-
-    setBlocks(prev => prev.map(b => {
-      if (b.id === blockId) {
-        return {
-          ...b,
-          x: Math.round(initialX + dx),
-          y: Math.round(initialY + dy)
-        };
-      }
-      return b;
-    }));
-  };
-
-  const handleBlockMouseUp = () => {
-    document.removeEventListener("mousemove", handleBlockMouseMove);
-    document.removeEventListener("mouseup", handleBlockMouseUp);
-    if (dragRef.current && !dragRef.current.hasMoved) {
-      setHistory(prev => prev.slice(0, -1));
-    }
-    dragRef.current = null;
-  };
-
-  const handleCanvasMouseDown = (e) => {
-    if (e.button === 2 || e.shiftKey) {
-      e.preventDefault();
-      setIsPanning(true);
-      setPanStart({ x: e.clientX - panX, y: e.clientY - panY });
+  const handleDeleteSelectedElement = () => {
+    if (selectedBlockId) {
+      pushToHistory(blocks, connections);
+      setBlocks(prev => prev.filter(b => b.id !== selectedBlockId));
+      setConnections(prev => prev.filter(c => c.from !== selectedBlockId && c.to !== selectedBlockId));
+      setSelectedFormulaBlockId(null);
+      showToast("Block and its connections deleted.", "success");
+    } else if (selectedConnectionId) {
+      pushToHistory(blocks, connections);
+      setConnections(prev => prev.filter(c => c.id !== selectedConnectionId));
+      setSelectedConnectionId(null);
+      showToast("Connection deleted.", "success");
+    } else {
+      showToast("Select a block or arrow to delete.", "error");
     }
   };
 
-  const handleCanvasMouseMove = (e) => {
-    if (isPanning) {
-      setPanX(e.clientX - panStart.x);
-      setPanY(e.clientY - panStart.y);
-    }
-  };
-
-  const handleCanvasMouseUp = () => {
-    setIsPanning(false);
-  };
-
-  const handlePortMouseDown = (e, blockId) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setConnectingFromBlockId(blockId);
-    document.addEventListener("mouseup", handleGlobalMouseUpForConnection);
-  };
-
-  const handlePortMouseUp = (e, targetBlockId) => {
-    e.stopPropagation();
-    if (connectingFromBlockId && connectingFromBlockId !== targetBlockId) {
-      const exists = connections.some(c => c.from === connectingFromBlockId && c.to === targetBlockId);
-      if (exists) {
-        showToast("Connection already exists.", "error");
-      } else {
-        pushToHistory(blocks, connections);
-        const newConn = {
-          id: `c_${Date.now()}`,
-          from: connectingFromBlockId,
-          to: targetBlockId
-        };
-        setConnections(prev => [...prev, newConn]);
-        showToast("Blocks connected successfully.", "success");
-      }
-    }
-    setConnectingFromBlockId(null);
-    document.removeEventListener("mouseup", handleGlobalMouseUpForConnection);
-  };
-
-  const handleGlobalMouseUpForConnection = () => {
-    setConnectingFromBlockId(null);
-    document.removeEventListener("mouseup", handleGlobalMouseUpForConnection);
-  };
-
-  const handleZoomIn = () => setZoom(z => Math.min(1.8, z + 0.1));
-  const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.1));
-  const handleZoomReset = () => {
-    setZoom(1.0);
-    setPanX(0);
-    setPanY(0);
-    showToast("Canvas viewport reset.", "info");
-  };
-
+  // Auto Layout algorithm (Simple Horizontal Rank positioning)
   const handleAutoLayout = () => {
     if (blocks.length === 0) return;
     pushToHistory(blocks, connections);
@@ -788,23 +683,6 @@ export default function AlgorithmDesigner() {
     showToast("Auto Layout executed.", "info");
   };
 
-  const handleDeleteSelectedElement = () => {
-    if (selectedBlockId) {
-      pushToHistory(blocks, connections);
-      setBlocks(prev => prev.filter(b => b.id !== selectedBlockId));
-      setConnections(prev => prev.filter(c => c.from !== selectedBlockId && c.to !== selectedBlockId));
-      setSelectedFormulaBlockId(null);
-      showToast("Block and its connections deleted.", "success");
-    } else if (selectedConnectionId) {
-      pushToHistory(blocks, connections);
-      setConnections(prev => prev.filter(c => c.id !== selectedConnectionId));
-      setSelectedConnectionId(null);
-      showToast("Connection deleted.", "success");
-    } else {
-      showToast("Select a block or arrow to delete.", "error");
-    }
-  };
-
   const handleUpdateBlockMeta = (key, value) => {
     setBlocks(prev => prev.map(b => {
       if (b.id === selectedBlockId) {
@@ -814,7 +692,7 @@ export default function AlgorithmDesigner() {
     }));
   };
 
-  // ── PIPELINE VALIDATION ENGINE (Bottom Panel) ──
+  // ── PIPELINE VALIDATION ENGINE ──
   const getPipelineValidation = () => {
     if (blocks.length === 0) {
       return {
@@ -867,27 +745,6 @@ export default function AlgorithmDesigner() {
   // Active elements derived
   const activeAlgorithm = algorithms.find(a => a.id === selectedId) || null;
   const activeFormulas = activeAlgorithm?.formulas || [];
-  const activeVersions = activeAlgorithm?.versions || [];
-  const selectedBlock = blocks.find(b => b.id === selectedBlockId) || null;
-
-  // Filter version history list based on search and status filters
-  const filteredVersions = activeVersions.filter(v => {
-    const matchesSearch = v.number.toLowerCase().includes(versionSearch.toLowerCase()) ||
-                          v.author.toLowerCase().includes(versionSearch.toLowerCase()) ||
-                          v.description.toLowerCase().includes(versionSearch.toLowerCase());
-    const matchesStatus = versionStatusFilter === "All" || v.status === versionStatusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const selectedFlowchartBlock = FLOWCHART_PLACEHOLDER_BLOCKS.find(b => b.id === selectedFlowchartBlockId) || null;
-
-  // Sync / Calculate validation checklist fields (STEP 7F)
-  const isAlgNamePresent = !!algName.trim();
-  const isObjectiveCompleted = !!objective.trim();
-  const isFormulaAdded = activeFormulas.length > 0;
-  const isPipelineCreated = blocks.length > 0;
-  const isFlowchartAvailable = FLOWCHART_PLACEHOLDER_BLOCKS.length > 0;
-  const isDocumentationComplete = !!researchNotes.trim() && !!problemStatement.trim();
 
   // Selected algorithm review details
   const reviewMeta = activeAlgorithm?.review || {
@@ -895,6 +752,29 @@ export default function AlgorithmDesigner() {
     readability: "Good",
     innovationScore: 80,
     validationStatus: "Pending"
+  };
+
+  // Mockup save review notes
+  const handleSaveReviewNotes = () => {
+    if (selectedId) {
+      setAlgorithms(prev => prev.map(alg => {
+        if (alg.id === selectedId) {
+          return {
+            ...alg,
+            review: {
+              ...alg.review,
+              notes: reviewNotes,
+              recommendation: reviewRecommendation,
+              approvalStatus
+            }
+          };
+        }
+        return alg;
+      }));
+      showToast("Audit review notes saved!", "success");
+    } else {
+      showToast("Please save algorithm draft first.", "error");
+    }
   };
 
   return (
@@ -906,30 +786,6 @@ export default function AlgorithmDesigner() {
       flexDirection: "column",
       fontFamily: "'Inter', system-ui, sans-serif"
     }}>
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div style={{
-          position: "fixed",
-          top: 20,
-          right: 20,
-          zIndex: 9999,
-          background: toastMessage.type === "error" ? "#2a0a10" : toastMessage.type === "info" ? "#0a1530" : "#002a1a",
-          border: `1px solid ${toastMessage.type === "error" ? T.red : toastMessage.type === "info" ? T.accent : T.green}`,
-          borderRadius: 8,
-          padding: "12px 20px",
-          color: T.text1,
-          fontSize: "0.84rem",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          animation: "slideIn 0.2s ease"
-        }}>
-          <span>{toastMessage.type === "error" ? "⚠️" : toastMessage.type === "info" ? "ℹ️" : "✅"}</span>
-          <span>{toastMessage.msg}</span>
-        </div>
-      )}
-
       {/* Dynamic Tab Switcher Bar */}
       <div style={{
         background: T.surf,
@@ -978,105 +834,15 @@ export default function AlgorithmDesigner() {
         flexWrap: "wrap",
         minHeight: "calc(100vh - 110px)"
       }}>
-        {/* ── ALGORITHM SIDEBAR SELECTOR ── */}
-        <aside style={{
-          width: "280px",
-          background: T.surf,
-          borderRight: `1px solid ${T.border}`,
-          padding: "20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 20,
-          boxSizing: "border-box",
-          flexShrink: 0
-        }}>
-          <button
-            onClick={handleCreateNewAlgorithm}
-            style={{
-              width: "100%",
-              padding: "11px",
-              background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: "0.82rem",
-              cursor: "pointer",
-              transition: "opacity 0.15s"
-            }}
-            onMouseEnter={e => e.currentTarget.style.opacity = 0.9}
-            onMouseLeave={e => e.currentTarget.style.opacity = 1}
-          >
-            + Create New Draft
-          </button>
-
-          {/* Section: My Algorithms */}
-          <div>
-            <h4 style={{ fontSize: "0.74rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 10px 0" }}>
-              My Algorithms ({algorithms.length})
-            </h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {algorithms.map(alg => (
-                <div
-                  key={alg.id}
-                  onClick={() => handleSelectAlgorithm(alg)}
-                  style={{
-                    background: selectedId === alg.id ? `${T.accent}15` : T.surf2,
-                    border: `1px solid ${selectedId === alg.id ? T.accent : T.border2}`,
-                    borderRadius: 8,
-                    padding: "10px 12px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    transition: "all 0.15s"
-                  }}
-                >
-                  <div style={{ minWidth: 0, flex: 1, marginRight: 8 }}>
-                    <div style={{
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                      color: selectedId === alg.id ? T.accent : T.text1,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis"
-                    }}>{alg.name || "Untitled Draft"}</div>
-                    <div style={{ fontSize: "0.66rem", color: T.text3 }}>{alg.category}</div>
-                  </div>
-                  <button
-                    onClick={(e) => toggleFavorite(alg.id, e)}
-                    style={{ background: "none", border: "none", color: alg.favorite ? T.yellow : T.text3, cursor: "pointer", fontSize: "1rem", padding: 0 }}
-                  >
-                    ★
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Section: Recent */}
-          <div>
-            <h4 style={{ fontSize: "0.74rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 10px 0" }}>Recent</h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {algorithms.filter(a => a.recent).map(alg => (
-                <div
-                  key={alg.id}
-                  onClick={() => handleSelectAlgorithm(alg)}
-                  style={{
-                    background: T.surf2,
-                    border: `1px solid ${selectedId === alg.id ? T.accent : T.border}`,
-                    borderRadius: 8,
-                    padding: "8px 12px",
-                    cursor: "pointer",
-                    transition: "all 0.15s"
-                  }}
-                >
-                  <div style={{ fontSize: "0.78rem", fontWeight: 500, color: T.text2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{alg.name || "Untitled Draft"}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </aside>
+        {/* REUSABLE SIDEBAR COMPONENT */}
+        <Sidebar
+          algorithms={algorithms}
+          selectedId={selectedId}
+          onSelectAlgorithm={handleSelectAlgorithm}
+          onCreateNewAlgorithm={handleCreateNewAlgorithm}
+          onToggleFavorite={toggleFavorite}
+          T={T}
+        />
 
         {/* ── TAB DYNAMIC CONTENTS ── */}
         <div style={{
@@ -1090,710 +856,135 @@ export default function AlgorithmDesigner() {
           {/* ═══ TAB 1: METADATA DRAFT EDITOR ═══ */}
           {activeTab === "metadata" && (
             <main style={{ padding: "24px", boxSizing: "border-box", maxWidth: "800px", width: "100%", margin: "0 auto" }}>
-              <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "20px", marginBottom: "20px" }}>
-                <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: T.text1 }}>📝 Metadata Editor</h2>
-                <p style={{ margin: "4px 0 0 0", fontSize: "0.78rem", color: T.text2 }}>Specify high-level specifications and research parameters.</p>
-              </div>
+              {/* REUSABLE HEADER COMPONENT */}
+              <AlgorithmHeader selectedId={selectedId} T={T} />
+              <div style={{ height: "20px" }} />
 
-              <form onSubmit={handleSaveAlgorithmDraft} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <div>
-                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Algorithm Name *</label>
-                  <input
-                    type="text"
-                    value={algName}
-                    onChange={e => setAlgName(e.target.value)}
-                    placeholder="e.g. DNA Alignment Model v1.0"
-                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Objective</label>
-                  <input
-                    type="text"
-                    value={objective}
-                    onChange={e => setObjective(e.target.value)}
-                    placeholder="Describe design objectives..."
-                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Problem Statement</label>
-                  <textarea
-                    rows={4}
-                    value={problemStatement}
-                    onChange={e => setProblemStatement(e.target.value)}
-                    placeholder="State the challenge being solved..."
-                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Research Notes</label>
-                  <textarea
-                    rows={5}
-                    value={researchNotes}
-                    onChange={e => setResearchNotes(e.target.value)}
-                    placeholder="Literature citations..."
-                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "11px 14px", color: T.text1, fontSize: "0.88rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
-                  />
-                </div>
-
-                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                  <button type="submit" style={{ padding: "11px 24px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: "0.85rem", cursor: "pointer" }}>Save Draft</button>
-                  <button type="button" onClick={handleCancelAlgorithm} style={{ padding: "11px 24px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, color: T.text2, fontWeight: 700, fontSize: "0.85rem", cursor: "pointer" }}>Cancel</button>
-                </div>
-              </form>
+              {/* REUSABLE WORKSPACEPANEL COMPONENT */}
+              <WorkspacePanel
+                algName={algName}
+                setAlgName={setAlgName}
+                objective={objective}
+                setObjective={setObjective}
+                problemStatement={problemStatement}
+                setProblemStatement={setProblemStatement}
+                researchNotes={researchNotes}
+                setResearchNotes={setResearchNotes}
+                onSave={handleSaveAlgorithmDraft}
+                onCancel={handleCancelAlgorithm}
+                T={T}
+              />
             </main>
           )}
 
           {/* ═══ TAB 2: MATHEMATICAL FORMULAS ═══ */}
           {activeTab === "formulas" && (
-            <main style={{ padding: "24px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", boxSizing: "border-box" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "20px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: T.text1 }}>🧬 Mathematical Formula Editor</h3>
-                      <p style={{ margin: "4px 0 0 0", fontSize: "0.76rem", color: T.text2 }}>Design analytical modeling expressions.</p>
-                    </div>
-                    {activeAlgorithm && (
-                      <select
-                        value={selectedFormulaId}
-                        onChange={e => {
-                          const f = activeFormulas.find(fo => fo.id === e.target.value);
-                          if (f) handleLoadFormula(f);
-                          else handleClearFormulaFields();
-                        }}
-                        style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, padding: "6px 12px", color: T.text1, fontSize: "0.78rem", outline: "none", cursor: "pointer" }}
-                      >
-                        <option value="">-- Select Formula --</option>
-                        {activeFormulas.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                      </select>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", borderBottom: `1px solid ${T.border2}`, paddingBottom: "14px" }}>
-                    <button onClick={handleNewFormula} style={{ padding: "7px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.cyan, fontWeight: 700, fontSize: "0.74rem", cursor: "pointer" }}>+ New Formula</button>
-                    <button onClick={handleSaveFormula} style={{ padding: "7px 12px", background: `${T.green}18`, border: `1px solid ${T.green}40`, borderRadius: 6, color: T.green, fontWeight: 700, fontSize: "0.74rem", cursor: "pointer" }}>✓ Save Formula</button>
-                    <button onClick={handleDuplicateFormula} style={{ padding: "7px 12px", background: `${T.accent}18`, border: `1px solid ${T.accent}40`, borderRadius: 6, color: T.text1, fontWeight: 700, fontSize: "0.74rem", cursor: "pointer" }}>📋 Duplicate</button>
-                    <button onClick={handleDeleteFormula} style={{ padding: "7px 12px", background: `${T.red}18`, border: `1px solid ${T.red}40`, borderRadius: 6, color: T.red, fontWeight: 700, fontSize: "0.74rem", cursor: "pointer", marginLeft: "auto" }}>🗑 Delete</button>
-                  </div>
-
-                  <div>
-                    <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Formula Name *</label>
-                    <input type="text" value={formulaName} onChange={e => setFormulaName(e.target.value)} placeholder="e.g. Affinity Score" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.84rem", outline: "none" }} />
-                  </div>
-
-                  <div>
-                    <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Mathematical Expression *</label>
-                    <input type="text" value={formulaExpression} onChange={e => setFormulaExpression(e.target.value)} placeholder="e.g. S = Matches / Length" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.cyan, fontSize: "0.95rem", fontFamily: "monospace", outline: "none" }} />
-                  </div>
-
-                  <div>
-                    <label style={{ color: T.text3, fontSize: "0.68rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Formula Expression Live Preview</label>
-                    <div style={{ background: "#02020a", border: `1px solid ${T.border2}`, borderRadius: 8, padding: "16px", display: "flex", alignItems: "center", justifyContent: "center", minHeight: "56px", fontFamily: "monospace", fontSize: "1.1rem", color: formulaExpression ? T.cyan : T.text3, boxShadow: "inset 0 4px 12px rgba(0,0,0,0.8)" }}>
-                      {formulaExpression || "Awaiting mathematical expression input..."}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Description</label>
-                    <textarea rows={2} value={formulaDescription} onChange={e => setFormulaDescription(e.target.value)} placeholder="Description of biological mechanism..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.84rem", outline: "none", resize: "none", fontFamily: "inherit" }} />
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                    <div>
-                      <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Variables</label>
-                      <textarea rows={3} value={formulaVariables} onChange={e => setFormulaVariables(e.target.value)} placeholder="M = match count..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.82rem", outline: "none", resize: "vertical", fontFamily: "monospace" }} />
-                    </div>
-                    <div>
-                      <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Units</label>
-                      <input type="text" value={formulaUnits} onChange={e => setFormulaUnits(e.target.value)} placeholder="e.g. score ratio" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.84rem", outline: "none" }} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </main>
+            <FormulaEditor
+              activeAlgorithm={activeAlgorithm}
+              selectedFormulaId={selectedFormulaId}
+              setSelectedFormulaId={setSelectedFormulaId}
+              formulaName={formulaName}
+              setFormulaName={setFormulaName}
+              formulaExpression={formulaExpression}
+              setFormulaExpression={setFormulaExpression}
+              formulaDescription={formulaDescription}
+              setFormulaDescription={setFormulaDescription}
+              formulaVariables={formulaVariables}
+              setFormulaVariables={setFormulaVariables}
+              formulaUnits={formulaUnits}
+              setFormulaUnits={setFormulaUnits}
+              onNewFormula={handleNewFormula}
+              onSaveFormula={handleSaveFormula}
+              onDuplicateFormula={handleDuplicateFormula}
+              onDeleteFormula={handleDeleteFormula}
+              onLoadFormula={handleLoadFormula}
+              onClearFormulaFields={handleClearFormulaFields}
+              T={T}
+            />
           )}
 
           {/* ═══ TAB 3: VISUAL WORKFLOW CANVAS (PIPELINE BUILDER) ═══ */}
           {activeTab === "pipeline" && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", position: "relative" }}>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden", borderRight: `1px solid ${T.border}` }}>
-                <div style={{ padding: "10px 16px", background: T.surf, borderBottom: `1px solid ${T.border2}`, display: "flex", gap: 8, overflowX: "auto", alignItems: "center", whiteSpace: "nowrap", flexShrink: 0 }}>
-                  <span style={{ fontSize: "0.72rem", color: T.text3, fontWeight: 700, textTransform: "uppercase", marginRight: 6 }}>Toolbox</span>
-                  {AVAILABLE_BLOCK_TYPES.map(type => (
-                    <button key={type} onClick={() => handleAddBlock(type)} style={{ padding: "5px 11px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.72rem", fontWeight: 600, cursor: "pointer" }}>+ {type}</button>
-                  ))}
-                </div>
-
-                <div style={{ padding: "10px 16px", background: T.surf, borderBottom: `1px solid ${T.border}`, display: "flex", gap: 12, alignItems: "center", flexShrink: 0 }}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button disabled={history.length === 0} onClick={handleUndo} style={{ padding: "6px 12px", background: history.length === 0 ? "none" : T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: history.length === 0 ? T.text3 : T.text1, fontSize: "0.74rem", cursor: history.length === 0 ? "default" : "pointer" }}>↩ Undo</button>
-                    <button disabled={redoStack.length === 0} onClick={handleRedo} style={{ padding: "6px 12px", background: redoStack.length === 0 ? "none" : T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: redoStack.length === 0 ? T.text3 : T.text1, fontSize: "0.74rem", cursor: redoStack.length === 0 ? "default" : "pointer" }}>↪ Redo</button>
-                  </div>
-                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <button onClick={handleZoomIn} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", cursor: "pointer" }}>➕ Zoom In</button>
-                    <span style={{ fontSize: "0.74rem", color: T.text2, minWidth: "36px", textAlign: "center" }}>{Math.round(zoom * 100)}%</span>
-                    <button onClick={handleZoomOut} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", cursor: "pointer" }}>➖ Zoom Out</button>
-                    <button onClick={handleZoomReset} style={{ padding: "4px 10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text2, fontSize: "0.74rem", cursor: "pointer" }}>⊙ Fit</button>
-                  </div>
-                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
-                  <button onClick={handleAutoLayout} style={{ padding: "6px 12px", background: `${T.cyan}12`, border: `1px solid ${T.cyan}40`, borderRadius: 6, color: T.cyan, fontSize: "0.74rem", fontWeight: 700, cursor: "pointer" }}>🪄 Auto Layout</button>
-                  <button onClick={handleDeleteSelectedElement} disabled={!selectedBlockId && !selectedConnectionId} style={{ padding: "6px 12px", background: (!selectedBlockId && !selectedConnectionId) ? "none" : `${T.red}18`, border: `1px solid ${(!selectedBlockId && !selectedConnectionId) ? T.border2 : T.red + "40"}`, borderRadius: 6, color: (!selectedBlockId && !selectedConnectionId) ? T.text3 : T.red, fontSize: "0.74rem", fontWeight: 700, cursor: (!selectedBlockId && !selectedConnectionId) ? "default" : "pointer", marginLeft: "auto" }}>🗑 Delete Selected</button>
-                </div>
-
-                <div ref={canvasRef} onMouseDown={handleCanvasMouseDown} onMouseMove={handleCanvasMouseMove} onMouseUp={handleCanvasMouseUp} style={{ flex: 1, position: "relative", overflow: "hidden", cursor: isPanning ? "grabbing" : "default", userSelect: "none" }}>
-                  <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${T.border2} 1px, transparent 1px)`, backgroundSize: "24px 24px", opacity: 0.8 }} />
-                  <div style={{ position: "absolute", inset: 0, transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`, transformOrigin: "top left", transition: isPanning ? "none" : "transform 0.1s ease" }}>
-                    <svg style={{ position: "absolute", width: "3000px", height: "2000px", pointerEvents: "none", overflow: "visible", zIndex: 1 }}>
-                      <defs>
-                        <marker id="arrowhead" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill={T.cyan} /></marker>
-                      </defs>
-                      {connections.map(conn => {
-                        const fromNode = blocks.find(b => b.id === conn.from);
-                        const toNode = blocks.find(b => b.id === conn.to);
-                        if (!fromNode || !toNode) return null;
-                        const x1 = fromNode.x + 160;
-                        const y1 = fromNode.y + 40;
-                        const x2 = toNode.x;
-                        const y2 = toNode.y + 40;
-                        const dx = Math.abs(x2 - x1) * 0.5;
-                        const pathD = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-                        const isSelected = selectedConnectionId === conn.id;
-                        return (
-                          <g key={conn.id} style={{ pointerEvents: "all" }}>
-                            <path d={pathD} stroke="transparent" strokeWidth={12} fill="none" cursor="pointer" onClick={(e) => { e.stopPropagation(); setSelectedConnectionId(conn.id); setSelectedFormulaBlockId(null); }} />
-                            <path d={pathD} stroke={isSelected ? T.cyan : `${T.cyan}99`} strokeWidth={isSelected ? 4 : 2} fill="none" markerEnd="url(#arrowhead)" />
-                          </g>
-                        );
-                      })}
-                    </svg>
-
-                    {blocks.map(block => {
-                      const isSelected = selectedBlockId === block.id;
-                      return (
-                        <div key={block.id} style={{ position: "absolute", left: block.x, top: block.y, width: "160px", height: "80px", background: isSelected ? T.surf2 : T.surf, border: `2px solid ${isSelected ? T.cyan : T.border2}`, borderRadius: "10px", zIndex: isSelected ? 10 : 5, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: isSelected ? `0 0 16px ${T.cyan}25` : "0 4px 12px rgba(0,0,0,0.5)" }} onMouseDown={(e) => handleBlockMouseDown(e, block.id)}>
-                          <div style={{ background: `${T.border}b0`, padding: "6px 10px", borderBottom: `1px solid ${T.border2}`, fontWeight: 700, fontSize: "0.72rem", color: isSelected ? T.cyan : T.text2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{block.type}</div>
-                          <div style={{ flex: 1, padding: "6px 10px", fontSize: "0.64rem", color: T.text3, display: "flex", alignItems: "center" }}>
-                            <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              ID: {block.id.slice(0, 5)}...
-                              {block.params && <div style={{ color: T.text2, marginTop: 2, fontSize: "0.6rem" }}>{block.params.split("\n")[0]}</div>}
-                            </div>
-                          </div>
-                          <div onMouseUp={(e) => handlePortMouseUp(e, block.id)} style={{ position: "absolute", left: "-6px", top: "34px", width: "12px", height: "12px", borderRadius: "50%", background: T.surf2, border: `2px solid ${T.cyan}`, zIndex: 20, cursor: "pointer" }} />
-                          <div onMouseDown={(e) => handlePortMouseDown(e, block.id)} style={{ position: "absolute", right: "-6px", top: "34px", width: "12px", height: "12px", borderRadius: "50%", background: T.cyan, border: `2px solid ${T.surf}`, zIndex: 20, cursor: "pointer" }} />
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div style={{ position: "absolute", bottom: 16, right: 16, width: "120px", height: "80px", background: T.glass, border: `1px solid ${T.border2}`, borderRadius: 8, overflow: "hidden", pointerEvents: "none", zIndex: 30, backdropFilter: "blur(6px)" }}>
-                    <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${T.border} 1px, transparent 1px)`, backgroundSize: "8px 8px" }} />
-                    {blocks.map(b => (
-                      <div key={b.id} style={{ position: "absolute", left: `${Math.max(2, Math.min(100, b.x * 0.12 + 20))}%`, top: `${Math.max(2, Math.min(70, b.y * 0.12 + 20))}%`, width: "16px", height: "8px", background: selectedBlockId === b.id ? T.cyan : T.text3, borderRadius: "1px", opacity: 0.8 }} />
-                    ))}
-                    <div style={{ position: "absolute", bottom: 4, left: 6, fontSize: "0.58rem", color: T.text3, fontWeight: 700 }}>MINI MAP</div>
-                  </div>
-                </div>
-
-                <div style={{ height: "72px", background: T.surf, borderTop: `1px solid ${T.border}`, padding: "12px 18px", display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
-                  <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: validation.color, boxShadow: `0 0 10px ${validation.color}` }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "0.72rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>{validation.status}</div>
-                    <div style={{ fontSize: "0.8rem", color: T.text1, marginTop: 2, fontWeight: 500 }}>{validation.message}</div>
-                  </div>
-                  <div style={{ fontSize: "0.68rem", color: T.text3, textAlign: "right" }}>SYSTEM NOMINAL<br />Pipeline Validation Engine v1.0</div>
-                </div>
-              </div>
-
-              <aside style={{ width: "300px", background: T.surf, padding: "20px", display: "flex", flexDirection: "column", gap: 16, flexShrink: 0, boxSizing: "border-box" }}>
-                <h3 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: 800, color: T.text1 }}>⚙️ Block Properties</h3>
-                {selectedBlock ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px" }}>
-                      <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Type</div>
-                      <div style={{ fontSize: "0.86rem", fontWeight: 700, color: T.cyan, marginTop: 2 }}>{selectedBlock.type}</div>
-                      <div style={{ fontSize: "0.62rem", color: T.text3, marginTop: 4 }}>ID: {selectedBlock.id}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 4 }}>Block Description</div>
-                      <div style={{ fontSize: "0.78rem", color: T.text2, lineHeight: 1.5 }}>{BLOCK_DESCRIPTIONS[selectedBlock.type] || "No description available."}</div>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Block Parameters</label>
-                      <textarea rows={4} value={selectedBlock.params} onChange={(e) => handleUpdateBlockMeta("params", e.target.value)} placeholder="e.g. key: value" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.8rem", fontFamily: "monospace", outline: "none", resize: "vertical", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Design Notes</label>
-                      <textarea rows={5} value={selectedBlock.notes} onChange={(e) => handleUpdateBlockMeta("notes", e.target.value)} placeholder="Add modeling/design notes here..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text2, fontSize: "0.8rem", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }} />
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ textAlign: "center", padding: "40px 10px", color: T.text3, fontSize: "0.8rem", border: `1px dashed ${T.border2}`, borderRadius: 10 }}>Select a node module on the canvas to inspect or edit its properties.</div>
-                )}
-              </aside>
-            </div>
+            <PipelineCanvas
+              blocks={blocks}
+              setBlocks={setBlocks}
+              connections={connections}
+              setConnections={setConnections}
+              selectedBlockId={selectedBlockId}
+              setSelectedFormulaBlockId={setSelectedFormulaBlockId}
+              selectedConnectionId={selectedConnectionId}
+              setSelectedConnectionId={setSelectedConnectionId}
+              zoom={zoom}
+              setZoom={setZoom}
+              panX={panX}
+              setPanX={setPanX}
+              panY={panY}
+              setPanY={setPanY}
+              isPanning={isPanning}
+              setIsPanning={setIsPanning}
+              panStart={panStart}
+              setPanStart={setPanStart}
+              connectingFromBlockId={connectingFromBlockId}
+              setConnectingFromBlockId={setConnectingFromBlockId}
+              history={history}
+              redoStack={redoStack}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              onAddBlock={handleAddBlock}
+              onDeleteSelected={handleDeleteSelectedElement}
+              onAutoLayout={handleAutoLayout}
+              onUpdateBlockMeta={handleUpdateBlockMeta}
+              validation={validation}
+              T={T}
+            />
           )}
 
           {/* ═══ TAB 4: VISUAL FLOWCHART BUILDER ═══ */}
           {activeTab === "flowchart" && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "row", overflow: "hidden", position: "relative" }}>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden", borderRight: `1px solid ${T.border}` }}>
-                <div style={{ padding: "12px 20px", background: T.surf, borderBottom: `1px solid ${T.border}`, display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.green, boxShadow: `0 0 8px ${T.green}` }} />
-                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: T.green, letterSpacing: "0.5px" }}>Flowchart Builder Ready</span>
-                  </div>
-                  <div style={{ height: "16px", width: "1px", background: T.border2 }} />
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => showToast("Add Block action triggered (Placeholder only)", "info")} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Add Block</button>
-                    <button onClick={() => showToast("Delete Block action triggered (Placeholder only)", "info")} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Delete Block</button>
-                    <button onClick={() => { setFlowchartZoom(z => Math.min(1.5, z + 0.1)); showToast("Zoomed In", "info"); }} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Zoom In</button>
-                    <button onClick={() => { setFlowchartZoom(z => Math.max(0.6, z - 0.1)); showToast("Zoomed Out", "info"); }} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Zoom Out</button>
-                    <button onClick={() => { setFlowchartZoom(1.0); showToast("Reset Flowchart View", "info"); }} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text2, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Reset View</button>
-                  </div>
-                </div>
-
-                <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-                  <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${T.border2} 1px, transparent 1px)`, backgroundSize: "20px 24px", opacity: 0.8 }} />
-                  <div style={{ position: "absolute", inset: 0, transform: `scale(${flowchartZoom})`, transformOrigin: "top left", transition: "transform 0.15s ease", padding: "30px", boxSizing: "border-box" }}>
-                    <svg style={{ position: "absolute", width: "100%", height: "100%", pointerEvents: "none", zIndex: 1, overflow: "visible" }}>
-                      <g>
-                        <line x1="240" y1="90" x2="240" y2="150" stroke={T.text3} strokeWidth={2} />
-                        <polygon points="240,150 236,142 244,142" fill={T.text3} />
-                        <line x1="240" y1="200" x2="240" y2="260" stroke={T.text3} strokeWidth={2} />
-                        <polygon points="240,260 236,252 244,252" fill={T.text3} />
-                        <line x1="240" y1="340" x2="240" y2="390" stroke={T.text3} strokeWidth={2} />
-                        <polygon points="240,390 236,382 244,382" fill={T.text3} />
-                      </g>
-                    </svg>
-
-                    {FLOWCHART_PLACEHOLDER_BLOCKS.map(block => {
-                      const isSelected = selectedFlowchartBlockId === block.id;
-                      let shapeStyle = {};
-                      if (block.type === "Start" || block.type === "End") {
-                        shapeStyle = { borderRadius: "24px", width: "120px", height: "40px" };
-                      } else if (block.type === "Decision") {
-                        shapeStyle = { width: "80px", height: "80px", transform: "rotate(45deg)", borderRadius: "6px" };
-                      } else {
-                        shapeStyle = { borderRadius: "6px", width: "200px", height: "50px" };
-                      }
-                      const xCoord = block.type === "Decision" ? block.x + 60 : block.x;
-                      const yCoord = block.y;
-                      return (
-                        <div key={block.id} onClick={() => setSelectedFlowchartBlockId(isSelected ? null : block.id)} style={{ position: "absolute", left: xCoord, top: yCoord, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s", ...shapeStyle, background: isSelected ? T.surf2 : T.surf, border: `2px solid ${isSelected ? T.cyan : block.type === "Start" ? T.green : block.type === "End" ? T.red : block.type === "Decision" ? T.yellow : T.accent}`, boxShadow: isSelected ? `0 0 16px ${T.cyan}35` : "0 4px 8px rgba(0,0,0,0.4)" }}>
-                          <div style={{ transform: block.type === "Decision" ? "rotate(-45deg)" : "none", fontSize: "0.78rem", fontWeight: 700, color: isSelected ? T.cyan : T.text1, textAlign: "center", padding: "6px" }}>{block.type}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div style={{ height: "72px", background: T.surf, borderTop: `1px solid ${T.border}`, padding: "12px 18px", display: "flex", gap: 16, alignItems: "center", flexShrink: 0 }}>
-                  <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: T.green, boxShadow: `0 0 10px ${T.green}` }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "0.72rem", color: T.text3, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>FLOWCHART MOCKUP READY</div>
-                    <div style={{ fontSize: "0.8rem", color: T.text1, marginTop: 2, fontWeight: 500 }}>✓ Displaying placeholder blocks only. Dragging and connectors are disabled.</div>
-                  </div>
-                  <div style={{ fontSize: "0.68rem", color: T.text3, textAlign: "right" }}>PREVIEW MODE<br />Flowchart Visual Grid Layout</div>
-                </div>
-              </div>
-
-              <aside style={{ width: "300px", background: T.surf, padding: "20px", display: "flex", flexDirection: "column", gap: 16, flexShrink: 0, boxSizing: "border-box" }}>
-                <h3 style={{ margin: "0 0 4px 0", fontSize: "0.95rem", fontWeight: 800, color: T.text1 }}>⚙️ Flowchart Properties</h3>
-                {selectedFlowchartBlock ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px" }}>
-                      <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Type</div>
-                      <div style={{ fontSize: "0.86rem", fontWeight: 700, color: selectedFlowchartBlock.type === "Start" ? T.green : selectedFlowchartBlock.type === "End" ? T.red : selectedFlowchartBlock.type === "Decision" ? T.yellow : T.accent, marginTop: 2 }}>{selectedFlowchartBlock.type}</div>
-                      <div style={{ fontSize: "0.62rem", color: T.text3, marginTop: 4 }}>ID: {selectedFlowchartBlock.id}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 4 }}>Block Description</div>
-                      <div style={{ fontSize: "0.78rem", color: T.text2, lineHeight: 1.5 }}>{selectedFlowchartBlock.description}</div>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, display: "block", marginBottom: 6 }}>Block Parameters</label>
-                      <textarea rows={3} defaultValue="Read-only parameter preview" disabled style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text3, fontSize: "0.8rem", fontFamily: "monospace", outline: "none", resize: "none", cursor: "not-allowed", boxSizing: "border-box" }} />
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ textAlign: "center", padding: "40px 10px", color: T.text3, fontSize: "0.8rem", border: `1px dashed ${T.border2}`, borderRadius: 10 }}>Select a placeholder shape on the canvas to inspect its block specifications.</div>
-                )}
-              </aside>
-            </div>
+            <FlowchartCanvas
+              flowchartZoom={flowchartZoom}
+              setFlowchartZoom={setFlowchartZoom}
+              selectedFlowchartBlockId={selectedFlowchartBlockId}
+              setSelectedFlowchartBlockId={setSelectedFlowchartBlockId}
+              onShowToast={showToast}
+              T={T}
+            />
           )}
 
           {/* ═══ TAB 5: VERSION HISTORY PANEL ═══ */}
           {activeTab === "version_history" && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "24px", boxSizing: "border-box", overflowY: "auto" }}>
-              <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "16px 20px", marginBottom: "20px", display: "flex", flexDirection: "row", alignItems: "center", justifyContext: "space-between", flexWrap: "wrap", gap: 16 }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: T.text1 }}>📋 Version History Timeline</h3>
-                  <p style={{ margin: "4px 0 0 0", fontSize: "0.76rem", color: T.text2 }}>Audit trail of all finalized sequence model releases and active drafts.</p>
-                </div>
-                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <input type="text" value={versionSearch} onChange={e => setVersionSearch(e.target.value)} placeholder="🔍 Search versions..." style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 14px", color: T.text1, fontSize: "0.82rem", outline: "none", width: "180px" }} />
-                  <select value={versionStatusFilter} onChange={e => setVersionStatusFilter(e.target.value)} style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 14px", color: T.text1, fontSize: "0.82rem", outline: "none", cursor: "pointer" }}>
-                    <option value="All">All Statuses</option>
-                    <option value="Draft">Draft</option>
-                    <option value="Review">Review</option>
-                    <option value="Approved">Approved</option>
-                  </select>
-                </div>
-              </div>
-
-              {filteredVersions.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "60px 20px", color: T.text3, background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12 }}>
-                  <div style={{ fontSize: "2rem", marginBottom: 10 }}>📋</div>
-                  <div>No version history items match the active filters for this algorithm.</div>
-                </div>
-              ) : (
-                <div style={{ position: "relative", paddingLeft: "24px", display: "flex", flexDirection: "column", gap: "24px" }}>
-                  <div style={{ position: "absolute", left: "7px", top: "14px", bottom: "14px", width: "2px", background: T.border2 }} />
-                  {filteredVersions.map(v => {
-                    const statusColor = v.status === "Approved" ? T.green : v.status === "Review" ? T.cyan : T.yellow;
-                    return (
-                      <div key={v.id} style={{ position: "relative", background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "18px 20px", display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
-                        <div style={{ position: "absolute", left: "-21px", top: "22px", width: "10px", height: "10px", borderRadius: "50%", background: statusColor, boxShadow: `0 0 8px ${statusColor}`, zIndex: 5 }} />
-                        <div style={{ flex: 1, minWidth: "260px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-                            <span style={{ fontSize: "1rem", fontWeight: 800, color: T.text1 }}>{v.number}</span>
-                            <span style={{ fontSize: "0.66rem", fontWeight: 800, textTransform: "uppercase", padding: "2px 8px", borderRadius: "4px", background: `${statusColor}15`, border: `1px solid ${statusColor}40`, color: statusColor }}>{v.status}</span>
-                          </div>
-                          <div style={{ fontSize: "0.74rem", color: T.text3, marginBottom: 8 }}>Released on <strong style={{ color: T.text2 }}>{v.date}</strong> by <strong style={{ color: T.text2 }}>{v.author}</strong></div>
-                          <p style={{ margin: 0, fontSize: "0.82rem", color: T.text2, lineHeight: 1.5 }}>{v.description}</p>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <button onClick={() => showToast(`View details for release: ${v.number}`, "info")} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>View</button>
-                          <button onClick={() => showToast(`Compare current draft with release: ${v.number}`, "info")} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Compare</button>
-                          <button onClick={() => showToast(`Restore operation simulated: ${v.number} parameters loaded.`, "success")} style={{ padding: "6px 12px", background: `${T.accent}12`, border: `1px solid ${T.accent}40`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Restore</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <VersionHistory
+              activeAlgorithm={activeAlgorithm}
+              versionSearch={versionSearch}
+              setVersionSearch={setVersionSearch}
+              versionStatusFilter={versionStatusFilter}
+              setVersionStatusFilter={setVersionStatusFilter}
+              onShowToast={showToast}
+              T={T}
+            />
           )}
 
-          {/* ═══ TAB 6: ALGORITHM REVIEW & VALIDATION PANEL (STEP 7F) ═══ */}
+          {/* ═══ TAB 6: ALGORITHM REVIEW & VALIDATION PANEL ═══ */}
           {activeTab === "review" && (
-            <div style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              padding: "24px",
-              boxSizing: "border-box",
-              overflowY: "auto"
-            }}>
-              {/* Header card */}
-              <div style={{
-                background: T.surf,
-                border: `1px solid ${T.border2}`,
-                borderRadius: 12,
-                padding: "20px",
-                marginBottom: "20px"
-              }}>
-                <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: T.text1 }}>
-                  🔍 Review & Validation Workspace
-                </h2>
-                <p style={{ margin: "4px 0 0 0", fontSize: "0.78rem", color: T.text2 }}>
-                  Evaluate, audit, and export the current sequence alignment model configurations.
-                </p>
-              </div>
-
-              {/* Grid content split: 1fr 1fr */}
-              <div className="review-grid" style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "24px",
-                alignItems: "start"
-              }}>
-                {/* Style override for layout wrapping */}
-                <style>{`
-                  @media (max-width: 900px) {
-                    .review-grid {
-                      grid-template-columns: 1fr !important;
-                    }
-                  }
-                `}</style>
-
-                {/* COLUMN 1: CHECKLIST & QUALITY METRICS */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                  {/* Validation Checklist Card */}
-                  <div style={{
-                    background: T.surf,
-                    border: `1px solid ${T.border2}`,
-                    borderRadius: 12,
-                    padding: "24px"
-                  }}>
-                    <h3 style={{ margin: "0 0 16px 0", fontSize: "0.9rem", fontWeight: 800, color: T.text1, display: "flex", alignItems: "center", gap: 8 }}>
-                      📋 Validation Checklist
-                    </h3>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                      {[
-                        { label: "Algorithm Name Present", checked: isAlgNamePresent },
-                        { label: "Objective Completed", checked: isObjectiveCompleted },
-                        { label: "Formula Added", checked: isFormulaAdded },
-                        { label: "Pipeline Created", checked: isPipelineCreated },
-                        { label: "Flowchart Available", checked: isFlowchartAvailable },
-                        { label: "Documentation Complete", checked: isDocumentationComplete }
-                      ].map((item, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            background: T.surf2,
-                            padding: "10px 14px",
-                            borderRadius: "8px",
-                            border: `1px solid ${T.border}`
-                          }}
-                        >
-                          <span style={{ fontSize: "0.82rem", color: T.text1, fontWeight: 500 }}>
-                            {item.label}
-                          </span>
-                          <span style={{
-                            fontSize: "0.84rem",
-                            fontWeight: 800,
-                            color: item.checked ? T.green : T.red,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6
-                          }}>
-                            {item.checked ? "✓ Complete" : "✗ Pending"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Quality Metrics Card */}
-                  <div style={{
-                    background: T.surf,
-                    border: `1px solid ${T.border2}`,
-                    borderRadius: 12,
-                    padding: "24px"
-                  }}>
-                    <h3 style={{ margin: "0 0 16px 0", fontSize: "0.9rem", fontWeight: 800, color: T.text1 }}>
-                      📊 Quality Metrics
-                    </h3>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                      {/* Completeness */}
-                      <div style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: "8px", padding: "14px" }}>
-                        <div style={{ fontSize: "0.66rem", color: T.text3, textTransform: "uppercase" }}>Completeness</div>
-                        <div style={{ fontSize: "1.4rem", fontWeight: 800, color: T.cyan, marginTop: 4 }}>
-                          {reviewMeta.completeness}%
-                        </div>
-                        <div style={{ marginTop: 6, height: "4px", background: T.border2, borderRadius: "2px" }}>
-                          <div style={{ width: `${reviewMeta.completeness}%`, height: "100%", background: T.cyan, borderRadius: "2px" }} />
-                        </div>
-                      </div>
-
-                      {/* Readability */}
-                      <div style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: "8px", padding: "14px" }}>
-                        <div style={{ fontSize: "0.66rem", color: T.text3, textTransform: "uppercase" }}>Readability</div>
-                        <div style={{ fontSize: "1.3rem", fontWeight: 800, color: T.green, marginTop: 4 }}>
-                          {reviewMeta.readability}
-                        </div>
-                        <div style={{ fontSize: "0.6rem", color: T.text3, marginTop: 4 }}>Syntactic Structure Normal</div>
-                      </div>
-
-                      {/* Innovation Score */}
-                      <div style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: "8px", padding: "14px" }}>
-                        <div style={{ fontSize: "0.66rem", color: T.text3, textTransform: "uppercase" }}>Innovation Score</div>
-                        <div style={{ fontSize: "1.4rem", fontWeight: 800, color: T.pink, marginTop: 4 }}>
-                          {reviewMeta.innovationScore}/100
-                        </div>
-                        <div style={{ fontSize: "0.6rem", color: T.text3, marginTop: 4 }}>Novel heuristic alignments</div>
-                      </div>
-
-                      {/* Validation Status */}
-                      <div style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: "8px", padding: "14px" }}>
-                        <div style={{ fontSize: "0.66rem", color: T.text3, textTransform: "uppercase" }}>Validation Status</div>
-                        <div style={{ fontSize: "1.2rem", fontWeight: 800, color: reviewMeta.validationStatus === "Verified" ? T.green : T.yellow, marginTop: 6 }}>
-                          ● {reviewMeta.validationStatus}
-                        </div>
-                        <div style={{ fontSize: "0.6rem", color: T.text3, marginTop: 4 }}>System telemetry signature ok</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* COLUMN 2: REVIEWER NOTES & EXPORTS */}
-                <div className="review-grid" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                  {/* Reviewer Notes Card */}
-                  <div style={{
-                    background: T.surf,
-                    border: `1px solid ${T.border2}`,
-                    borderRadius: 12,
-                    padding: "24px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "16px"
-                  }}>
-                    <h3 style={{ margin: "0", fontSize: "0.9rem", fontWeight: 800, color: T.text1 }}>
-                      ✍️ Reviewer Notes & Recommendations
-                    </h3>
-
-                    {/* Notes panel */}
-                    <div>
-                      <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Notes Panel</label>
-                      <textarea
-                        rows={3}
-                        value={reviewNotes}
-                        onChange={(e) => setReviewNotes(e.target.value)}
-                        placeholder="Enter literature annotations or peer audit notes here..."
-                        style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.82rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
-                      />
-                    </div>
-
-                    {/* Recommendation panel */}
-                    <div>
-                      <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Recommendation Panel</label>
-                      <textarea
-                        rows={3}
-                        value={reviewRecommendation}
-                        onChange={(e) => setReviewRecommendation(e.target.value)}
-                        placeholder="Enter operational suggestions or next alignment action items..."
-                        style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.82rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
-                      />
-                    </div>
-
-                    {/* Approval Status and save */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", alignItems: "center" }}>
-                      <div>
-                        <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Approval Status</label>
-                        <select
-                          value={approvalStatus}
-                          onChange={(e) => setApprovalStatus(e.target.value)}
-                          style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.82rem", outline: "none", cursor: "pointer" }}
-                        >
-                          <option value="Approved">Approved</option>
-                          <option value="Needs Work">Needs Work</option>
-                        </select>
-                      </div>
-
-                      {/* Mockup save review status */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (selectedId) {
-                            setAlgorithms(prev => prev.map(alg => {
-                              if (alg.id === selectedId) {
-                                return {
-                                  ...alg,
-                                  review: {
-                                    ...alg.review,
-                                    notes: reviewNotes,
-                                    recommendation: reviewRecommendation,
-                                    approvalStatus
-                                  }
-                                };
-                              }
-                              return alg;
-                            }));
-                            showToast("Audit review notes saved!", "success");
-                          } else {
-                            showToast("Please save algorithm draft first.", "error");
-                          }
-                        }}
-                        style={{
-                          width: "100%",
-                          padding: "11px",
-                          marginTop: "20px",
-                          background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
-                          border: "none",
-                          borderRadius: 8,
-                          color: "#fff",
-                          fontWeight: 700,
-                          fontSize: "0.82rem",
-                          cursor: "pointer"
-                        }}
-                      >
-                        ✓ Save Notes
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Export Section Card */}
-                  <div style={{
-                    background: T.surf,
-                    border: `1px solid ${T.border2}`,
-                    borderRadius: 12,
-                    padding: "24px"
-                  }}>
-                    <h3 style={{ margin: "0 0 12px 0", fontSize: "0.9rem", fontWeight: 800, color: T.text1 }}>
-                      📦 Export Section
-                    </h3>
-                    <p style={{ margin: "0 0 16px 0", fontSize: "0.76rem", color: T.text2 }}>
-                      Compile and download the complete sequence configuration model.
-                    </p>
-
-                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                      <button
-                        onClick={() => showToast("Exporting PDF report... (MOCKUP ONLY)", "info")}
-                        style={{
-                          flex: 1,
-                          padding: "11px",
-                          background: T.surf2,
-                          border: `1px solid ${T.border2}`,
-                          borderRadius: 8,
-                          color: T.text1,
-                          fontWeight: 700,
-                          fontSize: "0.78rem",
-                          cursor: "pointer"
-                        }}
-                      >
-                        Export PDF
-                      </button>
-                      <button
-                        onClick={() => showToast("Exporting JSON configuration model... (MOCKUP ONLY)", "info")}
-                        style={{
-                          flex: 1,
-                          padding: "11px",
-                          background: T.surf2,
-                          border: `1px solid ${T.border2}`,
-                          borderRadius: 8,
-                          color: T.cyan,
-                          fontWeight: 700,
-                          fontSize: "0.78rem",
-                          cursor: "pointer"
-                        }}
-                      >
-                        Export JSON
-                      </button>
-                      <button
-                        onClick={() => showToast("Exporting Markdown documentation... (MOCKUP ONLY)", "info")}
-                        style={{
-                          flex: 1,
-                          padding: "11px",
-                          background: T.surf2,
-                          border: `1px solid ${T.border2}`,
-                          borderRadius: 8,
-                          color: T.yellow,
-                          fontWeight: 700,
-                          fontSize: "0.78rem",
-                          cursor: "pointer"
-                        }}
-                      >
-                        Export Markdown
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ReviewValidation
+              algName={algName}
+              objective={objective}
+              activeFormulas={activeFormulas}
+              blocks={blocks}
+              researchNotes={researchNotes}
+              problemStatement={problemStatement}
+              reviewNotes={reviewNotes}
+              setReviewNotes={setReviewNotes}
+              reviewRecommendation={reviewRecommendation}
+              setReviewRecommendation={setReviewRecommendation}
+              approvalStatus={approvalStatus}
+              setApprovalStatus={setApprovalStatus}
+              selectedId={selectedId}
+              onSaveReview={handleSaveReviewNotes}
+              onShowToast={showToast}
+              reviewMeta={reviewMeta}
+              T={T}
+            />
           )}
 
         </div>
