@@ -86,7 +86,16 @@ const DEFAULT_ALGORITHMS = [
         description: "Initial release of base aligner featuring primary score matrices and standard dynamic routing.",
         status: "Approved"
       }
-    ]
+    ],
+    review: {
+      completeness: 92,
+      readability: "Excellent",
+      innovationScore: 94,
+      validationStatus: "Verified",
+      notes: "The alignment scoring ratios and dynamic programming heuristics conform fully to standard FASTQ/FASTA sequence definitions.",
+      recommendation: "Deploy in optimization environments. Ensure memory bounds are checked against > 10 GB sequence reads.",
+      approvalStatus: "Approved"
+    }
   },
   {
     id: "alg_2",
@@ -127,7 +136,16 @@ const DEFAULT_ALGORITHMS = [
         description: "First production release of Cas9 matching model with coordinate indices.",
         status: "Approved"
       }
-    ]
+    ],
+    review: {
+      completeness: 85,
+      readability: "Good",
+      innovationScore: 89,
+      validationStatus: "Verified",
+      notes: "Off-target frequency mapping operates with standard precision indices. Thermodynamics coefficients are fully verified.",
+      recommendation: "Provide literature references for free energy state constants. Run benchmark matches.",
+      approvalStatus: "Approved"
+    }
   },
   {
     id: "alg_3",
@@ -154,7 +172,16 @@ const DEFAULT_ALGORITHMS = [
       ],
       connections: []
     },
-    versions: []
+    versions: [],
+    review: {
+      completeness: 45,
+      readability: "Excellent",
+      innovationScore: 95,
+      validationStatus: "Pending",
+      notes: "Torsional stress math formulas are added, but the simulation workflow pipeline blocks are currently incomplete.",
+      recommendation: "Complete pipeline blocks (DNA encoding/decoding and storage/retrieval layers) to allow full topological analysis.",
+      approvalStatus: "Needs Work"
+    }
   }
 ];
 
@@ -199,8 +226,8 @@ export default function AlgorithmDesigner() {
   const [selectedId, setSelectedId] = useState("alg_1");
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Workspace active tab: "version_history", "flowchart", "pipeline", "formulas", "metadata"
-  const [activeTab, setActiveTab] = useState("version_history");
+  // Workspace active tab: "review", "version_history", "flowchart", "pipeline", "formulas", "metadata"
+  const [activeTab, setActiveTab] = useState("review");
 
   // ── 1. ALGORITHM METADATA STATE ──
   const [algName, setAlgName] = useState("");
@@ -224,15 +251,6 @@ export default function AlgorithmDesigner() {
 
   // Canvas Viewport transform (Zoom & Pan)
   const [zoom, setZoom] = useState(1.0);
-
-  const handleZoomIn = () => setZoom(z => Math.min(1.8, z + 0.1));
-  const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.1));
-  const handleZoomReset = () => {
-    setZoom(1.0);
-    setPanX(0);
-    setPanY(0);
-    showToast("Canvas viewport reset.", "info");
-  };
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
@@ -252,6 +270,11 @@ export default function AlgorithmDesigner() {
   // ── 5. VERSION HISTORY FILTERS STATE (STEP 7E) ──
   const [versionSearch, setVersionSearch] = useState("");
   const [versionStatusFilter, setVersionStatusFilter] = useState("All");
+
+  // ── 6. REVIEW & VALIDATION STATE (STEP 7F) ──
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [reviewRecommendation, setReviewRecommendation] = useState("");
+  const [approvalStatus, setApprovalStatus] = useState("Approved");
 
   // Refs
   const canvasRef = useRef(null);
@@ -294,6 +317,12 @@ export default function AlgorithmDesigner() {
       setFlowchartZoom(1.0);
       setVersionSearch("");
       setVersionStatusFilter("All");
+
+      // Load review details (STEP 7F)
+      const rev = active.review || { notes: "", recommendation: "", approvalStatus: "Approved" };
+      setReviewNotes(rev.notes || "");
+      setReviewRecommendation(rev.recommendation || "");
+      setApprovalStatus(rev.approvalStatus || "Approved");
     } else {
       setAlgName("");
       setObjective("");
@@ -303,6 +332,9 @@ export default function AlgorithmDesigner() {
       setBlocks([]);
       setConnections([]);
       setSelectedFlowchartBlockId(null);
+      setReviewNotes("");
+      setReviewRecommendation("");
+      setApprovalStatus("Approved");
     }
   }, [selectedId, algorithms]);
 
@@ -321,6 +353,9 @@ export default function AlgorithmDesigner() {
     setBlocks([]);
     setConnections([]);
     setSelectedFlowchartBlockId(null);
+    setReviewNotes("");
+    setReviewRecommendation("");
+    setApprovalStatus("Approved");
     showToast("Cleared fields for new algorithm", "info");
   };
 
@@ -342,7 +377,13 @@ export default function AlgorithmDesigner() {
             problemStatement,
             researchNotes,
             recent: true,
-            pipeline: { blocks, connections }
+            pipeline: { blocks, connections },
+            review: {
+              ...alg.review,
+              notes: reviewNotes,
+              recommendation: reviewRecommendation,
+              approvalStatus
+            }
           };
         }
         return alg;
@@ -360,7 +401,16 @@ export default function AlgorithmDesigner() {
         category: "Custom DNA",
         formulas: [],
         pipeline: { blocks, connections },
-        versions: []
+        versions: [],
+        review: {
+          completeness: 50,
+          readability: "Good",
+          innovationScore: 80,
+          validationStatus: "Pending",
+          notes: reviewNotes,
+          recommendation: reviewRecommendation,
+          approvalStatus
+        }
       };
       setAlgorithms(prev => [newAlg, ...prev]);
       setSelectedId(newAlg.id);
@@ -689,6 +739,15 @@ export default function AlgorithmDesigner() {
     document.removeEventListener("mouseup", handleGlobalMouseUpForConnection);
   };
 
+  const handleZoomIn = () => setZoom(z => Math.min(1.8, z + 0.1));
+  const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.1));
+  const handleZoomReset = () => {
+    setZoom(1.0);
+    setPanX(0);
+    setPanY(0);
+    showToast("Canvas viewport reset.", "info");
+  };
+
   const handleAutoLayout = () => {
     if (blocks.length === 0) return;
     pushToHistory(blocks, connections);
@@ -809,7 +868,6 @@ export default function AlgorithmDesigner() {
   const activeAlgorithm = algorithms.find(a => a.id === selectedId) || null;
   const activeFormulas = activeAlgorithm?.formulas || [];
   const activeVersions = activeAlgorithm?.versions || [];
-  const selectedFlowchartBlock = FLOWCHART_PLACEHOLDER_BLOCKS.find(b => b.id === selectedFlowchartBlockId) || null;
   const selectedBlock = blocks.find(b => b.id === selectedBlockId) || null;
 
   // Filter version history list based on search and status filters
@@ -821,6 +879,24 @@ export default function AlgorithmDesigner() {
     return matchesSearch && matchesStatus;
   });
 
+  const selectedFlowchartBlock = FLOWCHART_PLACEHOLDER_BLOCKS.find(b => b.id === selectedFlowchartBlockId) || null;
+
+  // Sync / Calculate validation checklist fields (STEP 7F)
+  const isAlgNamePresent = !!algName.trim();
+  const isObjectiveCompleted = !!objective.trim();
+  const isFormulaAdded = activeFormulas.length > 0;
+  const isPipelineCreated = blocks.length > 0;
+  const isFlowchartAvailable = FLOWCHART_PLACEHOLDER_BLOCKS.length > 0;
+  const isDocumentationComplete = !!researchNotes.trim() && !!problemStatement.trim();
+
+  // Selected algorithm review details
+  const reviewMeta = activeAlgorithm?.review || {
+    completeness: 50,
+    readability: "Good",
+    innovationScore: 80,
+    validationStatus: "Pending"
+  };
+
   return (
     <div style={{
       background: T.bg,
@@ -830,6 +906,30 @@ export default function AlgorithmDesigner() {
       flexDirection: "column",
       fontFamily: "'Inter', system-ui, sans-serif"
     }}>
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div style={{
+          position: "fixed",
+          top: 20,
+          right: 20,
+          zIndex: 9999,
+          background: toastMessage.type === "error" ? "#2a0a10" : toastMessage.type === "info" ? "#0a1530" : "#002a1a",
+          border: `1px solid ${toastMessage.type === "error" ? T.red : toastMessage.type === "info" ? T.accent : T.green}`,
+          borderRadius: 8,
+          padding: "12px 20px",
+          color: T.text1,
+          fontSize: "0.84rem",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          animation: "slideIn 0.2s ease"
+        }}>
+          <span>{toastMessage.type === "error" ? "⚠️" : toastMessage.type === "info" ? "ℹ️" : "✅"}</span>
+          <span>{toastMessage.msg}</span>
+        </div>
+      )}
+
       {/* Dynamic Tab Switcher Bar */}
       <div style={{
         background: T.surf,
@@ -842,6 +942,7 @@ export default function AlgorithmDesigner() {
         flexShrink: 0
       }}>
         {[
+          { id: "review", label: "🔍 Review & Validation", color: T.accent },
           { id: "version_history", label: "📋 Version History", color: T.accent2 },
           { id: "flowchart", label: "📊 Flowchart UI", color: T.yellow },
           { id: "pipeline", label: "🎨 Visual Pipeline Builder", color: T.cyan },
@@ -1329,79 +1430,17 @@ export default function AlgorithmDesigner() {
             </div>
           )}
 
-          {/* ═══ TAB 5: VERSION HISTORY PANEL (STEP 7E) ═══ */}
+          {/* ═══ TAB 5: VERSION HISTORY PANEL ═══ */}
           {activeTab === "version_history" && (
-            <div style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              padding: "24px",
-              boxSizing: "border-box",
-              overflowY: "auto"
-            }}>
-              {/* Toolbar & Filters Header */}
-              <div style={{
-                background: T.surf,
-                border: `1px solid ${T.border2}`,
-                borderRadius: 12,
-                padding: "16px 20px",
-                marginBottom: "20px",
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 16
-              }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "24px", boxSizing: "border-box", overflowY: "auto" }}>
+              <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "16px 20px", marginBottom: "20px", display: "flex", flexDirection: "row", alignItems: "center", justifyContext: "space-between", flexWrap: "wrap", gap: 16 }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: T.text1 }}>
-                    📋 Version History Timeline
-                  </h3>
-                  <p style={{ margin: "4px 0 0 0", fontSize: "0.76rem", color: T.text2 }}>
-                    Audit trail of all finalized sequence model releases and active drafts.
-                  </p>
+                  <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: T.text1 }}>📋 Version History Timeline</h3>
+                  <p style={{ margin: "4px 0 0 0", fontSize: "0.76rem", color: T.text2 }}>Audit trail of all finalized sequence model releases and active drafts.</p>
                 </div>
-
-                {/* Filters */}
-                <div style={{
-                  display: "flex",
-                  gap: 12,
-                  alignItems: "center",
-                  flexWrap: "wrap"
-                }}>
-                  {/* Search box */}
-                  <input
-                    type="text"
-                    value={versionSearch}
-                    onChange={e => setVersionSearch(e.target.value)}
-                    placeholder="🔍 Search versions..."
-                    style={{
-                      background: T.surf2,
-                      border: `1px solid ${T.border2}`,
-                      borderRadius: 8,
-                      padding: "8px 14px",
-                      color: T.text1,
-                      fontSize: "0.82rem",
-                      outline: "none",
-                      width: "180px"
-                    }}
-                  />
-
-                  {/* Status Filter */}
-                  <select
-                    value={versionStatusFilter}
-                    onChange={e => setVersionStatusFilter(e.target.value)}
-                    style={{
-                      background: T.surf2,
-                      border: `1px solid ${T.border2}`,
-                      borderRadius: 8,
-                      padding: "8px 14px",
-                      color: T.text1,
-                      fontSize: "0.82rem",
-                      outline: "none",
-                      cursor: "pointer"
-                    }}
-                  >
+                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <input type="text" value={versionSearch} onChange={e => setVersionSearch(e.target.value)} placeholder="🔍 Search versions..." style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 14px", color: T.text1, fontSize: "0.82rem", outline: "none", width: "180px" }} />
+                  <select value={versionStatusFilter} onChange={e => setVersionStatusFilter(e.target.value)} style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 14px", color: T.text1, fontSize: "0.82rem", outline: "none", cursor: "pointer" }}>
                     <option value="All">All Statuses</option>
                     <option value="Draft">Draft</option>
                     <option value="Review">Review</option>
@@ -1410,162 +1449,350 @@ export default function AlgorithmDesigner() {
                 </div>
               </div>
 
-              {/* TIMELINE LIST */}
               {filteredVersions.length === 0 ? (
-                <div style={{
-                  textAlign: "center",
-                  padding: "60px 20px",
-                  color: T.text3,
-                  background: T.surf,
-                  border: `1px solid ${T.border2}`,
-                  borderRadius: 12
-                }}>
+                <div style={{ textAlign: "center", padding: "60px 20px", color: T.text3, background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12 }}>
                   <div style={{ fontSize: "2rem", marginBottom: 10 }}>📋</div>
                   <div>No version history items match the active filters for this algorithm.</div>
                 </div>
               ) : (
-                <div style={{
-                  position: "relative",
-                  paddingLeft: "24px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "24px"
-                }}>
-                  {/* Timeline connecting vertical vertical line */}
-                  <div style={{
-                    position: "absolute",
-                    left: "7px",
-                    top: "14px",
-                    bottom: "14px",
-                    width: "2px",
-                    background: T.border2
-                  }} />
-
-                  {/* Render version cards */}
+                <div style={{ position: "relative", paddingLeft: "24px", display: "flex", flexDirection: "column", gap: "24px" }}>
+                  <div style={{ position: "absolute", left: "7px", top: "14px", bottom: "14px", width: "2px", background: T.border2 }} />
                   {filteredVersions.map(v => {
-                    // Match colors depending on status
                     const statusColor = v.status === "Approved" ? T.green : v.status === "Review" ? T.cyan : T.yellow;
-
                     return (
-                      <div
-                        key={v.id}
-                        style={{
-                          position: "relative",
-                          background: T.surf,
-                          border: `1px solid ${T.border2}`,
-                          borderRadius: 12,
-                          padding: "18px 20px",
-                          display: "flex",
-                          flexDirection: "row",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          flexWrap: "wrap",
-                          gap: 16
-                        }}
-                      >
-                        {/* Timeline circle point */}
-                        <div style={{
-                          position: "absolute",
-                          left: "-21px",
-                          top: "22px",
-                          width: "10px",
-                          height: "10px",
-                          borderRadius: "50%",
-                          background: statusColor,
-                          boxShadow: `0 0 8px ${statusColor}`,
-                          zIndex: 5
-                        }} />
-
-                        {/* Version details column */}
+                      <div key={v.id} style={{ position: "relative", background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "18px 20px", display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+                        <div style={{ position: "absolute", left: "-21px", top: "22px", width: "10px", height: "10px", borderRadius: "50%", background: statusColor, boxShadow: `0 0 8px ${statusColor}`, zIndex: 5 }} />
                         <div style={{ flex: 1, minWidth: "260px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-                            <span style={{
-                              fontSize: "1rem",
-                              fontWeight: 800,
-                              color: T.text1
-                            }}>{v.number}</span>
-
-                            {/* Status badge */}
-                            <span style={{
-                              fontSize: "0.66rem",
-                              fontWeight: 800,
-                              textTransform: "uppercase",
-                              padding: "2px 8px",
-                              borderRadius: "4px",
-                              background: `${statusColor}15`,
-                              border: `1px solid ${statusColor}40`,
-                              color: statusColor
-                            }}>{v.status}</span>
+                            <span style={{ fontSize: "1rem", fontWeight: 800, color: T.text1 }}>{v.number}</span>
+                            <span style={{ fontSize: "0.66rem", fontWeight: 800, textTransform: "uppercase", padding: "2px 8px", borderRadius: "4px", background: `${statusColor}15`, border: `1px solid ${statusColor}40`, color: statusColor }}>{v.status}</span>
                           </div>
-
-                          {/* Date and Author */}
-                          <div style={{ fontSize: "0.74rem", color: T.text3, marginBottom: 8 }}>
-                            Released on <strong style={{ color: T.text2 }}>{v.date}</strong> by <strong style={{ color: T.text2 }}>{v.author}</strong>
-                          </div>
-
-                          {/* Description */}
-                          <p style={{ margin: 0, fontSize: "0.82rem", color: T.text2, lineHeight: 1.5 }}>
-                            {v.description}
-                          </p>
+                          <div style={{ fontSize: "0.74rem", color: T.text3, marginBottom: 8 }}>Released on <strong style={{ color: T.text2 }}>{v.date}</strong> by <strong style={{ color: T.text2 }}>{v.author}</strong></div>
+                          <p style={{ margin: 0, fontSize: "0.82rem", color: T.text2, lineHeight: 1.5 }}>{v.description}</p>
                         </div>
-
-                        {/* Timeline Card Action Buttons */}
-                        <div style={{
-                          display: "flex",
-                          gap: 8,
-                          alignItems: "center"
-                        }}>
-                          <button
-                            onClick={() => showToast(`View details for release: ${v.number}`, "info")}
-                            style={{
-                              padding: "6px 12px",
-                              background: T.surf2,
-                              border: `1px solid ${T.border2}`,
-                              borderRadius: 6,
-                              color: T.text1,
-                              fontSize: "0.74rem",
-                              fontWeight: 600,
-                              cursor: "pointer"
-                            }}
-                          >
-                            View
-                          </button>
-                          <button
-                            onClick={() => showToast(`Compare current draft with release: ${v.number}`, "info")}
-                            style={{
-                              padding: "6px 12px",
-                              background: T.surf2,
-                              border: `1px solid ${T.border2}`,
-                              borderRadius: 6,
-                              color: T.text1,
-                              fontSize: "0.74rem",
-                              fontWeight: 600,
-                              cursor: "pointer"
-                            }}
-                          >
-                            Compare
-                          </button>
-                          <button
-                            onClick={() => showToast(`Restore operation simulated: ${v.number} parameters loaded.`, "success")}
-                            style={{
-                              padding: "6px 12px",
-                              background: `${T.accent}12`,
-                              border: `1px solid ${T.accent}40`,
-                              borderRadius: 6,
-                              color: T.text1,
-                              fontSize: "0.74rem",
-                              fontWeight: 600,
-                              cursor: "pointer"
-                            }}
-                          >
-                            Restore
-                          </button>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <button onClick={() => showToast(`View details for release: ${v.number}`, "info")} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>View</button>
+                          <button onClick={() => showToast(`Compare current draft with release: ${v.number}`, "info")} style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Compare</button>
+                          <button onClick={() => showToast(`Restore operation simulated: ${v.number} parameters loaded.`, "success")} style={{ padding: "6px 12px", background: `${T.accent}12`, border: `1px solid ${T.accent}40`, borderRadius: 6, color: T.text1, fontSize: "0.74rem", fontWeight: 600, cursor: "pointer" }}>Restore</button>
                         </div>
                       </div>
                     );
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ═══ TAB 6: ALGORITHM REVIEW & VALIDATION PANEL (STEP 7F) ═══ */}
+          {activeTab === "review" && (
+            <div style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              padding: "24px",
+              boxSizing: "border-box",
+              overflowY: "auto"
+            }}>
+              {/* Header card */}
+              <div style={{
+                background: T.surf,
+                border: `1px solid ${T.border2}`,
+                borderRadius: 12,
+                padding: "20px",
+                marginBottom: "20px"
+              }}>
+                <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: T.text1 }}>
+                  🔍 Review & Validation Workspace
+                </h2>
+                <p style={{ margin: "4px 0 0 0", fontSize: "0.78rem", color: T.text2 }}>
+                  Evaluate, audit, and export the current sequence alignment model configurations.
+                </p>
+              </div>
+
+              {/* Grid content split: 1fr 1fr */}
+              <div className="review-grid" style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "24px",
+                alignItems: "start"
+              }}>
+                {/* Style override for layout wrapping */}
+                <style>{`
+                  @media (max-width: 900px) {
+                    .review-grid {
+                      grid-template-columns: 1fr !important;
+                    }
+                  }
+                `}</style>
+
+                {/* COLUMN 1: CHECKLIST & QUALITY METRICS */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                  {/* Validation Checklist Card */}
+                  <div style={{
+                    background: T.surf,
+                    border: `1px solid ${T.border2}`,
+                    borderRadius: 12,
+                    padding: "24px"
+                  }}>
+                    <h3 style={{ margin: "0 0 16px 0", fontSize: "0.9rem", fontWeight: 800, color: T.text1, display: "flex", alignItems: "center", gap: 8 }}>
+                      📋 Validation Checklist
+                    </h3>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      {[
+                        { label: "Algorithm Name Present", checked: isAlgNamePresent },
+                        { label: "Objective Completed", checked: isObjectiveCompleted },
+                        { label: "Formula Added", checked: isFormulaAdded },
+                        { label: "Pipeline Created", checked: isPipelineCreated },
+                        { label: "Flowchart Available", checked: isFlowchartAvailable },
+                        { label: "Documentation Complete", checked: isDocumentationComplete }
+                      ].map((item, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            background: T.surf2,
+                            padding: "10px 14px",
+                            borderRadius: "8px",
+                            border: `1px solid ${T.border}`
+                          }}
+                        >
+                          <span style={{ fontSize: "0.82rem", color: T.text1, fontWeight: 500 }}>
+                            {item.label}
+                          </span>
+                          <span style={{
+                            fontSize: "0.84rem",
+                            fontWeight: 800,
+                            color: item.checked ? T.green : T.red,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6
+                          }}>
+                            {item.checked ? "✓ Complete" : "✗ Pending"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Quality Metrics Card */}
+                  <div style={{
+                    background: T.surf,
+                    border: `1px solid ${T.border2}`,
+                    borderRadius: 12,
+                    padding: "24px"
+                  }}>
+                    <h3 style={{ margin: "0 0 16px 0", fontSize: "0.9rem", fontWeight: 800, color: T.text1 }}>
+                      📊 Quality Metrics
+                    </h3>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      {/* Completeness */}
+                      <div style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: "8px", padding: "14px" }}>
+                        <div style={{ fontSize: "0.66rem", color: T.text3, textTransform: "uppercase" }}>Completeness</div>
+                        <div style={{ fontSize: "1.4rem", fontWeight: 800, color: T.cyan, marginTop: 4 }}>
+                          {reviewMeta.completeness}%
+                        </div>
+                        <div style={{ marginTop: 6, height: "4px", background: T.border2, borderRadius: "2px" }}>
+                          <div style={{ width: `${reviewMeta.completeness}%`, height: "100%", background: T.cyan, borderRadius: "2px" }} />
+                        </div>
+                      </div>
+
+                      {/* Readability */}
+                      <div style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: "8px", padding: "14px" }}>
+                        <div style={{ fontSize: "0.66rem", color: T.text3, textTransform: "uppercase" }}>Readability</div>
+                        <div style={{ fontSize: "1.3rem", fontWeight: 800, color: T.green, marginTop: 4 }}>
+                          {reviewMeta.readability}
+                        </div>
+                        <div style={{ fontSize: "0.6rem", color: T.text3, marginTop: 4 }}>Syntactic Structure Normal</div>
+                      </div>
+
+                      {/* Innovation Score */}
+                      <div style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: "8px", padding: "14px" }}>
+                        <div style={{ fontSize: "0.66rem", color: T.text3, textTransform: "uppercase" }}>Innovation Score</div>
+                        <div style={{ fontSize: "1.4rem", fontWeight: 800, color: T.pink, marginTop: 4 }}>
+                          {reviewMeta.innovationScore}/100
+                        </div>
+                        <div style={{ fontSize: "0.6rem", color: T.text3, marginTop: 4 }}>Novel heuristic alignments</div>
+                      </div>
+
+                      {/* Validation Status */}
+                      <div style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: "8px", padding: "14px" }}>
+                        <div style={{ fontSize: "0.66rem", color: T.text3, textTransform: "uppercase" }}>Validation Status</div>
+                        <div style={{ fontSize: "1.2rem", fontWeight: 800, color: reviewMeta.validationStatus === "Verified" ? T.green : T.yellow, marginTop: 6 }}>
+                          ● {reviewMeta.validationStatus}
+                        </div>
+                        <div style={{ fontSize: "0.6rem", color: T.text3, marginTop: 4 }}>System telemetry signature ok</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* COLUMN 2: REVIEWER NOTES & EXPORTS */}
+                <div className="review-grid" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                  {/* Reviewer Notes Card */}
+                  <div style={{
+                    background: T.surf,
+                    border: `1px solid ${T.border2}`,
+                    borderRadius: 12,
+                    padding: "24px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "16px"
+                  }}>
+                    <h3 style={{ margin: "0", fontSize: "0.9rem", fontWeight: 800, color: T.text1 }}>
+                      ✍️ Reviewer Notes & Recommendations
+                    </h3>
+
+                    {/* Notes panel */}
+                    <div>
+                      <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Notes Panel</label>
+                      <textarea
+                        rows={3}
+                        value={reviewNotes}
+                        onChange={(e) => setReviewNotes(e.target.value)}
+                        placeholder="Enter literature annotations or peer audit notes here..."
+                        style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.82rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
+                      />
+                    </div>
+
+                    {/* Recommendation panel */}
+                    <div>
+                      <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Recommendation Panel</label>
+                      <textarea
+                        rows={3}
+                        value={reviewRecommendation}
+                        onChange={(e) => setReviewRecommendation(e.target.value)}
+                        placeholder="Enter operational suggestions or next alignment action items..."
+                        style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.82rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
+                      />
+                    </div>
+
+                    {/* Approval Status and save */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", alignItems: "center" }}>
+                      <div>
+                        <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Approval Status</label>
+                        <select
+                          value={approvalStatus}
+                          onChange={(e) => setApprovalStatus(e.target.value)}
+                          style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", color: T.text1, fontSize: "0.82rem", outline: "none", cursor: "pointer" }}
+                        >
+                          <option value="Approved">Approved</option>
+                          <option value="Needs Work">Needs Work</option>
+                        </select>
+                      </div>
+
+                      {/* Mockup save review status */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedId) {
+                            setAlgorithms(prev => prev.map(alg => {
+                              if (alg.id === selectedId) {
+                                return {
+                                  ...alg,
+                                  review: {
+                                    ...alg.review,
+                                    notes: reviewNotes,
+                                    recommendation: reviewRecommendation,
+                                    approvalStatus
+                                  }
+                                };
+                              }
+                              return alg;
+                            }));
+                            showToast("Audit review notes saved!", "success");
+                          } else {
+                            showToast("Please save algorithm draft first.", "error");
+                          }
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "11px",
+                          marginTop: "20px",
+                          background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                          border: "none",
+                          borderRadius: 8,
+                          color: "#fff",
+                          fontWeight: 700,
+                          fontSize: "0.82rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        ✓ Save Notes
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Export Section Card */}
+                  <div style={{
+                    background: T.surf,
+                    border: `1px solid ${T.border2}`,
+                    borderRadius: 12,
+                    padding: "24px"
+                  }}>
+                    <h3 style={{ margin: "0 0 12px 0", fontSize: "0.9rem", fontWeight: 800, color: T.text1 }}>
+                      📦 Export Section
+                    </h3>
+                    <p style={{ margin: "0 0 16px 0", fontSize: "0.76rem", color: T.text2 }}>
+                      Compile and download the complete sequence configuration model.
+                    </p>
+
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <button
+                        onClick={() => showToast("Exporting PDF report... (MOCKUP ONLY)", "info")}
+                        style={{
+                          flex: 1,
+                          padding: "11px",
+                          background: T.surf2,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: 8,
+                          color: T.text1,
+                          fontWeight: 700,
+                          fontSize: "0.78rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Export PDF
+                      </button>
+                      <button
+                        onClick={() => showToast("Exporting JSON configuration model... (MOCKUP ONLY)", "info")}
+                        style={{
+                          flex: 1,
+                          padding: "11px",
+                          background: T.surf2,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: 8,
+                          color: T.cyan,
+                          fontWeight: 700,
+                          fontSize: "0.78rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Export JSON
+                      </button>
+                      <button
+                        onClick={() => showToast("Exporting Markdown documentation... (MOCKUP ONLY)", "info")}
+                        style={{
+                          flex: 1,
+                          padding: "11px",
+                          background: T.surf2,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: 8,
+                          color: T.yellow,
+                          fontWeight: 700,
+                          fontSize: "0.78rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Export Markdown
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
