@@ -1,5 +1,5 @@
 import {
-  useState, useRef, useEffect, useCallback, useReducer, useMemo, lazy, Suspense
+  useState, useRef, useEffect, useCallback, useReducer, useMemo
 } from "react";
 import * as XLSX from "xlsx";
 import ResearchLab from "./ResearchLab";
@@ -1741,13 +1741,10 @@ export default function ApexOS() {
   const [buildRunning, setBuildRunning] = useState(false);
   const [buildStage, setBuildStage] = useState("");
   const [buildProgress, setBuildProgress] = useState(0);
-  const [planModal, setPlanModal] = useState(false);
   const [showNewTask, setShowNewTask] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", desc: "", assignee: "cto", priority: "medium", due: "" });
   const [memFilter, setMemFilter] = useState("all");
   const [kpiEdit, setKpiEdit] = useState(null);
-  const [editingMsg, setEditingMsg] = useState(null);
-  const [darkModeON] = useState(true);
 
   const ceoChatEndRef = useRef();
   const empChatEndRef = useRef();
