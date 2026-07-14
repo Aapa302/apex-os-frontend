@@ -2516,7 +2516,25 @@ export default function ApexOS() {
 
           {/* ═══ RESEARCH LAB ═══ */}
           {view === "research_lab" && (
-            <ResearchLab onOpenDNA={() => setView("algorithm_designer")} />
+            <ResearchLab
+              onOpenDNA={() => setView("algorithm_designer")}
+              onOpenLab={(labId) => {
+                const mapping = {
+                  dna: "algorithm_designer",
+                  ai: "scientist_workspace",
+                  quantum: "formula_library",
+                  robotics: "scientist_workspace",
+                  space: "scientist_workspace",
+                  biotech: "experiments",
+                  materials: "experiments",
+                  energy: "experiments",
+                  medical: "experiments",
+                  custom: "datasets"
+                };
+                const targetView = mapping[labId] || "dashboard";
+                setView(targetView);
+              }}
+            />
           )}
 
           {/* ═══ ALGORITHM DESIGNER ═══ */}

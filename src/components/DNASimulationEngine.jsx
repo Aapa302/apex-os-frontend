@@ -83,6 +83,23 @@ export default function DNASimulationEngine() {
   const [errorTolerance, setErrorTolerance] = useState(0.01);
   const [codonTable, setCodonTable] = useState("standard");
 
+  // Config saving / loading state
+  const [savedConfigs, setSavedConfigs] = useState(() => {
+    try {
+      const saved = localStorage.getItem("apex_os_dna_configs");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [configNameInput, setConfigNameInput] = useState("");
+
+  // Auto-save configs list
+  useEffect(() => {
+    localStorage.setItem("apex_os_dna_configs", JSON.stringify(savedConfigs));
+  }, [savedConfigs]);
+
   // Mock Simulations & Queue
   const [simulations, setSimulations] = useState([
     { id: "SIM-001", name: "SARS-Cov-2 Mutation Propensity", type: "Mutation Drift", status: "running", progress: 68, estTime: "45s", date: "2026-07-20 14:22" },
@@ -98,7 +115,7 @@ export default function DNASimulationEngine() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Run dynamic progress updating for "running" simulations to make the dashboard feel alive!
+  // Run dynamic progress updating for "running" simulations
   useEffect(() => {
     const timer = setInterval(() => {
       setSimulations(prev => prev.map(sim => {
@@ -157,7 +174,7 @@ export default function DNASimulationEngine() {
     const gCount = (dnaSeq.match(/G/g) || []).length;
     const cCount = (dnaSeq.match(/C/g) || []).length;
     const gcPercent = Math.round(((gCount + cCount) / len) * 100);
-    // Rough estimate for melting temperature: Tm = 2*(A+T) + 4*(G+C)
+    // Rough estimate for melting temperature
     const aCount = (dnaSeq.match(/A/g) || []).length;
     const tCount = (dnaSeq.match(/T/g) || []).length;
     const tm = 2 * (aCount + tCount) + 4 * (gCount + cCount);
@@ -165,7 +182,7 @@ export default function DNASimulationEngine() {
     return { gcPercent, tm, length: len, codonBias: "Moderate (0.54)" };
   }, [dnaSeq]);
 
-  // Mutation Preview (Diff UI)
+  // Mutation Preview
   const mutationDiff = useMemo(() => {
     const original = dnaSeq;
     const bases = ["A", "T", "C", "G"];
@@ -187,7 +204,7 @@ export default function DNASimulationEngine() {
     return { original, modified, pos: safePos };
   }, [dnaSeq, mutationType, mutationPos, mutationRate]);
 
-  // Codon Translation Preview (Triplets to Amino Acids mapping)
+  // Codon Translation Preview
   const translationPreview = useMemo(() => {
     const triplets = [];
     const codonMap = {
@@ -200,7 +217,7 @@ export default function DNASimulationEngine() {
 
     for (let i = 0; i < dnaSeq.length - 2; i += 3) {
       const triplet = dnaSeq.slice(i, i + 3);
-      const aa = codonMap[triplet] || "Ala"; // Default fallback
+      const aa = codonMap[triplet] || "Ala";
       triplets.push({ codon: triplet, aa });
     }
 
@@ -249,6 +266,48 @@ export default function DNASimulationEngine() {
       { id: "SIM-003", name: "CRISPR Off-target Mapping", type: "Gene Mapping", status: "queued", progress: 0, estTime: "5m 10s", date: "2026-07-20 14:26" }
     ]);
     triggerToast("Simulation Engine queue reset to default.", "info");
+  };
+
+  // Save Config handler
+  const handleSaveConfig = (e) => {
+    e.preventDefault();
+    if (!configNameInput.trim()) return;
+
+    const newConfig = {
+      id: `cfg_${Date.now()}`,
+      name: configNameInput,
+      dnaSeq,
+      currentSeqName,
+      mutationRate,
+      mutationType,
+      mutationPos,
+      simSpeed,
+      errorTolerance,
+      codonTable
+    };
+
+    setSavedConfigs(prev => [newConfig, ...prev]);
+    setConfigNameInput("");
+    triggerToast(`Configuration "${newConfig.name}" saved!`);
+  };
+
+  // Load Config handler
+  const handleLoadConfig = (cfg) => {
+    setDnaSeq(cfg.dnaSeq);
+    setCurrentSeqName(cfg.currentSeqName || "Loaded Sequence");
+    setMutationRate(cfg.mutationRate);
+    setMutationType(cfg.mutationType);
+    setMutationPos(cfg.mutationPos);
+    setSimSpeed(cfg.simSpeed);
+    setErrorTolerance(cfg.errorTolerance);
+    setCodonTable(cfg.codonTable);
+    triggerToast(`Loaded configuration "${cfg.name}" successfully!`);
+  };
+
+  // Delete Config handler
+  const handleDeleteConfig = (id) => {
+    setSavedConfigs(prev => prev.filter(c => c.id !== id));
+    triggerToast("Configuration deleted.");
   };
 
   return (
@@ -599,7 +658,7 @@ export default function DNASimulationEngine() {
                               <div style={{
                                 width: `${sim.progress}%`,
                                 height: "100%",
-                                background: sim.status === "failed" ? theme.red : theme.green,
+                                background: sim.status === "failed" ? theme.red : sim.status === "running" ? theme.cyan : theme.green,
                                 borderRadius: 2
                               }} />
                             </div>
@@ -702,7 +761,7 @@ export default function DNASimulationEngine() {
                 </thead>
                 <tbody>
                   {simulations.map(sim => (
-                    <tr key={sim.id} style={{ borderBottom: `1px solid ${theme.border2}`, hover: { background: theme.surf2 } }}>
+                    <tr key={sim.id} style={{ borderBottom: `1px solid ${theme.border2}` }}>
                       <td style={{ padding: "12px 10px", fontFamily: "monospace", fontWeight: 700 }}>{sim.id}</td>
                       <td style={{ padding: "12px 10px", color: theme.text1, fontWeight: 600 }}>{sim.name}</td>
                       <td style={{ padding: "12px 10px", color: theme.text2 }}>{sim.type}</td>
@@ -913,7 +972,7 @@ export default function DNASimulationEngine() {
           </div>
         )}
 
-        {/* ══ 4. MUTATION SIMULATION PREVIEW (UI ONLY) ══ */}
+        {/* ══ 4. MUTATION SIMULATION PREVIEW ══ */}
         {activeTab === "mutations" && (
           <div style={{
             background: theme.surf,
@@ -1084,7 +1143,7 @@ export default function DNASimulationEngine() {
           </div>
         )}
 
-        {/* ══ 5. PROTEIN TRANSLATION PREVIEW (UI ONLY) ══ */}
+        {/* ══ 5. PROTEIN TRANSLATION PREVIEW ══ */}
         {activeTab === "translation" && (
           <div style={{
             background: theme.surf,
@@ -1204,7 +1263,7 @@ export default function DNASimulationEngine() {
           </div>
         )}
 
-        {/* ══ 6. GENE MAPPING PREVIEW (UI ONLY) ══ */}
+        {/* ══ 6. GENE MAPPING PREVIEW ══ */}
         {activeTab === "mapping" && (
           <div style={{
             background: theme.surf,
@@ -1491,143 +1550,201 @@ export default function DNASimulationEngine() {
           </div>
         )}
 
-        {/* ══ 8. SETTINGS PANEL ══ */}
+        {/* ══ 8. SETTINGS PANEL (WITH SAVE/LOAD DNA CONFIGS) ══ */}
         {activeTab === "settings" && (
-          <div style={{
-            background: theme.surf,
-            border: `1px solid ${theme.border2}`,
-            borderRadius: 14,
-            padding: 20,
-            maxWidth: "600px",
-            margin: "0 auto"
-          }}>
-            <h3 style={{ margin: "0 0 14px 0", fontSize: "1rem", fontWeight: 800 }}>
-              ⚙️ DNA Simulation Configuration Settings
-            </h3>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", alignItems: "start" }}>
+            {/* Left settings */}
+            <div style={{
+              background: theme.surf,
+              border: `1px solid ${theme.border2}`,
+              borderRadius: 14,
+              padding: 20
+            }}>
+              <h3 style={{ margin: "0 0 14px 0", fontSize: "1rem", fontWeight: 800 }}>
+                ⚙️ DNA Simulation Configuration Settings
+              </h3>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div>
-                <label style={{ fontSize: "0.75rem", color: theme.text2, display: "block", marginBottom: 6 }}>
-                  Simulation Speed Multiplier:
-                </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[1, 2, 5].map(speed => (
-                    <button
-                      key={speed}
-                      onClick={() => {
-                        setSimSpeed(speed);
-                        triggerToast(`Speed factor adjusted to ${speed}x`);
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: "8px",
-                        background: simSpeed === speed ? `${theme.accent}15` : theme.surf2,
-                        border: `1px solid ${simSpeed === speed ? theme.accent : theme.border2}`,
-                        borderRadius: 6,
-                        color: simSpeed === speed ? theme.accent : theme.text2,
-                        fontSize: "0.78rem",
-                        fontWeight: 700,
-                        cursor: "pointer"
-                      }}
-                    >
-                      {speed}x speed
-                    </button>
-                  ))}
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <label style={{ fontSize: "0.75rem", color: theme.text2, display: "block", marginBottom: 6 }}>
+                    Simulation Speed Multiplier:
+                  </label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[1, 2, 5].map(speed => (
+                      <button
+                        key={speed}
+                        onClick={() => {
+                          setSimSpeed(speed);
+                          triggerToast(`Speed factor adjusted to ${speed}x`);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: "8px",
+                          background: simSpeed === speed ? `${theme.accent}15` : theme.surf2,
+                          border: `1px solid ${simSpeed === speed ? theme.accent : theme.border2}`,
+                          borderRadius: 6,
+                          color: simSpeed === speed ? theme.accent : theme.text2,
+                          fontSize: "0.78rem",
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}
+                      >
+                        {speed}x speed
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "0.75rem", color: theme.text2, display: "block", marginBottom: 6 }}>
+                    Error Tolerance Coefficient:
+                  </label>
+                  <input
+                    type="number"
+                    step={0.005}
+                    min={0.001}
+                    max={0.05}
+                    value={errorTolerance}
+                    onChange={e => {
+                      setErrorTolerance(Number(e.target.value));
+                      triggerToast("Error tolerance adjusted");
+                    }}
+                    style={{
+                      width: "100%",
+                      background: theme.surf2,
+                      border: `1px solid ${theme.border2}`,
+                      borderRadius: 6,
+                      padding: "8px 12px",
+                      color: theme.text1,
+                      fontSize: "0.82rem",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "0.75rem", color: theme.text2, display: "block", marginBottom: 6 }}>
+                    Genetic Code Table Selection:
+                  </label>
+                  <select
+                    value={codonTable}
+                    onChange={e => {
+                      setCodonTable(e.target.value);
+                      triggerToast(`Switched translation table: ${e.target.value}`);
+                    }}
+                    style={{
+                      width: "100%",
+                      background: theme.surf2,
+                      border: `1px solid ${theme.border2}`,
+                      borderRadius: 6,
+                      padding: "8px 12px",
+                      color: theme.text1,
+                      fontSize: "0.82rem"
+                    }}
+                  >
+                    <option value="standard">Standard Genetic Translation Code</option>
+                    <option value="vertebrate_mito">Vertebrate Mitochondrial Code</option>
+                    <option value="yeast_mito">Yeast Mitochondrial Genetic Table</option>
+                  </select>
+                </div>
+
+                <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => {
+                      setMutationRate(0.05);
+                      setMutationType("point");
+                      setMutationPos(5);
+                      setSimSpeed(1);
+                      setErrorTolerance(0.01);
+                      setCodonTable("standard");
+                      triggerToast("Restored engine default parameters");
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      background: theme.surf2,
+                      border: `1px solid ${theme.border2}`,
+                      borderRadius: 8,
+                      color: theme.text2,
+                      fontSize: "0.78rem",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Reset Defaults
+                  </button>
+                  <button
+                    onClick={() => triggerToast("Simulation parameters saved successfully", "success")}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`,
+                      border: "none",
+                      borderRadius: 8,
+                      color: "#fff",
+                      fontSize: "0.78rem",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Save Calibrations
+                  </button>
                 </div>
               </div>
+            </div>
 
-              <div>
-                <label style={{ fontSize: "0.75rem", color: theme.text2, display: "block", marginBottom: 6 }}>
-                  Error Tolerance Coefficient:
-                </label>
+            {/* Right configurations save/load (Step 5D functional) */}
+            <div style={{
+              background: theme.surf,
+              border: `1px solid ${theme.border2}`,
+              borderRadius: 14,
+              padding: 20
+            }}>
+              <h3 style={{ margin: "0 0 14px 0", fontSize: "1rem", fontWeight: 800, color: theme.text1 }}>
+                💾 Saved Configurations ({savedConfigs.length})
+              </h3>
+
+              {/* Save Form */}
+              <form onSubmit={handleSaveConfig} style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
                 <input
-                  type="number"
-                  step={0.005}
-                  min={0.001}
-                  max={0.05}
-                  value={errorTolerance}
-                  onChange={e => {
-                    setErrorTolerance(Number(e.target.value));
-                    triggerToast("Error tolerance adjusted");
-                  }}
+                  type="text"
+                  required
+                  value={configNameInput}
+                  onChange={e => setConfigNameInput(e.target.value)}
+                  placeholder="Config name (e.g. CRISPR Mode A)"
                   style={{
-                    width: "100%",
+                    flex: 1,
                     background: theme.surf2,
                     border: `1px solid ${theme.border2}`,
                     borderRadius: 6,
                     padding: "8px 12px",
                     color: theme.text1,
-                    fontSize: "0.82rem"
+                    fontSize: "0.8rem",
+                    outline: "none"
                   }}
                 />
-              </div>
+                <button type="submit" style={{ padding: "8px 14px", background: theme.accent, border: "none", borderRadius: 6, color: "#fff", fontWeight: "bold", fontSize: "0.78rem", cursor: "pointer" }}>Save Config</button>
+              </form>
 
-              <div>
-                <label style={{ fontSize: "0.75rem", color: theme.text2, display: "block", marginBottom: 6 }}>
-                  Genetic Code Table Selection:
-                </label>
-                <select
-                  value={codonTable}
-                  onChange={e => {
-                    setCodonTable(e.target.value);
-                    triggerToast(`Switched translation table: ${e.target.value}`);
-                  }}
-                  style={{
-                    width: "100%",
-                    background: theme.surf2,
-                    border: `1px solid ${theme.border2}`,
-                    borderRadius: 6,
-                    padding: "8px 12px",
-                    color: theme.text1,
-                    fontSize: "0.82rem"
-                  }}
-                >
-                  <option value="standard">Standard Genetic Translation Code</option>
-                  <option value="vertebrate_mito">Vertebrate Mitochondrial Code</option>
-                  <option value="yeast_mito">Yeast Mitochondrial Genetic Table</option>
-                </select>
-              </div>
-
-              <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
-                <button
-                  onClick={() => {
-                    setMutationRate(0.05);
-                    setMutationType("point");
-                    setMutationPos(5);
-                    setSimSpeed(1);
-                    setErrorTolerance(0.01);
-                    setCodonTable("standard");
-                    triggerToast("Restored engine default parameters");
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    background: theme.surf2,
-                    border: `1px solid ${theme.border2}`,
-                    borderRadius: 8,
-                    color: theme.text2,
-                    fontSize: "0.78rem",
-                    cursor: "pointer"
-                  }}
-                >
-                  Reset Defaults
-                </button>
-                <button
-                  onClick={() => triggerToast("Simulation parameters saved and calibrated successfully", "success")}
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`,
-                    border: "none",
-                    borderRadius: 8,
-                    color: "#fff",
-                    fontSize: "0.78rem",
-                    fontWeight: 700,
-                    cursor: "pointer"
-                  }}
-                >
-                  Save Calibrations
-                </button>
+              {/* Config list */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "250px", overflowY: "auto" }}>
+                {savedConfigs.length === 0 ? (
+                  <div style={{ color: theme.text3, textAlign: "center", fontSize: "0.78rem", padding: "12px" }}>No saved configurations. Create one above!</div>
+                ) : (
+                  savedConfigs.map(cfg => (
+                    <div key={cfg.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: theme.surf2, border: `1px solid ${theme.border}`, borderRadius: "8px", padding: "10px" }}>
+                      <div>
+                        <strong style={{ fontSize: "0.82rem", color: theme.text1 }}>{cfg.name}</strong>
+                        <div style={{ fontSize: "0.68rem", color: theme.text3, marginTop: "2px" }}>
+                          Seq: {cfg.dnaSeq?.substring(0, 10)}... | Mutation Type: {cfg.mutationType}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <button onClick={() => handleLoadConfig(cfg)} style={{ background: theme.surf, border: `1px solid ${theme.border2}`, color: theme.green, padding: "4px 8px", borderRadius: "4px", fontSize: "0.72rem", cursor: "pointer" }}>Load</button>
+                        <button onClick={() => handleDeleteConfig(cfg.id)} style={{ background: theme.surf, border: `1px solid ${theme.border2}`, color: theme.red, padding: "4px 8px", borderRadius: "4px", fontSize: "0.72rem", cursor: "pointer" }}>Delete</button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

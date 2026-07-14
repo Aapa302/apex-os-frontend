@@ -198,6 +198,7 @@ const INITIAL_FORMULAS = [
 
 export default function FormulaAlgorithmLibrary() {
   const [formulas, setFormulas] = useState(() => {
+    // Verified localStorage persistence key: 'apex_os_v4_formulas'
     const cached = localStorage.getItem("apex_os_v4_formulas");
     if (cached) {
       try {
