@@ -11,6 +11,7 @@ import FormulaAlgorithmLibrary from "./components/FormulaAlgorithmLibrary";
 import AIScientistWorkspace from "./components/AIScientistWorkspace";
 import ResearchMemorySystem from "./components/ResearchMemorySystem";
 import AICommandCenter from "./components/AICommandCenter";
+import AICeoDashboard from "./components/AICeoDashboard";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -2077,6 +2078,7 @@ export default function ApexOS() {
     { id: "scientist_workspace", icon: "🔬", label: "Scientist Workspace" },
     { id: "research_memory", icon: "🧠", label: "Research Memory System" },
     { id: "ai_command_center", icon: "🕹️", label: "AI Command Center" },
+    { id: "ai_ceo_dashboard", icon: "🧠", label: "AI CEO Dashboard" },
 
     { id: "reviews",   icon: "🔍", label: "Reviews" },
     { id: "memory",    icon: "🧠", label: "Memory" },
@@ -2555,6 +2557,11 @@ export default function ApexOS() {
           {/* ═══ AI COMMAND CENTER ═══ */}
           {view === "ai_command_center" && (
             <AICommandCenter />
+          )}
+
+          {/* ═══ AI CEO DASHBOARD ═══ */}
+          {view === "ai_ceo_dashboard" && (
+            <AICeoDashboard />
           )}
 
           {/* ═══ REVIEWS ═══ */}
