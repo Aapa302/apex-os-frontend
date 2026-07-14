@@ -6,6 +6,7 @@ import ResearchLab from "./ResearchLab";
 import AlgorithmDesigner from "./AlgorithmDesigner";
 import ExperimentManager from "./components/ExperimentManager";
 import DatasetManager from "./components/DatasetManager";
+import PipelineEngine from "./components/PipelineEngine";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -2070,6 +2071,7 @@ export default function ApexOS() {
     { id: "algorithm_designer", icon: "🧬", label: "Algorithm Designer" },
     { id: "experiments", icon: "🧪", label: "Experiments" },
     { id: "datasets",    icon: "📦", label: "Datasets" },
+    { id: "pipelines",   icon: "⛓️", label: "Pipelines" },
 
     { id: "reviews",   icon: "🔍", label: "Reviews" },
     { id: "memory",    icon: "🧠", label: "Memory" },
@@ -2523,6 +2525,11 @@ export default function ApexOS() {
           {/* ═══ DATASET MANAGER ═══ */}
           {view === "datasets" && (
             <DatasetManager T={T} />
+          )}
+
+          {/* ═══ PIPELINE ENGINE ═══ */}
+          {view === "pipelines" && (
+            <PipelineEngine T={T} />
           )}
 
 
