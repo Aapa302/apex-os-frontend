@@ -8,6 +8,7 @@ import ExperimentManager from "./components/ExperimentManager";
 import DatasetManager from "./components/DatasetManager";
 import DNASimulationEngine from "./components/DNASimulationEngine";
 import FormulaAlgorithmLibrary from "./components/FormulaAlgorithmLibrary";
+import AIScientistWorkspace from "./components/AIScientistWorkspace";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -2074,6 +2075,7 @@ export default function ApexOS() {
     { id: "datasets",    icon: "📦", label: "Datasets" },
     { id: "dna_simulation", icon: "🧬", label: "DNA Simulation Engine" },
     { id: "formula_library", icon: "📚", label: "Formula & Alg Library" },
+    { id: "scientist_workspace", icon: "🔬", label: "Scientist Workspace" },
 
     { id: "reviews",   icon: "🔍", label: "Reviews" },
     { id: "memory",    icon: "🧠", label: "Memory" },
@@ -2537,6 +2539,11 @@ export default function ApexOS() {
           {/* ═══ FORMULA & ALGORITHM LIBRARY ═══ */}
           {view === "formula_library" && (
             <FormulaAlgorithmLibrary />
+          )}
+
+          {/* ═══ AI SCIENTIST WORKSPACE ═══ */}
+          {view === "scientist_workspace" && (
+            <AIScientistWorkspace />
           )}
 
           {/* ═══ REVIEWS ═══ */}
