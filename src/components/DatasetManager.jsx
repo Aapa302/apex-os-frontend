@@ -138,8 +138,6 @@ const MOCK_DATASETS = [
   }
 ];
 
-const AVAILABLE_TAGS = ["DNA", "RNA", "Protein", "AI", "Medical", "Quantum", "Robotics", "Space", "Energy"];
-
 export default function DatasetManager({ T = DEFAULT_T }) {
   const [datasets, setDatasets] = useState(MOCK_DATASETS);
   const [selectedDatasetId, setSelectedDatasetId] = useState("ds_1");

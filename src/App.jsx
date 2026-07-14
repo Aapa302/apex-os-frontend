@@ -2517,7 +2517,7 @@ export default function ApexOS() {
 
           {/* ═══ EXPERIMENT MANAGER ═══ */}
           {view === "experiments" && (
-            <ExperimentManager />
+            <ExperimentManager T={T} />
           )}
 
           {/* ═══ DATASET MANAGER ═══ */}
