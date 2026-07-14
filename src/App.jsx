@@ -1,5 +1,5 @@
 import {
-  useState, useRef, useEffect, useCallback, useReducer, useMemo, lazy, Suspense
+  useState, useRef, useEffect, useCallback, useReducer, useMemo
 } from "react";
 import * as XLSX from "xlsx";
 import ResearchLab from "./ResearchLab";
@@ -8,6 +8,8 @@ import ExperimentManager from "./components/ExperimentManager";
 import DatasetManager from "./components/DatasetManager";
 import DNASimulationEngine from "./components/DNASimulationEngine";
 import FormulaAlgorithmLibrary from "./components/FormulaAlgorithmLibrary";
+import AIScientistWorkspace from "./components/AIScientistWorkspace";
+import ResearchMemorySystem from "./components/ResearchMemorySystem";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -1739,13 +1741,10 @@ export default function ApexOS() {
   const [buildRunning, setBuildRunning] = useState(false);
   const [buildStage, setBuildStage] = useState("");
   const [buildProgress, setBuildProgress] = useState(0);
-  const [planModal, setPlanModal] = useState(false);
   const [showNewTask, setShowNewTask] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", desc: "", assignee: "cto", priority: "medium", due: "" });
   const [memFilter, setMemFilter] = useState("all");
   const [kpiEdit, setKpiEdit] = useState(null);
-  const [editingMsg, setEditingMsg] = useState(null);
-  const [darkModeON] = useState(true);
 
   const ceoChatEndRef = useRef();
   const empChatEndRef = useRef();
@@ -2074,6 +2073,8 @@ export default function ApexOS() {
     { id: "datasets",    icon: "📦", label: "Datasets" },
     { id: "dna_simulation", icon: "🧬", label: "DNA Simulation Engine" },
     { id: "formula_library", icon: "📚", label: "Formula & Alg Library" },
+    { id: "scientist_workspace", icon: "🔬", label: "Scientist Workspace" },
+    { id: "research_memory", icon: "🧠", label: "Research Memory System" },
 
     { id: "reviews",   icon: "🔍", label: "Reviews" },
     { id: "memory",    icon: "🧠", label: "Memory" },
@@ -2537,6 +2538,16 @@ export default function ApexOS() {
           {/* ═══ FORMULA & ALGORITHM LIBRARY ═══ */}
           {view === "formula_library" && (
             <FormulaAlgorithmLibrary />
+          )}
+
+          {/* ═══ AI SCIENTIST WORKSPACE ═══ */}
+          {view === "scientist_workspace" && (
+            <AIScientistWorkspace />
+          )}
+
+          {/* ═══ RESEARCH MEMORY SYSTEM ═══ */}
+          {view === "research_memory" && (
+            <ResearchMemorySystem />
           )}
 
           {/* ═══ REVIEWS ═══ */}
