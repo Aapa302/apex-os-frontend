@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
 // Design Tokens matching App.jsx and ResearchLab.jsx (Default Dark Theme)
 const DEFAULT_T = {
@@ -31,6 +31,8 @@ const MOCK_EXPERIMENTS = [
     status: "Completed",
     createdDate: "2026-07-10 14:30",
     lastUpdated: "2026-07-12 09:15",
+    accuracy: 94.5,
+    throughput: "2.8 Gbps",
     timeline: [
       { id: "e1_1", type: "success", title: "Experiment Created", timestamp: "2026-07-10 14:30", desc: "Simulation initialization sequence completed under project authorization guidelines.", icon: "✅" },
       { id: "e1_2", type: "info", title: "Algorithm Selected", timestamp: "2026-07-10 14:45", desc: "Assigned CRISPR PAM Searcher v2.0 as primary sequence matching engine.", icon: "ℹ️" },
@@ -55,6 +57,8 @@ const MOCK_EXPERIMENTS = [
     status: "In Progress",
     createdDate: "2026-07-13 08:00",
     lastUpdated: "2026-07-14 11:45",
+    accuracy: 89.2,
+    throughput: "3.5 Gbps",
     timeline: [
       { id: "e2_1", type: "success", title: "Experiment Created", timestamp: "2026-07-13 08:00", desc: "Sequence read trace model launched.", icon: "✅" },
       { id: "e2_2", type: "info", title: "Algorithm Selected", timestamp: "2026-07-13 08:15", desc: "Selected Base Aligner v1.1.0 heuristics engine.", icon: "ℹ️" },
@@ -77,6 +81,8 @@ const MOCK_EXPERIMENTS = [
     status: "Pending",
     createdDate: "2026-07-14 10:20",
     lastUpdated: "2026-07-14 10:20",
+    accuracy: 0,
+    throughput: "0 Gbps",
     timeline: [
       { id: "e3_1", type: "success", title: "Experiment Created", timestamp: "2026-07-14 10:20", desc: "Crystalline lattices model structural confirmation profile loaded.", icon: "✅" },
       { id: "e3_2", type: "info", title: "Algorithm Selected", timestamp: "2026-07-14 10:25", desc: "Torsional Shear Stress formula matrices verified.", icon: "ℹ️" }
@@ -88,7 +94,24 @@ const MOCK_EXPERIMENTS = [
 ];
 
 export default function ExperimentManager({ T = DEFAULT_T }) {
-  const [experiments, setExperiments] = useState(MOCK_EXPERIMENTS);
+  // Load/Save from localStorage
+  const [experiments, setExperiments] = useState(() => {
+    try {
+      const saved = localStorage.getItem("apex_os_experiments");
+      return saved ? JSON.parse(saved) : MOCK_EXPERIMENTS;
+    } catch {
+      return MOCK_EXPERIMENTS;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("apex_os_experiments", JSON.stringify(experiments));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [experiments]);
+
   const [selectedExperiment, setSelectedExperiment] = useState(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -103,6 +126,22 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
   // Attachments Filtering states
   const [attachmentFilter, setAttachmentFilter] = useState("All");
   const [attachmentSearch, setAttachmentSearch] = useState("");
+
+  // CRUD modal states
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [formName, setFormName] = useState("");
+  const [formResearchArea, setFormResearchArea] = useState("Gene Editing");
+  const [formObjective, setFormObjective] = useState("");
+  const [formDescription, setFormDescription] = useState("");
+  const [formAssignedAlgorithm, setFormAssignedAlgorithm] = useState("");
+  const [formStatus, setFormStatus] = useState("Pending");
+  const [formAccuracy, setFormAccuracy] = useState(0);
+  const [formThroughput, setFormThroughput] = useState("1.0 Gbps");
+  const [editingId, setEditingId] = useState(null);
+
+  // Results Comparison View states
+  const [showComparison, setShowComparison] = useState(false);
+  const [compareIds, setCompareIds] = useState([]);
 
   const triggerToast = (message) => {
     setToastMessage(message);
@@ -122,6 +161,130 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
     setExperiments(MOCK_EXPERIMENTS);
     setSelectedExperiment(null);
     triggerToast("Mock experiments list reloaded.");
+  };
+
+  // Create or Update Form handler
+  const handleOpenCreateModal = () => {
+    setEditingId(null);
+    setFormName("");
+    setFormResearchArea("Gene Editing");
+    setFormObjective("");
+    setFormDescription("");
+    setFormAssignedAlgorithm("");
+    setFormStatus("Pending");
+    setFormAccuracy(0);
+    setFormThroughput("1.0 Gbps");
+    setShowFormModal(true);
+  };
+
+  const handleOpenEditModal = (exp) => {
+    setEditingId(exp.id);
+    setFormName(exp.name);
+    setFormResearchArea(exp.researchArea);
+    setFormObjective(exp.objective);
+    setFormDescription(exp.description);
+    setFormAssignedAlgorithm(exp.assignedAlgorithm);
+    setFormStatus(exp.status);
+    setFormAccuracy(exp.accuracy || 0);
+    setFormThroughput(exp.throughput || "1.0 Gbps");
+    setShowFormModal(true);
+  };
+
+  const handleSaveExperiment = (e) => {
+    e.preventDefault();
+    if (!formName.trim()) {
+      triggerToast("Name is required");
+      return;
+    }
+
+    const timestamp = new Date().toISOString().replace("T", " ").substring(0, 16);
+
+    if (editingId) {
+      setExperiments(prev => prev.map(exp => {
+        if (exp.id === editingId) {
+          const updated = {
+            ...exp,
+            name: formName,
+            researchArea: formResearchArea,
+            objective: formObjective,
+            description: formDescription,
+            assignedAlgorithm: formAssignedAlgorithm,
+            status: formStatus,
+            accuracy: Number(formAccuracy),
+            throughput: formThroughput,
+            lastUpdated: timestamp
+          };
+          if (selectedExperiment?.id === exp.id) {
+            setSelectedExperiment(updated);
+          }
+          return updated;
+        }
+        return exp;
+      }));
+      triggerToast("Experiment updated successfully.");
+    } else {
+      const newExp = {
+        id: `exp_${Date.now()}`,
+        name: formName,
+        researchArea: formResearchArea,
+        objective: formObjective,
+        description: formDescription,
+        assignedAlgorithm: formAssignedAlgorithm,
+        status: formStatus,
+        accuracy: Number(formAccuracy),
+        throughput: formThroughput,
+        createdDate: timestamp,
+        lastUpdated: timestamp,
+        timeline: [
+          { id: `e_${Date.now()}`, type: "success", title: "Experiment Created", timestamp, desc: "Initialization sequence completed.", icon: "✅" }
+        ],
+        attachments: []
+      };
+      setExperiments(prev => [newExp, ...prev]);
+      triggerToast("New experiment created successfully.");
+    }
+
+    setShowFormModal(false);
+  };
+
+  const handleDeleteExperiment = (id) => {
+    setExperiments(prev => prev.filter(e => e.id !== id));
+    if (selectedExperiment?.id === id) {
+      setSelectedExperiment(null);
+    }
+    triggerToast("Experiment deleted.");
+  };
+
+  const handleDuplicateExperiment = (exp) => {
+    const timestamp = new Date().toISOString().replace("T", " ").substring(0, 16);
+    const duplicated = {
+      ...exp,
+      id: `exp_${Date.now()}`,
+      name: `${exp.name} (Copy)`,
+      createdDate: timestamp,
+      lastUpdated: timestamp,
+      timeline: [
+        { id: `e_${Date.now()}`, type: "success", title: "Duplicated Experiment", timestamp, desc: `Copied from ${exp.name}`, icon: "✅" },
+        ...(exp.timeline || [])
+      ]
+    };
+    setExperiments(prev => [duplicated, ...prev]);
+    triggerToast(`Duplicated "${exp.name}"`);
+  };
+
+  const handleToggleArchiveExperiment = (exp) => {
+    const updatedStatus = exp.status === "Archived" ? "Pending" : "Archived";
+    setExperiments(prev => prev.map(e => {
+      if (e.id === exp.id) {
+        const updated = { ...e, status: updatedStatus };
+        if (selectedExperiment?.id === exp.id) {
+          setSelectedExperiment(updated);
+        }
+        return updated;
+      }
+      return e;
+    }));
+    triggerToast(`Experiment marked as ${updatedStatus}`);
   };
 
   // Timeline filtering helper
@@ -169,6 +332,12 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
   const filteredTimelineEvents = selectedExperiment ? getFilteredTimeline(selectedExperiment) : [];
   const filteredAttachments = selectedExperiment ? getFilteredAttachments(selectedExperiment) : [];
 
+  const handleToggleCompare = (id) => {
+    setCompareIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
   return (
     <div style={{
       background: T.bg,
@@ -206,6 +375,131 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
         </div>
       )}
 
+      {/* ── CREATE / EDIT MODAL ── */}
+      {showFormModal && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.7)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10000,
+          backdropFilter: "blur(4px)"
+        }}>
+          <div style={{
+            background: T.surf,
+            border: `1px solid ${T.border2}`,
+            borderRadius: 16,
+            padding: 24,
+            width: 480,
+            maxWidth: "90vw",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.5)"
+          }}>
+            <h3 style={{ margin: "0 0 16px 0", fontSize: "1.1rem", fontWeight: 800 }}>
+              {editingId ? "✏️ Edit Experiment" : "➕ Create New Experiment"}
+            </h3>
+            <form onSubmit={handleSaveExperiment} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "4px", fontWeight: 600 }}>Experiment Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={formName}
+                  onChange={e => setFormName(e.target.value)}
+                  placeholder="e.g. CRISPR Off-Target Calibration"
+                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "4px", fontWeight: 600 }}>Research Area</label>
+                <select
+                  value={formResearchArea}
+                  onChange={e => setFormResearchArea(e.target.value)}
+                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1 }}
+                >
+                  <option value="Gene Editing">Gene Editing</option>
+                  <option value="DNA Sequencing">DNA Sequencing</option>
+                  <option value="Structural Biology">Structural Biology</option>
+                  <option value="Biochemistry">Biochemistry</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "4px", fontWeight: 600 }}>Assigned Algorithm</label>
+                <input
+                  type="text"
+                  value={formAssignedAlgorithm}
+                  onChange={e => setFormAssignedAlgorithm(e.target.value)}
+                  placeholder="e.g. Smith-Waterman Heuristics v1.0"
+                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "4px", fontWeight: 600 }}>Status</label>
+                  <select
+                    value={formStatus}
+                    onChange={e => setFormStatus(e.target.value)}
+                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1 }}
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Archived">Archived</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "4px", fontWeight: 600 }}>Accuracy (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={formAccuracy}
+                    onChange={e => setFormAccuracy(e.target.value)}
+                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "4px", fontWeight: 600 }}>Objective</label>
+                <textarea
+                  rows={2}
+                  value={formObjective}
+                  onChange={e => setFormObjective(e.target.value)}
+                  placeholder="Map optimization coordinates..."
+                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none", resize: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "4px", fontWeight: 600 }}>Description</label>
+                <textarea
+                  rows={3}
+                  value={formDescription}
+                  onChange={e => setFormDescription(e.target.value)}
+                  placeholder="Enter literary citations or constraints..."
+                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none", resize: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+                <button type="submit" style={{ flex: 1, padding: "10px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>
+                  Save
+                </button>
+                <button type="button" onClick={() => setShowFormModal(false)} style={{ padding: "10px 16px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, color: T.text2, fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Header section with responsive layout */}
       <div style={{
         display: "flex",
@@ -237,6 +531,22 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
 
         {/* Action button bar */}
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <button
+            onClick={() => setShowComparison(prev => !prev)}
+            style={{
+              padding: "10px 14px",
+              background: showComparison ? T.accent : T.surf2,
+              border: `1px solid ${T.border2}`,
+              borderRadius: 8,
+              color: showComparison ? "#fff" : T.cyan,
+              fontWeight: 600,
+              fontSize: "0.82rem",
+              cursor: "pointer"
+            }}
+          >
+            📊 Compare Results ({compareIds.length})
+          </button>
+
           {experiments.length > 0 ? (
             <button
               onClick={handleClearAll}
@@ -279,7 +589,7 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
 
           {/* Create Experiment Button */}
           <button
-            onClick={() => triggerToast("Create Experiment action triggered.")}
+            onClick={handleOpenCreateModal}
             style={{
               padding: "10px 18px",
               background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
@@ -303,6 +613,107 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
           </button>
         </div>
       </div>
+
+      {/* ── RESULTS COMPARISON DASHBOARD PANEL ── */}
+      {showComparison && (
+        <div style={{
+          background: T.surf,
+          border: `1px solid ${T.accent}40`,
+          borderRadius: "16px",
+          padding: "24px",
+          marginBottom: "24px",
+          boxShadow: `0 10px 30px ${T.accent}15`
+        }}>
+          <h2 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: 800, color: T.text1 }}>
+            📊 Quantitative Results Comparison
+          </h2>
+          <p style={{ margin: "0 0 16px 0", fontSize: "0.8rem", color: T.text2 }}>
+            Select completed experiments from the checkbox lists to contrast accuracy levels, throughput coefficients, and algorithm metrics.
+          </p>
+
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }}>
+            {experiments.map(exp => (
+              <label key={exp.id} style={{ display: "flex", alignItems: "center", gap: "6px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: "8px", padding: "8px 12px", fontSize: "0.78rem", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={compareIds.includes(exp.id)}
+                  onChange={() => handleToggleCompare(exp.id)}
+                  style={{ accentColor: T.accent }}
+                />
+                <span>{exp.name}</span>
+              </label>
+            ))}
+          </div>
+
+          {compareIds.length === 0 ? (
+            <div style={{ color: T.text3, textAlign: "center", fontSize: "0.8rem", padding: "16px" }}>Please check at least one experiment above to display side-by-side matrices.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem", textAlign: "left" }}>
+                <thead>
+                  <tr style={{ background: T.surf2, borderBottom: `2px solid ${T.border2}` }}>
+                    <th style={{ padding: "10px", border: `1px solid ${T.border}` }}>Metric</th>
+                    {compareIds.map(id => {
+                      const exp = experiments.find(e => e.id === id);
+                      return (
+                        <th key={id} style={{ padding: "10px", border: `1px solid ${T.border}`, fontWeight: 800, color: T.accent }}>
+                          {exp?.name}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                    <td style={{ padding: "10px", border: `1px solid ${T.border}`, fontWeight: 700 }}>Accuracy Rate</td>
+                    {compareIds.map(id => {
+                      const exp = experiments.find(e => e.id === id);
+                      return (
+                        <td key={id} style={{ padding: "10px", border: `1px solid ${T.border}`, color: T.green, fontWeight: "bold" }}>
+                          {exp?.accuracy ? `${exp.accuracy}%` : "Pending/N/A"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                    <td style={{ padding: "10px", border: `1px solid ${T.border}`, fontWeight: 700 }}>Throughput</td>
+                    {compareIds.map(id => {
+                      const exp = experiments.find(e => e.id === id);
+                      return (
+                        <td key={id} style={{ padding: "10px", border: `1px solid ${T.border}`, color: T.cyan }}>
+                          {exp?.throughput || "N/A"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                    <td style={{ padding: "10px", border: `1px solid ${T.border}`, fontWeight: 700 }}>Assigned Pipeline</td>
+                    {compareIds.map(id => {
+                      const exp = experiments.find(e => e.id === id);
+                      return (
+                        <td key={id} style={{ padding: "10px", border: `1px solid ${T.border}`, fontFamily: "monospace" }}>
+                          {exp?.assignedAlgorithm || "None"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                    <td style={{ padding: "10px", border: `1px solid ${T.border}`, fontWeight: 700 }}>Research Focus</td>
+                    {compareIds.map(id => {
+                      const exp = experiments.find(e => e.id === id);
+                      return (
+                        <td key={id} style={{ padding: "10px", border: `1px solid ${T.border}` }}>
+                          {exp?.researchArea}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main split dashboard view */}
       <div style={{
@@ -376,7 +787,7 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                 </p>
 
                 <button
-                  onClick={() => triggerToast("New Experiment placeholder triggered.")}
+                  onClick={handleOpenCreateModal}
                   style={{
                     padding: "10px 20px",
                     background: T.surf2,
@@ -431,7 +842,6 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                         setTimelineFilter("All");
                         setAttachmentSearch("");
                         setAttachmentFilter("All");
-                        triggerToast(`Loaded details for: ${exp.name}`);
                       }}
                       style={{
                         background: isSelected ? `${T.accent}15` : T.surf,
@@ -496,8 +906,14 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                         </h3>
                       </div>
 
-                      <div style={{ fontSize: "0.72rem", color: T.text3 }}>
-                        Updated {exp.lastUpdated.split(" ")[0]}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ fontSize: "0.72rem", color: T.text3 }}>
+                          Updated {exp.lastUpdated.split(" ")[0]}
+                        </div>
+                        <div style={{ display: "flex", gap: "6px" }} onClick={e => e.stopPropagation()}>
+                          <button onClick={() => handleOpenEditModal(exp)} style={{ background: "none", border: "none", color: T.cyan, cursor: "pointer", fontSize: "0.75rem" }} title="Edit">✏️</button>
+                          <button onClick={() => handleDeleteExperiment(exp.id)} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", fontSize: "0.75rem" }} title="Delete">🗑️</button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -552,7 +968,6 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
               <button
                 onClick={() => {
                   setSelectedExperiment(null);
-                  triggerToast("Details panel closed.");
                 }}
                 style={{
                   background: T.surf2,
@@ -654,7 +1069,7 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                 <div style={{ background: T.surf2, padding: "12px 14px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
                   <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase", fontWeight: 600 }}>Assigned Algorithm</div>
                   <div style={{ fontSize: "0.8rem", fontWeight: 700, color: T.cyan, marginTop: "4px", fontFamily: "monospace" }}>
-                    🧬 {selectedExperiment.assignedAlgorithm}
+                    🧬 {selectedExperiment.assignedAlgorithm || "None Assigned"}
                   </div>
                 </div>
 
@@ -662,7 +1077,7 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                 <div>
                   <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px", marginBottom: "4px" }}>Objective</div>
                   <div style={{ fontSize: "0.8rem", color: T.text1, lineHeight: 1.5, background: T.surf2, padding: "12px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
-                    {selectedExperiment.objective}
+                    {selectedExperiment.objective || "No objective configured."}
                   </div>
                 </div>
 
@@ -670,7 +1085,7 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                 <div>
                   <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px", marginBottom: "4px" }}>Description</div>
                   <div style={{ fontSize: "0.8rem", color: T.text2, lineHeight: 1.5, background: T.surf2, padding: "12px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
-                    {selectedExperiment.description}
+                    {selectedExperiment.description || "No description provided."}
                   </div>
                 </div>
 
@@ -710,36 +1125,6 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                       boxSizing: "border-box"
                     }}
                   />
-                </div>
-
-                {/* Category Filters (UI ONLY) */}
-                <div style={{
-                  display: "flex",
-                  gap: "6px",
-                  flexWrap: "wrap"
-                }}>
-                  {["All", "Info", "Warning", "Success"].map(filterOpt => (
-                    <button
-                      key={filterOpt}
-                      onClick={() => {
-                        setTimelineFilter(filterOpt);
-                        triggerToast(`Filtered timeline by: ${filterOpt}`);
-                      }}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: "20px",
-                        background: timelineFilter === filterOpt ? T.accent : T.surf2,
-                        border: `1px solid ${timelineFilter === filterOpt ? T.accent : T.border2}`,
-                        color: timelineFilter === filterOpt ? "#fff" : T.text2,
-                        fontSize: "0.7rem",
-                        fontWeight: timelineFilter === filterOpt ? 700 : 500,
-                        cursor: "pointer",
-                        transition: "all 0.15s"
-                      }}
-                    >
-                      {filterOpt}
-                    </button>
-                  ))}
                 </div>
 
                 {/* Vertical Timeline Stream */}
@@ -814,7 +1199,7 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
               </div>
             )}
 
-            {/* TAB CONTENTS: ATTACHMENTS VIEW (Step 8E Complete) */}
+            {/* TAB CONTENTS: ATTACHMENTS VIEW */}
             {detailsTab === "attachments" && (
               <div style={{ display: "flex", flexDirection: "column", gap: "16px", flex: 1 }}>
                 {/* Search Field */}
@@ -836,36 +1221,6 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                       boxSizing: "border-box"
                     }}
                   />
-                </div>
-
-                {/* Format Filters */}
-                <div style={{
-                  display: "flex",
-                  gap: "6px",
-                  flexWrap: "wrap"
-                }}>
-                  {["All", "FASTA", "PDF", "CSV"].map(fmt => (
-                    <button
-                      key={fmt}
-                      onClick={() => {
-                        setAttachmentFilter(fmt);
-                        triggerToast(`Filtered attachments by: ${fmt}`);
-                      }}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: "20px",
-                        background: attachmentFilter === fmt ? T.accent : T.surf2,
-                        border: `1px solid ${attachmentFilter === fmt ? T.accent : T.border2}`,
-                        color: attachmentFilter === fmt ? "#fff" : T.text2,
-                        fontSize: "0.7rem",
-                        fontWeight: attachmentFilter === fmt ? 700 : 500,
-                        cursor: "pointer",
-                        transition: "all 0.15s"
-                      }}
-                    >
-                      {fmt}
-                    </button>
-                  ))}
                 </div>
 
                 {/* File list */}
@@ -918,20 +1273,6 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                         {/* Action buttons */}
                         <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
                           <button
-                            onClick={() => triggerToast(`Viewing attachment: ${att.name}`)}
-                            style={{ background: "transparent", border: "none", color: T.cyan, cursor: "pointer", fontSize: "0.8rem" }}
-                            title="View"
-                          >
-                            👁️
-                          </button>
-                          <button
-                            onClick={() => triggerToast(`Downloaded attachment: ${att.name}`)}
-                            style={{ background: "transparent", border: "none", color: T.green, cursor: "pointer", fontSize: "0.8rem" }}
-                            title="Download"
-                          >
-                            ⬇️
-                          </button>
-                          <button
                             onClick={() => handleRemoveAttachment(selectedExperiment.id, att.id)}
                             style={{ background: "transparent", border: "none", color: T.red, cursor: "pointer", fontSize: "0.8rem" }}
                             title="Remove"
@@ -956,7 +1297,7 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
               paddingTop: "20px"
             }}>
               <button
-                onClick={() => triggerToast("Edit operation triggered.")}
+                onClick={() => handleOpenEditModal(selectedExperiment)}
                 style={{
                   padding: "10px",
                   background: T.surf2,
@@ -968,13 +1309,11 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                   cursor: "pointer",
                   transition: "all 0.15s"
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = T.border2}
-                onMouseLeave={e => e.currentTarget.style.background = T.surf2}
               >
-                Edit
+                Edit Details
               </button>
               <button
-                onClick={() => triggerToast("Duplicate operation triggered.")}
+                onClick={() => handleDuplicateExperiment(selectedExperiment)}
                 style={{
                   padding: "10px",
                   background: T.surf2,
@@ -986,13 +1325,11 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                   cursor: "pointer",
                   transition: "all 0.15s"
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = `${T.cyan}12`}
-                onMouseLeave={e => e.currentTarget.style.background = T.surf2}
               >
                 Duplicate
               </button>
               <button
-                onClick={() => triggerToast("Archive operation triggered.")}
+                onClick={() => handleToggleArchiveExperiment(selectedExperiment)}
                 style={{
                   padding: "10px",
                   background: T.surf2,
@@ -1005,10 +1342,8 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                   transition: "all 0.15s",
                   gridColumn: "1 / -1"
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = `${T.yellow}12`}
-                onMouseLeave={e => e.currentTarget.style.background = T.surf2}
               >
-                Archive
+                {selectedExperiment.status === "Archived" ? "Unarchive" : "Archive"}
               </button>
             </div>
           </aside>

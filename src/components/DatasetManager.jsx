@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
 // Standard Design Tokens (fallback theme)
 const DEFAULT_T = {
@@ -139,7 +139,23 @@ const MOCK_DATASETS = [
 ];
 
 export default function DatasetManager({ T = DEFAULT_T }) {
-  const [datasets, setDatasets] = useState(MOCK_DATASETS);
+  const [datasets, setDatasets] = useState(() => {
+    try {
+      const saved = localStorage.getItem("apex_os_datasets");
+      return saved ? JSON.parse(saved) : MOCK_DATASETS;
+    } catch {
+      return MOCK_DATASETS;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("apex_os_datasets", JSON.stringify(datasets));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [datasets]);
+
   const [selectedDatasetId, setSelectedDatasetId] = useState("ds_1");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -155,6 +171,18 @@ export default function DatasetManager({ T = DEFAULT_T }) {
   const [previewSearch, setPreviewSearch] = useState("");
   const [previewPage, setPreviewPage] = useState(0);
   const previewRowsPerPage = 3;
+
+  // Import form states
+  const [importName, setImportName] = useState("");
+  const [importCategory, setImportCategory] = useState("Genomics");
+  const [importType, setImportType] = useState("CSV");
+  const [importSize, setImportSize] = useState("10 MB");
+  const [importRecords, setImportRecords] = useState("1,500");
+  const [importOwner, setImportOwner] = useState("Sarah Kim");
+  const [importDescription, setImportDescription] = useState("");
+  const [importResearchArea, setImportResearchArea] = useState("");
+  const [importSource, setImportSource] = useState("");
+  const [importLicense, setImportLicense] = useState("CC0");
 
   // Selected dataset object helper
   const selectedDataset = useMemo(() => {
@@ -238,6 +266,14 @@ export default function DatasetManager({ T = DEFAULT_T }) {
     triggerToast(`Toggled archive status of "${target?.name}".`);
   };
 
+  const handleDeleteDataset = (id) => {
+    setDatasets(prev => prev.filter(d => d.id !== id));
+    if (selectedDatasetId === id) {
+      setSelectedDatasetId("");
+    }
+    triggerToast("Dataset deleted successfully.");
+  };
+
   // Attachment Removal handler
   const handleRemoveAttachment = (datasetId, attachmentId) => {
     setDatasets(prev => prev.map(d => {
@@ -250,6 +286,58 @@ export default function DatasetManager({ T = DEFAULT_T }) {
       return d;
     }));
     triggerToast("Attachment removed.");
+  };
+
+  // Import / Save handler
+  const handleImportSubmit = (e) => {
+    e.preventDefault();
+    if (!importName.trim()) {
+      triggerToast("Name is required");
+      return;
+    }
+
+    const newDs = {
+      id: `ds_${Date.now()}`,
+      name: importName,
+      category: importCategory,
+      type: importType,
+      size: importSize,
+      records: importRecords,
+      owner: importOwner,
+      status: "Active",
+      version: "v1.0",
+      lastUpdated: new Date().toISOString().split("T")[0],
+      description: importDescription,
+      researchArea: importResearchArea,
+      source: importSource,
+      license: importLicense,
+      createdDate: new Date().toISOString().split("T")[0],
+      tags: [importCategory, importType],
+      versions: [
+        { version: "v1.0", date: new Date().toISOString().split("T")[0], author: importOwner, notes: "Initial uploaded dataset." }
+      ],
+      columns: ["Id", "Sample_Value", "Telemetry_Rating", "Verify_State"],
+      rows: [
+        { Id: "1", Sample_Value: "Peptide align A", Telemetry_Rating: "Q55", Verify_State: "PASS" },
+        { Id: "2", Sample_Value: "Peptide align B", Telemetry_Rating: "Q62", Verify_State: "PASS" },
+        { Id: "3", Sample_Value: "High-throughput read", Telemetry_Rating: "Q30", Verify_State: "FAIL" }
+      ],
+      attachments: [],
+      timeline: [
+        { id: `tl_${Date.now()}`, event: "Created", date: new Date().toISOString().split("T")[0], author: importOwner, desc: "Dataset profile uploaded & initialized." }
+      ]
+    };
+
+    setDatasets(prev => [newDs, ...prev]);
+    setSelectedDatasetId(newDs.id);
+    setShowImportWizard(false);
+    triggerToast(`Successfully uploaded "${importName}"!`);
+
+    // Reset fields
+    setImportName("");
+    setImportDescription("");
+    setImportResearchArea("");
+    setImportSource("");
   };
 
   // Dashboard Stats calculation
@@ -382,13 +470,13 @@ export default function DatasetManager({ T = DEFAULT_T }) {
             }}
           >
             <span>📥</span>
-            <span>{showImportWizard ? "Back to Dashboard" : "Import New Dataset"}</span>
+            <span>{showImportWizard ? "Back to Dashboard" : "Upload Dataset"}</span>
           </button>
         </div>
       </div>
 
-      {/* ── IMPORT WIZARD (UI ONLY) ── */}
-      {showImportWizard ? (
+      {/* ── IMPORT WIZARD (FULLY FUNCTIONAL FORM) ── */}
+      {showImportWizard && (
         <div style={{
           background: T.surf,
           border: `1px solid ${T.border2}`,
@@ -397,57 +485,132 @@ export default function DatasetManager({ T = DEFAULT_T }) {
           marginBottom: "24px",
           animation: "slideIn 0.25s ease"
         }}>
-          <h2 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: 800 }}>Dataset Import Wizard</h2>
+          <h2 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: 800 }}>Dataset Upload Form (LocalStorage)</h2>
           <p style={{ margin: "0 0 20px 0", fontSize: "0.82rem", color: T.text2 }}>
-            Select a file format or method below to configure dataset metadata schemas. No files are uploaded to any external server.
+            Provide dataset parameters below to save and persist in the local system database workspace.
           </p>
 
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-            gap: "16px"
-          }}>
-            {[
-              { type: "CSV File", icon: "📊", desc: "Standard comma-separated relational records matrix format." },
-              { type: "JSON Node", icon: "⚙️", desc: "Structured hierarchical object notation database blocks." },
-              { type: "Excel Spreadsheet", icon: "📈", desc: "Multiple data sheets incorporating calculations and parameters." },
-              { type: "FASTA Genome", icon: "🧬", desc: "High-throughput reference genome and nucleotide peptide assembly sequences." },
-              { type: "DNA Sequence", icon: "🧪", desc: "Direct genetic sequence raw reads (A, C, G, T, U) alignments." },
-              { type: "Manual Entry Builder", icon: "✍️", desc: "Create a schema structure and enter row values cell by cell." }
-            ].map(card => (
-              <div
-                key={card.type}
-                onClick={() => triggerToast(`Import wizard configured for: ${card.type}`)}
-                style={{
-                  background: T.surf2,
-                  border: `1px solid ${T.border}`,
-                  borderRadius: "12px",
-                  padding: "16px",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  textAlign: "center"
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.borderColor = T.accent;
-                  e.currentTarget.style.transform = "translateY(-2px)";
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.borderColor = T.border;
-                  e.currentTarget.style.transform = "translateY(0)";
-                }}
-              >
-                <div style={{ fontSize: "2rem", marginBottom: "12px" }}>{card.icon}</div>
-                <h3 style={{ margin: "0 0 6px 0", fontSize: "0.85rem", fontWeight: 700 }}>{card.type}</h3>
-                <p style={{ margin: 0, fontSize: "0.72rem", color: T.text2, lineHeight: 1.4 }}>{card.desc}</p>
+          <form onSubmit={handleImportSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "600px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>Dataset Name *</label>
+              <input
+                type="text"
+                required
+                value={importName}
+                onChange={e => setImportName(e.target.value)}
+                placeholder="e.g. GRCh38 Patch 14 Genome Assembly"
+                style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none" }}
+              />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>Category</label>
+                <select value={importCategory} onChange={e => setImportCategory(e.target.value)} style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1 }}>
+                  <option value="Genomics">Genomics</option>
+                  <option value="Virology">Virology</option>
+                  <option value="Proteomics">Proteomics</option>
+                </select>
               </div>
-            ))}
-          </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>File Type</label>
+                <select value={importType} onChange={e => setImportType(e.target.value)} style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1 }}>
+                  <option value="FASTA">FASTA</option>
+                  <option value="CSV">CSV</option>
+                  <option value="JSON">JSON</option>
+                  <option value="PDF">PDF</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>Estimated Size</label>
+                <input
+                  type="text"
+                  value={importSize}
+                  onChange={e => setImportSize(e.target.value)}
+                  placeholder="e.g. 15.4 MB"
+                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none" }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>Record Count</label>
+                <input
+                  type="text"
+                  value={importRecords}
+                  onChange={e => setImportRecords(e.target.value)}
+                  placeholder="e.g. 1,500"
+                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none" }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>Owner / Uploader</label>
+              <input
+                type="text"
+                value={importOwner}
+                onChange={e => setImportOwner(e.target.value)}
+                style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none" }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>Research Focus Area</label>
+              <input
+                type="text"
+                value={importResearchArea}
+                onChange={e => setImportResearchArea(e.target.value)}
+                placeholder="e.g. Adaptive Alignment / Virology Maps"
+                style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none" }}
+              />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>Data Source</label>
+                <input
+                  type="text"
+                  value={importSource}
+                  onChange={e => setImportSource(e.target.value)}
+                  placeholder="e.g. NCBI GenBank"
+                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none" }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>License Policy</label>
+                <input
+                  type="text"
+                  value={importLicense}
+                  onChange={e => setImportLicense(e.target.value)}
+                  placeholder="e.g. CC0"
+                  style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none" }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>Dataset Description</label>
+              <textarea
+                rows={3}
+                value={importDescription}
+                onChange={e => setImportDescription(e.target.value)}
+                placeholder="Details about genome alignments or nucleotide records..."
+                style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px", color: T.text1, outline: "none", resize: "none", fontFamily: "inherit" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
+              <button type="submit" style={{ padding: "10px 20px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Save Dataset</button>
+              <button type="button" onClick={() => setShowImportWizard(false)} style={{ padding: "10px 20px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, color: T.text2, cursor: "pointer" }}>Cancel</button>
+            </div>
+          </form>
         </div>
-      ) : (
-        /* ── STATISTICS DASHBOARD ── */
+      )}
+
+      {/* ── STATISTICS DASHBOARD ── */}
+      {!showImportWizard && (
         <div style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
@@ -691,7 +854,7 @@ export default function DatasetManager({ T = DEFAULT_T }) {
                                   cursor: "pointer"
                                 }}
                               >
-                                🔍 Open
+                                🔍
                               </button>
                               <button
                                 onClick={() => handleDuplicateDataset(ds)}
@@ -705,7 +868,7 @@ export default function DatasetManager({ T = DEFAULT_T }) {
                                   cursor: "pointer"
                                 }}
                               >
-                                👥 Dup
+                                👥
                               </button>
                               <button
                                 onClick={() => handleArchiveDataset(ds.id)}
@@ -719,7 +882,21 @@ export default function DatasetManager({ T = DEFAULT_T }) {
                                   cursor: "pointer"
                                 }}
                               >
-                                📁 Arc
+                                📁
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDataset(ds.id)}
+                                title="Delete"
+                                style={{
+                                  background: T.surf2,
+                                  border: `1px solid ${T.border2}`,
+                                  color: T.red,
+                                  padding: "3px 6px",
+                                  borderRadius: "4px",
+                                  cursor: "pointer"
+                                }}
+                              >
+                                🗑️
                               </button>
                             </div>
                           </td>
@@ -792,7 +969,7 @@ export default function DatasetManager({ T = DEFAULT_T }) {
                 }}>
                   <thead>
                     <tr style={{ background: T.surf2, color: T.text2 }}>
-                      {selectedDataset.columns.map(col => (
+                      {(selectedDataset.columns || []).map(col => (
                         <th key={col} style={{ padding: "8px 10px", border: `1px solid ${T.border}` }}>
                           {col}
                         </th>
@@ -802,7 +979,7 @@ export default function DatasetManager({ T = DEFAULT_T }) {
                   <tbody>
                     {paginatedPreviewRows.map((row, idx) => (
                       <tr key={idx} style={{ borderBottom: `1px solid ${T.border}` }}>
-                        {selectedDataset.columns.map(col => (
+                        {(selectedDataset.columns || []).map(col => (
                           <td key={col} style={{ padding: "8px 10px", border: `1px solid ${T.border}`, color: T.text2 }}>
                             {row[col] || "—"}
                           </td>
@@ -904,7 +1081,7 @@ export default function DatasetManager({ T = DEFAULT_T }) {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <div>
                     <label style={{ fontSize: "0.65rem", color: T.text3, textTransform: "uppercase", fontWeight: "bold" }}>Research Area</label>
-                    <div style={{ color: T.text2 }}>{selectedDataset.researchArea}</div>
+                    <div style={{ color: T.text2 }}>{selectedDataset.researchArea || "N/A"}</div>
                   </div>
                   <div>
                     <label style={{ fontSize: "0.65rem", color: T.text3, textTransform: "uppercase", fontWeight: "bold" }}>Owner</label>
@@ -915,11 +1092,11 @@ export default function DatasetManager({ T = DEFAULT_T }) {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <div>
                     <label style={{ fontSize: "0.65rem", color: T.text3, textTransform: "uppercase", fontWeight: "bold" }}>Source</label>
-                    <div style={{ color: T.text2 }}>{selectedDataset.source}</div>
+                    <div style={{ color: T.text2 }}>{selectedDataset.source || "N/A"}</div>
                   </div>
                   <div>
                     <label style={{ fontSize: "0.65rem", color: T.text3, textTransform: "uppercase", fontWeight: "bold" }}>License</label>
-                    <div style={{ color: T.text2 }}>{selectedDataset.license}</div>
+                    <div style={{ color: T.text2 }}>{selectedDataset.license || "N/A"}</div>
                   </div>
                 </div>
 
@@ -945,22 +1122,11 @@ export default function DatasetManager({ T = DEFAULT_T }) {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div>
-                    <label style={{ fontSize: "0.65rem", color: T.text3, textTransform: "uppercase", fontWeight: "bold" }}>Created Date</label>
-                    <div style={{ color: T.text2 }}>{selectedDataset.createdDate}</div>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "0.65rem", color: T.text3, textTransform: "uppercase", fontWeight: "bold" }}>Updated Date</label>
-                    <div style={{ color: T.text2 }}>{selectedDataset.lastUpdated}</div>
-                  </div>
-                </div>
-
                 {/* Tags block */}
                 <div>
                   <label style={{ fontSize: "0.65rem", color: T.text3, textTransform: "uppercase", display: "block", marginBottom: "6px", fontWeight: "bold" }}>Tags</label>
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    {selectedDataset.tags.map(tag => (
+                    {(selectedDataset.tags || []).map(tag => (
                       <span
                         key={tag}
                         style={{
@@ -993,7 +1159,7 @@ export default function DatasetManager({ T = DEFAULT_T }) {
               </h3>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {selectedDataset.versions.map(ver => (
+                {(selectedDataset.versions || []).map(ver => (
                   <div
                     key={ver.version}
                     style={{
@@ -1014,183 +1180,6 @@ export default function DatasetManager({ T = DEFAULT_T }) {
                     <div style={{ fontSize: "0.7rem", color: T.text2 }}>{ver.notes}</div>
                   </div>
                 ))}
-              </div>
-
-              {/* Version actions */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginTop: "12px" }}>
-                <button onClick={() => triggerToast("Version comparison tool activated.")} style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: "6px", color: T.text1, fontSize: "0.7rem", padding: "6px", cursor: "pointer" }}>Compare</button>
-                <button onClick={() => triggerToast("Dataset version restore sequence launched.")} style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: "6px", color: T.text1, fontSize: "0.7rem", padding: "6px", cursor: "pointer" }}>Restore</button>
-                <button onClick={() => triggerToast("Version metadata export complete.")} style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: "6px", color: T.text1, fontSize: "0.7rem", padding: "6px", cursor: "pointer" }}>Export</button>
-              </div>
-            </div>
-
-            {/* Attachments Section */}
-            <div style={{
-              background: T.surf,
-              border: `1px solid ${T.border2}`,
-              borderRadius: "16px",
-              padding: "20px"
-            }}>
-              <h3 style={{ margin: "0 0 12px 0", fontSize: "0.9rem", fontWeight: 800 }}>
-                📎 Associated Attachments
-              </h3>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {selectedDataset.attachments.length === 0 ? (
-                  <div style={{ fontSize: "0.74rem", color: T.text3, textAlign: "center", padding: "10px 0" }}>No associated attachments.</div>
-                ) : (
-                  selectedDataset.attachments.map(att => (
-                    <div
-                      key={att.id}
-                      style={{
-                        background: T.surf2,
-                        border: `1px solid ${T.border}`,
-                        borderRadius: "8px",
-                        padding: "10px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center"
-                      }}
-                    >
-                      <div style={{ minWidth: 0, marginRight: "8px" }}>
-                        <div style={{
-                          fontSize: "0.76rem",
-                          fontWeight: 700,
-                          color: T.text1,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap"
-                        }} title={att.name}>
-                          {att.name}
-                        </div>
-                        <div style={{ fontSize: "0.66rem", color: T.text3, marginTop: "2px" }}>
-                          Type: <strong>{att.type}</strong> | Size: {att.size}
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
-                        <button
-                          onClick={() => triggerToast(`Viewing attachment: ${att.name}`)}
-                          style={{ background: "transparent", border: "none", color: T.cyan, cursor: "pointer", fontSize: "0.8rem" }}
-                          title="View"
-                        >
-                          👁️
-                        </button>
-                        <button
-                          onClick={() => triggerToast(`Downloaded attachment: ${att.name}`)}
-                          style={{ background: "transparent", border: "none", color: T.green, cursor: "pointer", fontSize: "0.8rem" }}
-                          title="Download"
-                        >
-                          ⬇️
-                        </button>
-                        <button
-                          onClick={() => handleRemoveAttachment(selectedDataset.id, att.id)}
-                          style={{ background: "transparent", border: "none", color: T.red, cursor: "pointer", fontSize: "0.8rem" }}
-                          title="Remove"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Activity Timeline Card */}
-            <div style={{
-              background: T.surf,
-              border: `1px solid ${T.border2}`,
-              borderRadius: "16px",
-              padding: "20px"
-            }}>
-              <h3 style={{ margin: "0 0 12px 0", fontSize: "0.9rem", fontWeight: 800 }}>
-                ⚡ Activity Timeline
-              </h3>
-
-              <div style={{
-                display: "flex",
-                flexDirection: "column",
-                borderLeft: `2px solid ${T.border2}`,
-                paddingLeft: "14px",
-                marginLeft: "8px",
-                gap: "14px"
-              }}>
-                {selectedDataset.timeline.map(tl => (
-                  <div key={tl.id} style={{ position: "relative" }}>
-                    {/* Node */}
-                    <div style={{
-                      position: "absolute",
-                      left: "-20px",
-                      top: "2px",
-                      width: "10px",
-                      height: "10px",
-                      borderRadius: "50%",
-                      background: tl.event === "Archived" ? T.red : tl.event === "Reviewed" ? T.green : T.accent,
-                      border: `2px solid ${T.surf}`
-                    }} />
-
-                    <div style={{ fontSize: "0.74rem" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
-                        <span>{tl.event}</span>
-                        <span style={{ color: T.text3, fontSize: "0.68rem" }}>{tl.date}</span>
-                      </div>
-                      <div style={{ fontSize: "0.68rem", color: T.text3, marginBottom: "2px" }}>
-                        By: <strong>{tl.author}</strong>
-                      </div>
-                      <div style={{ fontSize: "0.7rem", color: T.text2, lineHeight: 1.3 }}>
-                        {tl.desc}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Analytics Summary */}
-            <div style={{
-              background: T.surf,
-              border: `1px solid ${T.border2}`,
-              borderRadius: "16px",
-              padding: "20px"
-            }}>
-              <h3 style={{ margin: "0 0 12px 0", fontSize: "0.9rem", fontWeight: 800 }}>
-                📊 Analytics Summary
-              </h3>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "0.76rem" }}>
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                    <span>Dataset Growth Limit</span>
-                    <strong>82%</strong>
-                  </div>
-                  <div style={{ height: "4px", background: T.surf2, borderRadius: "2px" }}>
-                    <div style={{ height: "100%", width: "82%", background: T.accent, borderRadius: "2px" }} />
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                    <span>Storage Pool Capacity</span>
-                    <strong>65.4 GB / 100 GB</strong>
-                  </div>
-                  <div style={{ height: "4px", background: T.surf2, borderRadius: "2px" }}>
-                    <div style={{ height: "100%", width: "65%", background: T.cyan, borderRadius: "2px" }} />
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                    <span>Category Distribution</span>
-                    <span>Genomics (60%) / Virology (30%)</span>
-                  </div>
-                  <div style={{ height: "4px", background: T.surf2, borderRadius: "2px", display: "flex" }}>
-                    <div style={{ height: "100%", width: "60%", background: T.pink }} />
-                    <div style={{ height: "100%", width: "30%", background: T.yellow }} />
-                    <div style={{ height: "100%", width: "10%", background: T.text3 }} />
-                  </div>
-                </div>
               </div>
             </div>
           </aside>

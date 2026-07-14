@@ -210,6 +210,7 @@ const BLOCK_DESCRIPTIONS = {
 export default function AlgorithmDesigner() {
   const [algorithms, setAlgorithms] = useState(() => {
     try {
+      // Verified localStorage persistence key: 'apex_os_algorithms'
       const saved = localStorage.getItem("apex_os_algorithms");
       return saved ? JSON.parse(saved) : DEFAULT_ALGORITHMS;
     } catch (e) {

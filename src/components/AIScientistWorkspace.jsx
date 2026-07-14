@@ -77,6 +77,7 @@ const INITIAL_NOTES = [
 
 export default function AIScientistWorkspace() {
   const [hypotheses, setHypotheses] = useState(() => {
+    // Verified localStorage persistence key: 'apex_os_v4_hypotheses'
     const cached = localStorage.getItem("apex_os_v4_hypotheses");
     if (cached) {
       try { return JSON.parse(cached); } catch (e) { return INITIAL_HYPOTHESES; }
