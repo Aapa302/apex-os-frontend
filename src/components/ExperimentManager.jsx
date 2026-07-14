@@ -30,7 +30,15 @@ const MOCK_EXPERIMENTS = [
     assignedAlgorithm: "CRISPR PAM Searcher v2.0",
     status: "Completed",
     createdDate: "2026-07-10 14:30",
-    lastUpdated: "2026-07-12 09:15"
+    lastUpdated: "2026-07-12 09:15",
+    timeline: [
+      { id: "e1_1", type: "success", title: "Experiment Created", timestamp: "2026-07-10 14:30", desc: "Simulation initialization sequence completed under project authorization guidelines.", icon: "✅" },
+      { id: "e1_2", type: "info", title: "Algorithm Selected", timestamp: "2026-07-10 14:45", desc: "Assigned CRISPR PAM Searcher v2.0 as primary sequence matching engine.", icon: "ℹ️" },
+      { id: "e1_3", type: "info", title: "Parameters Configured", timestamp: "2026-07-10 15:00", desc: "Set match threshold to Q30, off-target mismatch allowance to 2 base pairs.", icon: "⚙️" },
+      { id: "e1_4", type: "success", title: "Validation Started", timestamp: "2026-07-11 09:00", desc: "Secure computation pipeline compilation verified successfully with 4 active node modules.", icon: "⚡" },
+      { id: "e1_5", type: "warning", title: "Review Pending", timestamp: "2026-07-11 17:30", desc: "Mismatch thermodynamic free-energy state values required literature citation audits.", icon: "⚠️" },
+      { id: "e1_6", type: "success", title: "Completed", timestamp: "2026-07-12 09:15", desc: "Off-target frequency simulated and verified with high-precision metrics.", icon: "🏆" }
+    ]
   },
   {
     id: "exp_2",
@@ -41,7 +49,14 @@ const MOCK_EXPERIMENTS = [
     assignedAlgorithm: "Base Aligner v1.1.0",
     status: "In Progress",
     createdDate: "2026-07-13 08:00",
-    lastUpdated: "2026-07-14 11:45"
+    lastUpdated: "2026-07-14 11:45",
+    timeline: [
+      { id: "e2_1", type: "success", title: "Experiment Created", timestamp: "2026-07-13 08:00", desc: "Sequence read trace model launched.", icon: "✅" },
+      { id: "e2_2", type: "info", title: "Algorithm Selected", timestamp: "2026-07-13 08:15", desc: "Selected Base Aligner v1.1.0 heuristics engine.", icon: "ℹ️" },
+      { id: "e2_3", type: "info", title: "Parameters Configured", timestamp: "2026-07-13 09:30", desc: "Gap open penalty set to 3.0, extension penalty coefficient set to 1.0.", icon: "⚙️" },
+      { id: "e2_4", type: "warning", title: "Validation Started", timestamp: "2026-07-14 09:00", desc: "Memory overflow alert triggered on >10 GB sequence reads bounds.", icon: "⚠️" },
+      { id: "e2_5", type: "info", title: "Review Pending", timestamp: "2026-07-14 11:45", desc: "Sarah Kim initiated local traceback pointer indexing audits.", icon: "🔬" }
+    ]
   },
   {
     id: "exp_3",
@@ -52,7 +67,11 @@ const MOCK_EXPERIMENTS = [
     assignedAlgorithm: "Double Helix 3D Simulator v1.0",
     status: "Pending",
     createdDate: "2026-07-14 10:20",
-    lastUpdated: "2026-07-14 10:20"
+    lastUpdated: "2026-07-14 10:20",
+    timeline: [
+      { id: "e3_1", type: "success", title: "Experiment Created", timestamp: "2026-07-14 10:20", desc: "Crystalline lattices model structural confirmation profile loaded.", icon: "✅" },
+      { id: "e3_2", type: "info", title: "Algorithm Selected", timestamp: "2026-07-14 10:25", desc: "Torsional Shear Stress formula matrices verified.", icon: "ℹ️" }
+    ]
   }
 ];
 
@@ -61,6 +80,13 @@ export default function ExperimentManager() {
   const [selectedExperiment, setSelectedExperiment] = useState(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+
+  // Details Panel view mode state: "parameters" vs "timeline"
+  const [detailsTab, setDetailsTab] = useState("parameters");
+
+  // Timeline Filtering states
+  const [timelineFilter, setTimelineFilter] = useState("All");
+  const [timelineSearch, setTimelineSearch] = useState("");
 
   const triggerToast = (message) => {
     setToastMessage(message);
@@ -81,6 +107,19 @@ export default function ExperimentManager() {
     setSelectedExperiment(null);
     triggerToast("Mock experiments list reloaded.");
   };
+
+  // Get filtered timeline events based on search query and category filter
+  const getFilteredTimeline = (exp) => {
+    if (!exp || !exp.timeline) return [];
+    return exp.timeline.filter(evt => {
+      const matchesSearch = evt.title.toLowerCase().includes(timelineSearch.toLowerCase()) ||
+                            evt.desc.toLowerCase().includes(timelineSearch.toLowerCase());
+      const matchesFilter = timelineFilter === "All" || evt.type.toLowerCase() === timelineFilter.toLowerCase();
+      return matchesSearch && matchesFilter;
+    });
+  };
+
+  const filteredTimelineEvents = selectedExperiment ? getFilteredTimeline(selectedExperiment) : [];
 
   return (
     <div style={{
@@ -339,6 +378,9 @@ export default function ExperimentManager() {
                       key={exp.id}
                       onClick={() => {
                         setSelectedExperiment(exp);
+                        setDetailsTab("parameters"); // default to parameters view
+                        setTimelineSearch("");
+                        setTimelineFilter("All");
                         triggerToast(`Loaded details for: ${exp.name}`);
                       }}
                       style={{
@@ -419,7 +461,7 @@ export default function ExperimentManager() {
         {selectedExperiment && (
           <aside style={{
             flex: "1 1 350px",
-            minWidth: "300px",
+            minWidth: "320px",
             background: T.surf,
             border: `1px solid ${T.border2}`,
             borderRadius: "16px",
@@ -440,7 +482,7 @@ export default function ExperimentManager() {
               borderBottom: `1px solid ${T.border2}`,
               paddingBottom: "16px"
             }}>
-              <div>
+              <div style={{ flex: 1, minWidth: 0, marginRight: "8px" }}>
                 <div style={{ fontSize: "0.68rem", color: T.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "4px" }}>
                   Selected Experiment Details
                 </div>
@@ -449,8 +491,11 @@ export default function ExperimentManager() {
                   fontSize: "1.1rem",
                   fontWeight: 800,
                   color: T.text1,
-                  lineHeight: 1.3
-                }}>
+                  lineHeight: 1.3,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis"
+                }} title={selectedExperiment.name}>
                   {selectedExperiment.name}
                 </h2>
               </div>
@@ -471,7 +516,8 @@ export default function ExperimentManager() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  transition: "all 0.15s"
+                  transition: "all 0.15s",
+                  flexShrink: 0
                 }}
                 onMouseEnter={e => {
                   e.currentTarget.style.color = T.text1;
@@ -486,77 +532,250 @@ export default function ExperimentManager() {
               </button>
             </div>
 
-            {/* Experiment Parameters */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {/* Research Area & Status */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div style={{ background: T.surf2, padding: "10px 14px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
-                  <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase", fontWeight: 600 }}>Research Area</div>
-                  <div style={{ fontSize: "0.8rem", fontWeight: 700, color: T.text1, marginTop: "4px" }}>{selectedExperiment.researchArea}</div>
-                </div>
-                <div style={{
-                  background: T.surf2,
-                  padding: "10px 14px",
-                  borderRadius: "8px",
-                  border: `1px solid ${T.border}`
-                }}>
-                  <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase", fontWeight: 600 }}>Status</div>
+            {/* TAB SELECTOR BAR */}
+            <div style={{
+              display: "flex",
+              background: T.surf2,
+              border: `1px solid ${T.border}`,
+              borderRadius: "8px",
+              padding: "4px",
+              gap: "4px"
+            }}>
+              <button
+                onClick={() => setDetailsTab("parameters")}
+                style={{
+                  flex: 1,
+                  padding: "6px 12px",
+                  background: detailsTab === "parameters" ? T.border2 : "transparent",
+                  border: "none",
+                  borderRadius: "6px",
+                  color: detailsTab === "parameters" ? T.text1 : T.text2,
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                Parameters
+              </button>
+              <button
+                onClick={() => setDetailsTab("timeline")}
+                style={{
+                  flex: 1,
+                  padding: "6px 12px",
+                  background: detailsTab === "timeline" ? T.border2 : "transparent",
+                  border: "none",
+                  borderRadius: "6px",
+                  color: detailsTab === "timeline" ? T.text1 : T.text2,
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                Timeline
+              </button>
+            </div>
+
+            {/* TAB CONTENTS: PARAMETERS VIEW */}
+            {detailsTab === "parameters" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {/* Research Area & Status */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div style={{ background: T.surf2, padding: "10px 14px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
+                    <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase", fontWeight: 600 }}>Research Area</div>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 700, color: T.text1, marginTop: "4px" }}>{selectedExperiment.researchArea}</div>
+                  </div>
                   <div style={{
-                    fontSize: "0.8rem",
-                    fontWeight: 700,
-                    color: selectedExperiment.status === "Completed" ? T.green : selectedExperiment.status === "In Progress" ? T.yellow : T.text3,
-                    marginTop: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px"
+                    background: T.surf2,
+                    padding: "10px 14px",
+                    borderRadius: "8px",
+                    border: `1px solid ${T.border}`
                   }}>
-                    <span style={{
-                      width: "6px",
-                      height: "6px",
-                      borderRadius: "50%",
-                      background: selectedExperiment.status === "Completed" ? T.green : selectedExperiment.status === "In Progress" ? T.yellow : T.text3
-                    }} />
-                    {selectedExperiment.status}
+                    <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase", fontWeight: 600 }}>Status</div>
+                    <div style={{
+                      fontSize: "0.8rem",
+                      fontWeight: 700,
+                      color: selectedExperiment.status === "Completed" ? T.green : selectedExperiment.status === "In Progress" ? T.yellow : T.text3,
+                      marginTop: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px"
+                    }}>
+                      <span style={{
+                        width: "6px",
+                        height: "6px",
+                        borderRadius: "50%",
+                        background: selectedExperiment.status === "Completed" ? T.green : selectedExperiment.status === "In Progress" ? T.yellow : T.text3
+                      }} />
+                      {selectedExperiment.status}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Assigned Algorithm */}
+                <div style={{ background: T.surf2, padding: "12px 14px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
+                  <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase", fontWeight: 600 }}>Assigned Algorithm</div>
+                  <div style={{ fontSize: "0.8rem", fontWeight: 700, color: T.cyan, marginTop: "4px", fontFamily: "monospace" }}>
+                    🧬 {selectedExperiment.assignedAlgorithm}
+                  </div>
+                </div>
+
+                {/* Objective */}
+                <div>
+                  <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px", marginBottom: "4px" }}>Objective</div>
+                  <div style={{ fontSize: "0.8rem", color: T.text1, lineHeight: 1.5, background: T.surf2, padding: "12px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
+                    {selectedExperiment.objective}
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px", marginBottom: "4px" }}>Description</div>
+                  <div style={{ fontSize: "0.8rem", color: T.text2, lineHeight: 1.5, background: T.surf2, padding: "12px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
+                    {selectedExperiment.description}
+                  </div>
+                </div>
+
+                {/* Dates */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Created Date</div>
+                    <div style={{ fontSize: "0.76rem", color: T.text2, fontWeight: 500, marginTop: "2px" }}>{selectedExperiment.createdDate}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Last Updated</div>
+                    <div style={{ fontSize: "0.76rem", color: T.text2, fontWeight: 500, marginTop: "2px" }}>{selectedExperiment.lastUpdated}</div>
                   </div>
                 </div>
               </div>
+            )}
 
-              {/* Assigned Algorithm */}
-              <div style={{ background: T.surf2, padding: "12px 14px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
-                <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase", fontWeight: 600 }}>Assigned Algorithm</div>
-                <div style={{ fontSize: "0.8rem", fontWeight: 700, color: T.cyan, marginTop: "4px", fontFamily: "monospace" }}>
-                  🧬 {selectedExperiment.assignedAlgorithm}
-                </div>
-              </div>
-
-              {/* Objective */}
-              <div>
-                <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px", marginBottom: "4px" }}>Objective</div>
-                <div style={{ fontSize: "0.8rem", color: T.text1, lineHeight: 1.5, background: T.surf2, padding: "12px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
-                  {selectedExperiment.objective}
-                </div>
-              </div>
-
-              {/* Description */}
-              <div>
-                <div style={{ fontSize: "0.66rem", color: T.text2, textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px", marginBottom: "4px" }}>Description</div>
-                <div style={{ fontSize: "0.8rem", color: T.text2, lineHeight: 1.5, background: T.surf2, padding: "12px", borderRadius: "8px", border: `1px solid ${T.border}` }}>
-                  {selectedExperiment.description}
-                </div>
-              </div>
-
-              {/* Dates */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            {/* TAB CONTENTS: TIMELINE VIEW */}
+            {detailsTab === "timeline" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px", flex: 1 }}>
+                {/* Search Field */}
                 <div>
-                  <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Created Date</div>
-                  <div style={{ fontSize: "0.76rem", color: T.text2, fontWeight: 500, marginTop: "2px" }}>{selectedExperiment.createdDate}</div>
+                  <input
+                    type="text"
+                    value={timelineSearch}
+                    onChange={e => setTimelineSearch(e.target.value)}
+                    placeholder="🔍 Search timeline events..."
+                    style={{
+                      width: "100%",
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      color: T.text1,
+                      fontSize: "0.8rem",
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
                 </div>
-                <div>
-                  <div style={{ fontSize: "0.64rem", color: T.text3, textTransform: "uppercase" }}>Last Updated</div>
-                  <div style={{ fontSize: "0.76rem", color: T.text2, fontWeight: 500, marginTop: "2px" }}>{selectedExperiment.lastUpdated}</div>
+
+                {/* Category Filters (UI ONLY) */}
+                <div style={{
+                  display: "flex",
+                  gap: "6px",
+                  flexWrap: "wrap"
+                }}>
+                  {["All", "Info", "Warning", "Success"].map(filterOpt => (
+                    <button
+                      key={filterOpt}
+                      onClick={() => {
+                        setTimelineFilter(filterOpt);
+                        triggerToast(`Filtered timeline by: ${filterOpt}`);
+                      }}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "20px",
+                        background: timelineFilter === filterOpt ? T.accent : T.surf2,
+                        border: `1px solid ${timelineFilter === filterOpt ? T.accent : T.border2}`,
+                        color: timelineFilter === filterOpt ? "#fff" : T.text2,
+                        fontSize: "0.7rem",
+                        fontWeight: timelineFilter === filterOpt ? 700 : 500,
+                        cursor: "pointer",
+                        transition: "all 0.15s"
+                      }}
+                    >
+                      {filterOpt}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Vertical Timeline Stream */}
+                <div style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  position: "relative",
+                  paddingLeft: "20px",
+                  borderLeft: `2px solid ${T.border2}`,
+                  marginLeft: "10px",
+                  gap: "20px",
+                  maxHeight: "320px",
+                  overflowY: "auto",
+                  paddingTop: "4px",
+                  paddingBottom: "4px"
+                }}>
+                  {filteredTimelineEvents.length === 0 ? (
+                    <div style={{
+                      textAlign: "center",
+                      padding: "20px 0",
+                      color: T.text3,
+                      fontSize: "0.8rem"
+                    }}>
+                      No events match filters.
+                    </div>
+                  ) : (
+                    filteredTimelineEvents.map((evt, idx) => {
+                      let nodeColor = T.accent;
+                      if (evt.type === "success") nodeColor = T.green;
+                      if (evt.type === "warning") nodeColor = T.yellow;
+
+                      return (
+                        <div key={evt.id} style={{ position: "relative" }}>
+                          {/* Timeline node icon */}
+                          <div style={{
+                            position: "absolute",
+                            left: "-27px",
+                            top: "2px",
+                            width: "14px",
+                            height: "14px",
+                            borderRadius: "50%",
+                            background: T.surf,
+                            border: `2px solid ${nodeColor}`,
+                            boxShadow: `0 0 6px ${nodeColor}50`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "0.6rem"
+                          }}>
+                            {evt.icon}
+                          </div>
+
+                          {/* Event info */}
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
+                              <span style={{ fontSize: "0.82rem", fontWeight: 700, color: T.text1 }}>
+                                {evt.title}
+                              </span>
+                              <span style={{ fontSize: "0.68rem", color: T.text3 }}>
+                                {evt.timestamp.split(" ")[1] || evt.timestamp}
+                              </span>
+                            </div>
+                            <p style={{ margin: "4px 0 0 0", fontSize: "0.76rem", color: T.text2, lineHeight: 1.4 }}>
+                              {evt.desc}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Action Buttons Footer */}
             <div style={{
