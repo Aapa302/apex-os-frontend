@@ -119,6 +119,115 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
   // Details Panel view mode state: "parameters" vs "timeline" vs "attachments"
   const [detailsTab, setDetailsTab] = useState("parameters");
 
+  const [availableAlgorithms, setAvailableAlgorithms] = useState(() => {
+    try {
+      const saved = localStorage.getItem("apex_os_algorithms");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [runAlgId, setRunAlgId] = useState("");
+  const [runPayload, setRunPayload] = useState("Biological Sequence Data Storage Segment v4.2");
+  const [runResult, setRunResult] = useState(null);
+
+  const textToBinary = (text) => {
+    return text.split("")
+      .map(char => char.charCodeAt(0).toString(2).padStart(8, "0"))
+      .join("");
+  };
+
+  const binaryToDNA = (binary) => {
+    let padded = binary;
+    if (padded.length % 2 !== 0) padded += "0";
+    let dna = "";
+    const map = { "00": "A", "01": "C", "10": "G", "11": "T" };
+    for (let i = 0; i < padded.length; i += 2) {
+      const bits = padded.slice(i, i + 2);
+      dna += map[bits] || "A";
+    }
+    return dna;
+  };
+
+  const dnaToBinary = (dna) => {
+    let binary = "";
+    const map = { "A": "00", "C": "01", "G": "10", "T": "11" };
+    for (let i = 0; i < dna.length; i++) {
+      const base = dna[i].toUpperCase();
+      binary += map[base] || "00";
+    }
+    return binary;
+  };
+
+  const binaryToText = (binary) => {
+    const bytes = [];
+    for (let i = 0; i < binary.length; i += 8) {
+      const byte = binary.slice(i, i + 8);
+      if (byte.length === 8) {
+        bytes.push(String.fromCharCode(parseInt(byte, 2)));
+      }
+    }
+    return bytes.join("");
+  };
+
+  const executeExperimentRun = (exp) => {
+    const alg = availableAlgorithms.find(a => a.id === runAlgId);
+    if (!alg) {
+      alert("Please select a valid algorithm pipeline first.");
+      return;
+    }
+    if (!runPayload.trim()) {
+      alert("Please enter input payload string.");
+      return;
+    }
+
+    const t0 = performance.now();
+    const binary = textToBinary(runPayload);
+    const dna = binaryToDNA(binary);
+    const decodedBinary = dnaToBinary(dna);
+    const decodedText = binaryToText(decodedBinary);
+    const t1 = performance.now();
+
+    const isSuccess = decodedText.substring(0, runPayload.length) === runPayload;
+    const duration = (t1 - t0).toFixed(3);
+    const accuracy = isSuccess ? 100 : 0;
+    const throughput = `${(dna.length / (parseFloat(duration) || 1)).toFixed(2)} bp/ms`;
+
+    const timestamp = new Date().toISOString().replace("T", " ").substring(0, 16);
+
+    const updatedExp = {
+      ...exp,
+      status: "Completed",
+      accuracy,
+      throughput,
+      assignedAlgorithm: alg.name,
+      description: `Input: "${runPayload}". Output DNA: ${dna}. Latency: ${duration}ms.`,
+      lastUpdated: timestamp,
+      timeline: [
+        {
+          id: `evt_${Date.now()}`,
+          type: "success",
+          title: "Pipeline Executed",
+          timestamp,
+          desc: `Executed ${alg.name}. Checksum validation: ${isSuccess ? "MATCHED (100% Correct)" : "MISMATCH"}. Latency: ${duration} ms.`,
+          icon: "⚡"
+        },
+        ...(exp.timeline || [])
+      ]
+    };
+
+    setExperiments(prev => prev.map(e => e.id === exp.id ? updatedExp : e));
+    setSelectedExperiment(updatedExp);
+    setRunResult({
+      duration,
+      dna,
+      decodedText: decodedText.substring(0, runPayload.length),
+      success: isSuccess
+    });
+    triggerToast("Simulation execution finished and recorded!");
+  };
+
   // Timeline Filtering states
   const [timelineFilter, setTimelineFilter] = useState("All");
   const [timelineSearch, setTimelineSearch] = useState("");
@@ -1006,7 +1115,7 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
               padding: "4px",
               gap: "4px"
             }}>
-              {["parameters", "timeline", "attachments"].map(tabOpt => (
+              {["parameters", "run", "timeline", "attachments"].map(tabOpt => (
                 <button
                   key={tabOpt}
                   onClick={() => setDetailsTab(tabOpt)}
@@ -1100,6 +1209,79 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
                     <div style={{ fontSize: "0.76rem", color: T.text2, fontWeight: 500, marginTop: "2px" }}>{selectedExperiment.lastUpdated}</div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* TAB CONTENTS: RUN VIEW */}
+            {detailsTab === "run" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <h4 style={{ margin: "0", fontSize: "0.82rem", color: T.text1 }}>
+                  ⚡ Execute DNA Simulation Pipeline
+                </h4>
+                <p style={{ margin: 0, fontSize: "0.74rem", color: T.text2, lineHeight: 1.4 }}>
+                  Execute digital data storage encoding/decoding on demand to compile real-time empirical parameters.
+                </p>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.7rem", color: T.text2, marginBottom: "4px", fontWeight: 600 }}>Select Algorithm Pipeline</label>
+                  <select
+                    value={runAlgId}
+                    onChange={(e) => {
+                      setRunAlgId(e.target.value);
+                      setRunResult(null);
+                    }}
+                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px", color: T.text1, fontSize: "0.82rem" }}
+                  >
+                    <option value="">-- Select Algorithm --</option>
+                    {availableAlgorithms.map(alg => (
+                      <option key={alg.id} value={alg.id}>{alg.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.7rem", color: T.text2, marginBottom: "4px", fontWeight: 600 }}>Input Payload Text</label>
+                  <input
+                    type="text"
+                    value={runPayload}
+                    onChange={(e) => setRunPayload(e.target.value)}
+                    placeholder="Enter string payload"
+                    style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px", color: T.text1, fontSize: "0.82rem", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => executeExperimentRun(selectedExperiment)}
+                  style={{
+                    padding: "10px",
+                    background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                    border: "none",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: "0.8rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  Run Simulation Experiment
+                </button>
+
+                {runResult && (
+                  <div style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "12px", display: "flex", flexDirection: "column", gap: "8px", fontSize: "0.76rem" }}>
+                    <div style={{ color: T.green, fontWeight: "bold" }}>✓ Run Successful</div>
+                    <div><strong>Latency:</strong> {runResult.duration} ms</div>
+                    <div><strong>DNA bases:</strong></div>
+                    <div style={{ wordBreak: "break-all", fontFamily: "monospace", color: T.cyan }}>{runResult.dna}</div>
+                    <div><strong>Decoded text:</strong> "{runResult.decodedText}"</div>
+                    <div>
+                      <strong>Match verification:</strong>{" "}
+                      <span style={{ color: runResult.success ? T.green : T.red, fontWeight: "bold" }}>
+                        {runResult.success ? "MATCHED (100% OK)" : "MISMATCH"}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

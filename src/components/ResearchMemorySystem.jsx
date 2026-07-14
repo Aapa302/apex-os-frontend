@@ -100,6 +100,16 @@ export default function ResearchMemorySystem() {
     }
   };
 
+  const handleRenameMemory = (id) => {
+    const item = memories.find(m => m.id === id);
+    if (!item) return;
+    const newName = window.prompt("Enter new title for this research memory:", item.title);
+    if (newName && newName.trim()) {
+      setMemories(prev => prev.map(m => m.id === id ? { ...m, title: newName.trim() } : m));
+      alert("Research memory renamed successfully!");
+    }
+  };
+
   // Export as JSON
   const handleExportJSON = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(memories, null, 2));
@@ -422,6 +432,12 @@ export default function ResearchMemorySystem() {
 
                   <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                     <span style={{ fontSize: "0.7rem", color: T.text3 }}>{m.timestamp}</span>
+                    <button
+                      onClick={() => handleRenameMemory(m.id)}
+                      style={{ background: "none", border: "none", color: T.cyan, cursor: "pointer", fontSize: "0.78rem" }}
+                    >
+                      ✏️ Rename
+                    </button>
                     <button
                       onClick={() => handleDeleteMemory(m.id)}
                       style={{ background: "none", border: "none", color: T.red, cursor: "pointer", fontSize: "0.78rem" }}
