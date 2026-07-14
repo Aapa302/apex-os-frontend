@@ -10,6 +10,7 @@ import DNASimulationEngine from "./components/DNASimulationEngine";
 import FormulaAlgorithmLibrary from "./components/FormulaAlgorithmLibrary";
 import AIScientistWorkspace from "./components/AIScientistWorkspace";
 import ResearchMemorySystem from "./components/ResearchMemorySystem";
+import AICommandCenter from "./components/AICommandCenter";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -2075,6 +2076,7 @@ export default function ApexOS() {
     { id: "formula_library", icon: "📚", label: "Formula & Alg Library" },
     { id: "scientist_workspace", icon: "🔬", label: "Scientist Workspace" },
     { id: "research_memory", icon: "🧠", label: "Research Memory System" },
+    { id: "ai_command_center", icon: "🕹️", label: "AI Command Center" },
 
     { id: "reviews",   icon: "🔍", label: "Reviews" },
     { id: "memory",    icon: "🧠", label: "Memory" },
@@ -2548,6 +2550,11 @@ export default function ApexOS() {
           {/* ═══ RESEARCH MEMORY SYSTEM ═══ */}
           {view === "research_memory" && (
             <ResearchMemorySystem />
+          )}
+
+          {/* ═══ AI COMMAND CENTER ═══ */}
+          {view === "ai_command_center" && (
+            <AICommandCenter />
           )}
 
           {/* ═══ REVIEWS ═══ */}
