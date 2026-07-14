@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import ResearchLab from "./ResearchLab";
 import AlgorithmDesigner from "./AlgorithmDesigner";
 import ExperimentManager from "./components/ExperimentManager";
+import DatasetManager from "./components/DatasetManager";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -2068,6 +2069,7 @@ export default function ApexOS() {
     { id: "research_lab", icon: "🧬", label: "Research Lab" },
     { id: "algorithm_designer", icon: "🧬", label: "Algorithm Designer" },
     { id: "experiments", icon: "🧪", label: "Experiments" },
+    { id: "datasets",    icon: "📦", label: "Datasets" },
 
     { id: "reviews",   icon: "🔍", label: "Reviews" },
     { id: "memory",    icon: "🧠", label: "Memory" },
@@ -2515,7 +2517,12 @@ export default function ApexOS() {
 
           {/* ═══ EXPERIMENT MANAGER ═══ */}
           {view === "experiments" && (
-            <ExperimentManager />
+            <ExperimentManager T={T} />
+          )}
+
+          {/* ═══ DATASET MANAGER ═══ */}
+          {view === "datasets" && (
+            <DatasetManager T={T} />
           )}
 
 

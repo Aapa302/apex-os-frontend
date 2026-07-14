@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 
-// Design Tokens matching App.jsx and ResearchLab.jsx
-const T = {
+// Design Tokens matching App.jsx and ResearchLab.jsx (Default Dark Theme)
+const DEFAULT_T = {
   bg:       "#05050f",
   surf:     "#0b0b18",
   surf2:    "#0f0f1e",
@@ -38,6 +38,11 @@ const MOCK_EXPERIMENTS = [
       { id: "e1_4", type: "success", title: "Validation Started", timestamp: "2026-07-11 09:00", desc: "Secure computation pipeline compilation verified successfully with 4 active node modules.", icon: "⚡" },
       { id: "e1_5", type: "warning", title: "Review Pending", timestamp: "2026-07-11 17:30", desc: "Mismatch thermodynamic free-energy state values required literature citation audits.", icon: "⚠️" },
       { id: "e1_6", type: "success", title: "Completed", timestamp: "2026-07-12 09:15", desc: "Off-target frequency simulated and verified with high-precision metrics.", icon: "🏆" }
+    ],
+    attachments: [
+      { id: "att_1_1", name: "crispr_off_target_bounds.fasta", type: "FASTA", size: "4.8 MB", date: "2026-07-10", uploader: "Dr. Mei Lin" },
+      { id: "att_1_2", name: "thermodynamics_states_audit.pdf", type: "PDF", size: "1.2 MB", date: "2026-07-11", uploader: "Sarah Kim" },
+      { id: "att_1_3", name: "alignment_matrix_coordinates.csv", type: "CSV", size: "640 KB", date: "2026-07-12", uploader: "Alex Chen" }
     ]
   },
   {
@@ -56,6 +61,10 @@ const MOCK_EXPERIMENTS = [
       { id: "e2_3", type: "info", title: "Parameters Configured", timestamp: "2026-07-13 09:30", desc: "Gap open penalty set to 3.0, extension penalty coefficient set to 1.0.", icon: "⚙️" },
       { id: "e2_4", type: "warning", title: "Validation Started", timestamp: "2026-07-14 09:00", desc: "Memory overflow alert triggered on >10 GB sequence reads bounds.", icon: "⚠️" },
       { id: "e2_5", type: "info", title: "Review Pending", timestamp: "2026-07-14 11:45", desc: "Sarah Kim initiated local traceback pointer indexing audits.", icon: "🔬" }
+    ],
+    attachments: [
+      { id: "att_2_1", name: "smith_waterman_traceback.fasta", type: "FASTA", size: "2.4 MB", date: "2026-07-13", uploader: "Sarah Kim" },
+      { id: "att_2_2", name: "memory_limit_analysis.csv", type: "CSV", size: "120 KB", date: "2026-07-14", uploader: "Alex Chen" }
     ]
   },
   {
@@ -71,22 +80,29 @@ const MOCK_EXPERIMENTS = [
     timeline: [
       { id: "e3_1", type: "success", title: "Experiment Created", timestamp: "2026-07-14 10:20", desc: "Crystalline lattices model structural confirmation profile loaded.", icon: "✅" },
       { id: "e3_2", type: "info", title: "Algorithm Selected", timestamp: "2026-07-14 10:25", desc: "Torsional Shear Stress formula matrices verified.", icon: "ℹ️" }
+    ],
+    attachments: [
+      { id: "att_3_1", name: "stress_tensor_matrices.pdf", type: "PDF", size: "850 KB", date: "2026-07-14", uploader: "Dr. Mei Lin" }
     ]
   }
 ];
 
-export default function ExperimentManager() {
+export default function ExperimentManager({ T = DEFAULT_T }) {
   const [experiments, setExperiments] = useState(MOCK_EXPERIMENTS);
   const [selectedExperiment, setSelectedExperiment] = useState(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
-  // Details Panel view mode state: "parameters" vs "timeline"
+  // Details Panel view mode state: "parameters" vs "timeline" vs "attachments"
   const [detailsTab, setDetailsTab] = useState("parameters");
 
   // Timeline Filtering states
   const [timelineFilter, setTimelineFilter] = useState("All");
   const [timelineSearch, setTimelineSearch] = useState("");
+
+  // Attachments Filtering states
+  const [attachmentFilter, setAttachmentFilter] = useState("All");
+  const [attachmentSearch, setAttachmentSearch] = useState("");
 
   const triggerToast = (message) => {
     setToastMessage(message);
@@ -108,7 +124,7 @@ export default function ExperimentManager() {
     triggerToast("Mock experiments list reloaded.");
   };
 
-  // Get filtered timeline events based on search query and category filter
+  // Timeline filtering helper
   const getFilteredTimeline = (exp) => {
     if (!exp || !exp.timeline) return [];
     return exp.timeline.filter(evt => {
@@ -119,7 +135,39 @@ export default function ExperimentManager() {
     });
   };
 
+  // Attachments filtering helper
+  const getFilteredAttachments = (exp) => {
+    if (!exp || !exp.attachments) return [];
+    return exp.attachments.filter(att => {
+      const matchesSearch = att.name.toLowerCase().includes(attachmentSearch.toLowerCase());
+      const matchesFilter = attachmentFilter === "All" || att.type.toUpperCase() === attachmentFilter.toUpperCase();
+      return matchesSearch && matchesFilter;
+    });
+  };
+
+  // Handle attachment removal
+  const handleRemoveAttachment = (expId, attId) => {
+    setExperiments(prev => prev.map(exp => {
+      if (exp.id === expId) {
+        return {
+          ...exp,
+          attachments: exp.attachments.filter(a => a.id !== attId)
+        };
+      }
+      return exp;
+    }));
+    // Update local selectedExperiment tracking
+    if (selectedExperiment && selectedExperiment.id === expId) {
+      setSelectedExperiment(prev => ({
+        ...prev,
+        attachments: prev.attachments.filter(a => a.id !== attId)
+      }));
+    }
+    triggerToast("Attachment removed.");
+  };
+
   const filteredTimelineEvents = selectedExperiment ? getFilteredTimeline(selectedExperiment) : [];
+  const filteredAttachments = selectedExperiment ? getFilteredAttachments(selectedExperiment) : [];
 
   return (
     <div style={{
@@ -381,6 +429,8 @@ export default function ExperimentManager() {
                         setDetailsTab("parameters"); // default to parameters view
                         setTimelineSearch("");
                         setTimelineFilter("All");
+                        setAttachmentSearch("");
+                        setAttachmentFilter("All");
                         triggerToast(`Loaded details for: ${exp.name}`);
                       }}
                       style={{
@@ -541,40 +591,27 @@ export default function ExperimentManager() {
               padding: "4px",
               gap: "4px"
             }}>
-              <button
-                onClick={() => setDetailsTab("parameters")}
-                style={{
-                  flex: 1,
-                  padding: "6px 12px",
-                  background: detailsTab === "parameters" ? T.border2 : "transparent",
-                  border: "none",
-                  borderRadius: "6px",
-                  color: detailsTab === "parameters" ? T.text1 : T.text2,
-                  fontSize: "0.78rem",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  transition: "all 0.15s"
-                }}
-              >
-                Parameters
-              </button>
-              <button
-                onClick={() => setDetailsTab("timeline")}
-                style={{
-                  flex: 1,
-                  padding: "6px 12px",
-                  background: detailsTab === "timeline" ? T.border2 : "transparent",
-                  border: "none",
-                  borderRadius: "6px",
-                  color: detailsTab === "timeline" ? T.text1 : T.text2,
-                  fontSize: "0.78rem",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  transition: "all 0.15s"
-                }}
-              >
-                Timeline
-              </button>
+              {["parameters", "timeline", "attachments"].map(tabOpt => (
+                <button
+                  key={tabOpt}
+                  onClick={() => setDetailsTab(tabOpt)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 12px",
+                    background: detailsTab === tabOpt ? T.border2 : "transparent",
+                    border: "none",
+                    borderRadius: "6px",
+                    color: detailsTab === tabOpt ? T.text1 : T.text2,
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    textTransform: "capitalize"
+                  }}
+                >
+                  {tabOpt}
+                </button>
+              ))}
             </div>
 
             {/* TAB CONTENTS: PARAMETERS VIEW */}
@@ -729,7 +766,7 @@ export default function ExperimentManager() {
                       No events match filters.
                     </div>
                   ) : (
-                    filteredTimelineEvents.map((evt, idx) => {
+                    filteredTimelineEvents.map((evt) => {
                       let nodeColor = T.accent;
                       if (evt.type === "success") nodeColor = T.green;
                       if (evt.type === "warning") nodeColor = T.yellow;
@@ -772,6 +809,138 @@ export default function ExperimentManager() {
                         </div>
                       );
                     })
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENTS: ATTACHMENTS VIEW (Step 8E Complete) */}
+            {detailsTab === "attachments" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px", flex: 1 }}>
+                {/* Search Field */}
+                <div>
+                  <input
+                    type="text"
+                    value={attachmentSearch}
+                    onChange={e => setAttachmentSearch(e.target.value)}
+                    placeholder="🔍 Search attachments..."
+                    style={{
+                      width: "100%",
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: "8px",
+                      padding: "8px 12px",
+                      color: T.text1,
+                      fontSize: "0.8rem",
+                      outline: "none",
+                      boxSizing: "border-box"
+                    }}
+                  />
+                </div>
+
+                {/* Format Filters */}
+                <div style={{
+                  display: "flex",
+                  gap: "6px",
+                  flexWrap: "wrap"
+                }}>
+                  {["All", "FASTA", "PDF", "CSV"].map(fmt => (
+                    <button
+                      key={fmt}
+                      onClick={() => {
+                        setAttachmentFilter(fmt);
+                        triggerToast(`Filtered attachments by: ${fmt}`);
+                      }}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "20px",
+                        background: attachmentFilter === fmt ? T.accent : T.surf2,
+                        border: `1px solid ${attachmentFilter === fmt ? T.accent : T.border2}`,
+                        color: attachmentFilter === fmt ? "#fff" : T.text2,
+                        fontSize: "0.7rem",
+                        fontWeight: attachmentFilter === fmt ? 700 : 500,
+                        cursor: "pointer",
+                        transition: "all 0.15s"
+                      }}
+                    >
+                      {fmt}
+                    </button>
+                  ))}
+                </div>
+
+                {/* File list */}
+                <div style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  maxHeight: "320px",
+                  overflowY: "auto"
+                }}>
+                  {filteredAttachments.length === 0 ? (
+                    <div style={{
+                      textAlign: "center",
+                      padding: "20px 0",
+                      color: T.text3,
+                      fontSize: "0.8rem"
+                    }}>
+                      No attachments match filters.
+                    </div>
+                  ) : (
+                    filteredAttachments.map(att => (
+                      <div
+                        key={att.id}
+                        style={{
+                          background: T.surf2,
+                          border: `1px solid ${T.border}`,
+                          borderRadius: "8px",
+                          padding: "10px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center"
+                        }}
+                      >
+                        <div style={{ minWidth: 0, marginRight: "8px" }}>
+                          <div style={{
+                            fontSize: "0.76rem",
+                            fontWeight: 700,
+                            color: T.text1,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap"
+                          }} title={att.name}>
+                            {att.name}
+                          </div>
+                          <div style={{ fontSize: "0.64rem", color: T.text3, marginTop: "2px" }}>
+                            Type: <strong>{att.type}</strong> | Size: {att.size} | By: {att.uploader}
+                          </div>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                          <button
+                            onClick={() => triggerToast(`Viewing attachment: ${att.name}`)}
+                            style={{ background: "transparent", border: "none", color: T.cyan, cursor: "pointer", fontSize: "0.8rem" }}
+                            title="View"
+                          >
+                            👁️
+                          </button>
+                          <button
+                            onClick={() => triggerToast(`Downloaded attachment: ${att.name}`)}
+                            style={{ background: "transparent", border: "none", color: T.green, cursor: "pointer", fontSize: "0.8rem" }}
+                            title="Download"
+                          >
+                            ⬇️
+                          </button>
+                          <button
+                            onClick={() => handleRemoveAttachment(selectedExperiment.id, att.id)}
+                            style={{ background: "transparent", border: "none", color: T.red, cursor: "pointer", fontSize: "0.8rem" }}
+                            title="Remove"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
