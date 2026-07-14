@@ -208,7 +208,15 @@ const BLOCK_DESCRIPTIONS = {
 };
 
 export default function AlgorithmDesigner() {
-  const [algorithms, setAlgorithms] = useState(DEFAULT_ALGORITHMS);
+  const [algorithms, setAlgorithms] = useState(() => {
+    try {
+      const saved = localStorage.getItem("apex_os_algorithms");
+      return saved ? JSON.parse(saved) : DEFAULT_ALGORITHMS;
+    } catch (e) {
+      console.error("Error reading algorithms from localStorage", e);
+      return DEFAULT_ALGORITHMS;
+    }
+  });
   const [selectedId, setSelectedId] = useState("alg_1");
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -276,6 +284,15 @@ export default function AlgorithmDesigner() {
     setPanY(0);
     showToast("Canvas viewport reset.", "info");
   };
+
+  // Save algorithms to localStorage whenever the state changes
+  useEffect(() => {
+    try {
+      localStorage.setItem("apex_os_algorithms", JSON.stringify(algorithms));
+    } catch (e) {
+      console.error("Error writing algorithms to localStorage", e);
+    }
+  }, [algorithms]);
 
   // ── DYNAMIC SYNC WHEN ALGORITHM SELECTION CHANGES ──
   useEffect(() => {
