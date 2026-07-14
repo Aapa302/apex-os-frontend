@@ -354,19 +354,32 @@ export default function AlgorithmDesigner() {
   };
 
   const handleCreateNewAlgorithm = () => {
-    setSelectedId(null);
-    setAlgName("");
-    setObjective("");
-    setProblemStatement("");
-    setResearchNotes("");
-    handleClearFormulaFields();
-    setBlocks([]);
-    setConnections([]);
-    setSelectedFlowchartBlockId(null);
-    setReviewNotes("");
-    setReviewRecommendation("");
-    setApprovalStatus("Approved");
-    showToast("Cleared fields for new algorithm", "info");
+    const newId = `alg_${Date.now()}`;
+    const newAlg = {
+      id: newId,
+      name: "New Untangled Sequence Draft",
+      objective: "Enter objective...",
+      problemStatement: "",
+      researchNotes: "",
+      favorite: false,
+      recent: true,
+      category: "Custom DNA",
+      formulas: [],
+      pipeline: { blocks: [], connections: [] },
+      versions: [],
+      review: {
+        completeness: 10,
+        readability: "Pending",
+        innovationScore: 50,
+        validationStatus: "Pending",
+        notes: "",
+        recommendation: "",
+        approvalStatus: "Needs Work"
+      }
+    };
+    setAlgorithms(prev => [newAlg, ...prev]);
+    setSelectedId(newId);
+    showToast("Created a new DNA algorithm draft", "success");
   };
 
   // Save metadata changes back to the algorithms array

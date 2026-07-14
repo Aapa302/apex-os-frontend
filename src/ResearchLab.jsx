@@ -173,7 +173,7 @@ const StatCard = ({ title, value, icon, color, text2, border, bg }) => (
 );
 
 // Reusable modal for "Open Lab" details
-const LabDetailsModal = ({ isOpen, onClose, lab, theme, isLight, onOpenDNA }) => {
+const LabDetailsModal = ({ isOpen, onClose, lab, theme, isLight, onOpenDNA, onOpenLab }) => {
   if (!isOpen || !lab) return null;
 
   return (
@@ -296,9 +296,11 @@ const LabDetailsModal = ({ isOpen, onClose, lab, theme, isLight, onOpenDNA }) =>
             }}
           >Close Detail</button>
           <button
-            disabled={lab.id !== "dna"}
             onClick={() => {
-              if (lab.id === "dna" && onOpenDNA) {
+              if (onOpenLab) {
+                onOpenLab(lab.id);
+                onClose();
+              } else if (lab.id === "dna" && onOpenDNA) {
                 onOpenDNA();
                 onClose();
               }
@@ -306,13 +308,13 @@ const LabDetailsModal = ({ isOpen, onClose, lab, theme, isLight, onOpenDNA }) =>
             style={{
               flex: 1,
               padding: "10px",
-              background: lab.id === "dna" ? `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})` : `${theme.accent}30`,
+              background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`,
               border: "none",
               borderRadius: 9,
-              color: lab.id === "dna" ? "#fff" : theme.text3,
+              color: "#fff",
               fontWeight: 700,
               fontSize: "0.82rem",
-              cursor: lab.id === "dna" ? "pointer" : "not-allowed"
+              cursor: "pointer"
             }}
           >
             {lab.id === "dna" ? "Initialize Algorithm Designer" : "Initialize Lab"}
@@ -323,7 +325,7 @@ const LabDetailsModal = ({ isOpen, onClose, lab, theme, isLight, onOpenDNA }) =>
   );
 };
 
-export default function ResearchLab({ onOpenDNA }) {
+export default function ResearchLab({ onOpenDNA, onOpenLab }) {
   const [isLight, setIsLight] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -1031,6 +1033,7 @@ export default function ResearchLab({ onOpenDNA }) {
         theme={theme}
         isLight={isLight}
         onOpenDNA={onOpenDNA}
+        onOpenLab={onOpenLab}
       />
 
       <style>{`
