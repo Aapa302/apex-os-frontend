@@ -218,8 +218,55 @@ export default function AlgorithmDesigner() {
       return DEFAULT_ALGORITHMS;
     }
   });
-  const [selectedId, setSelectedId] = useState("alg_1");
+  const [selectedId, setSelectedId] = useState(() => {
+    return localStorage.getItem("apex_os_selected_algorithm_id") || "alg_1";
+  });
   const [toastMessage, setToastMessage] = useState(null);
+
+  useEffect(() => {
+    if (selectedId) {
+      localStorage.setItem("apex_os_selected_algorithm_id", selectedId);
+    }
+  }, [selectedId]);
+
+  const syncAlgorithmToResearchMemory = (alg) => {
+    try {
+      const cached = localStorage.getItem("apex_os_v4_research_memories");
+      let memories = [];
+      if (cached) {
+        memories = JSON.parse(cached);
+      }
+      const memId = `mem_alg_${alg.id}`;
+      // Remove existing
+      memories = memories.filter(m => m.id !== memId);
+      // Add new
+      memories.unshift({
+        id: memId,
+        title: `[Algorithm] ${alg.name}`,
+        type: "AI Observation",
+        content: `Objective: ${alg.objective}\nProblem Statement: ${alg.problemStatement || ""}\nResearch Notes: ${alg.researchNotes || ""}`,
+        tags: [alg.category || "Custom DNA", "Algorithm"],
+        timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
+        severity: "Medium"
+      });
+      localStorage.setItem("apex_os_v4_research_memories", JSON.stringify(memories));
+    } catch (err) {
+      console.error("Error syncing algorithm to research memory:", err);
+    }
+  };
+
+  const removeAlgorithmFromResearchMemory = (algId) => {
+    try {
+      const cached = localStorage.getItem("apex_os_v4_research_memories");
+      if (cached) {
+        let memories = JSON.parse(cached);
+        memories = memories.filter(m => m.id !== `mem_alg_${algId}`);
+        localStorage.setItem("apex_os_v4_research_memories", JSON.stringify(memories));
+      }
+    } catch (err) {
+      console.error("Error removing algorithm from research memory:", err);
+    }
+  };
 
   // Workspace active tab: "review", "version_history", "flowchart", "pipeline", "formulas", "metadata"
   const [activeTab, setActiveTab] = useState("review");
@@ -379,7 +426,41 @@ export default function AlgorithmDesigner() {
     };
     setAlgorithms(prev => [newAlg, ...prev]);
     setSelectedId(newId);
+    syncAlgorithmToResearchMemory(newAlg);
     showToast("Created a new DNA algorithm draft", "success");
+  };
+
+  const handleDeleteAlgorithm = (id, e) => {
+    if (e) e.stopPropagation();
+    if (window.confirm("Are you sure you want to delete this algorithm?")) {
+      setAlgorithms(prev => {
+        const nextAlgs = prev.filter(alg => alg.id !== id);
+        if (nextAlgs.length === 0) {
+          const defaultAlg = {
+            id: "alg_1",
+            name: "Base Aligner v1.0",
+            objective: "Perform high-fidelity nucleobase alignment for biological structures.",
+            problemStatement: "Current alignments are too slow and fail to identify complex structural transitions in sequence reads.",
+            researchNotes: "Integrated basic dynamic programming alignments with Smith-Waterman heuristics. Memory footprint optimized.",
+            favorite: true,
+            recent: true,
+            category: "DNA Sequencing",
+            formulas: [],
+            pipeline: { blocks: [], connections: [] },
+            versions: []
+          };
+          setSelectedId("alg_1");
+          syncAlgorithmToResearchMemory(defaultAlg);
+          return [defaultAlg];
+        }
+        if (selectedId === id) {
+          setSelectedId(nextAlgs[0].id);
+        }
+        return nextAlgs;
+      });
+      removeAlgorithmFromResearchMemory(id);
+      showToast("Algorithm deleted successfully", "success");
+    }
   };
 
   // Save metadata changes back to the algorithms array
@@ -391,26 +472,25 @@ export default function AlgorithmDesigner() {
     }
 
     if (selectedId) {
-      setAlgorithms(prev => prev.map(alg => {
-        if (alg.id === selectedId) {
-          return {
-            ...alg,
-            name: algName,
-            objective,
-            problemStatement,
-            researchNotes,
-            recent: true,
-            pipeline: { blocks, connections },
-            review: {
-              ...alg.review,
-              notes: reviewNotes,
-              recommendation: reviewRecommendation,
-              approvalStatus
-            }
-          };
+      const active = algorithms.find(a => a.id === selectedId) || {};
+      const updatedAlg = {
+        ...active,
+        id: selectedId,
+        name: algName,
+        objective,
+        problemStatement,
+        researchNotes,
+        recent: true,
+        pipeline: { blocks, connections },
+        review: {
+          ...active.review,
+          notes: reviewNotes,
+          recommendation: reviewRecommendation,
+          approvalStatus
         }
-        return alg;
-      }));
+      };
+      setAlgorithms(prev => prev.map(alg => (alg.id === selectedId ? updatedAlg : alg)));
+      syncAlgorithmToResearchMemory(updatedAlg);
       showToast("Algorithm draft saved successfully!", "success");
     } else {
       const newAlg = {
@@ -437,6 +517,7 @@ export default function AlgorithmDesigner() {
       };
       setAlgorithms(prev => [newAlg, ...prev]);
       setSelectedId(newAlg.id);
+      syncAlgorithmToResearchMemory(newAlg);
       showToast("New algorithm draft created!", "success");
     }
   };
@@ -872,6 +953,7 @@ export default function AlgorithmDesigner() {
           onSelectAlgorithm={handleSelectAlgorithm}
           onCreateNewAlgorithm={handleCreateNewAlgorithm}
           onToggleFavorite={toggleFavorite}
+          onDeleteAlgorithm={handleDeleteAlgorithm}
           T={T}
         />
 

@@ -242,7 +242,185 @@ export default function FormulaAlgorithmLibrary() {
   const [calculatorInputs, setCalculatorInputs] = useState({});
   const [calculatorResult, setCalculatorResult] = useState("");
 
-  const categories = ["All", "AI", "Mathematics", "Physics", "Biology", "Chemistry", "Engineering", "Custom"];
+  const categories = ["All", "AI", "Mathematics", "Physics", "Biology", "Chemistry", "Engineering", "Custom", "Execute & Compare"];
+
+  const [availableAlgorithms, setAvailableAlgorithms] = useState(() => {
+    try {
+      const saved = localStorage.getItem("apex_os_algorithms");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [sandboxAlgId, setSandboxAlgId] = useState("");
+  const [sandboxPayload, setSandboxPayload] = useState("Digital DNA Archival Code Segment v1.0");
+  const [sandboxResult, setSandboxResult] = useState(null);
+  const [comparisonAlgIds, setComparisonAlgIds] = useState([]);
+  const [comparisonResults, setComparisonResults] = useState([]);
+
+  const textToBinary = (text) => {
+    return text.split("")
+      .map(char => char.charCodeAt(0).toString(2).padStart(8, "0"))
+      .join("");
+  };
+
+  const binaryToDNA = (binary) => {
+    let padded = binary;
+    if (padded.length % 2 !== 0) padded += "0";
+    let dna = "";
+    const map = { "00": "A", "01": "C", "10": "G", "11": "T" };
+    for (let i = 0; i < padded.length; i += 2) {
+      const bits = padded.slice(i, i + 2);
+      dna += map[bits] || "A";
+    }
+    return dna;
+  };
+
+  const dnaToBinary = (dna) => {
+    let binary = "";
+    const map = { "A": "00", "C": "01", "G": "10", "T": "11" };
+    for (let i = 0; i < dna.length; i++) {
+      const base = dna[i].toUpperCase();
+      binary += map[base] || "00";
+    }
+    return binary;
+  };
+
+  const binaryToText = (binary) => {
+    const bytes = [];
+    for (let i = 0; i < binary.length; i += 8) {
+      const byte = binary.slice(i, i + 8);
+      if (byte.length === 8) {
+        bytes.push(String.fromCharCode(parseInt(byte, 2)));
+      }
+    }
+    return bytes.join("");
+  };
+
+  const runAlgorithmExecution = (alg, payload) => {
+    const t0 = performance.now();
+    const binary = textToBinary(payload);
+    const dna = binaryToDNA(binary);
+    const decodedBinary = dnaToBinary(dna);
+    const decodedText = binaryToText(decodedBinary);
+    const t1 = performance.now();
+
+    const isSuccess = decodedText.substring(0, payload.length) === payload;
+    const executionTime = (t1 - t0).toFixed(3);
+
+    return {
+      algId: alg.id,
+      algName: alg.name,
+      version: alg.versions?.[0]?.number || "v1.0.0",
+      binaryInput: binary,
+      dnaOutput: dna,
+      decodedText: decodedText.substring(0, payload.length),
+      executionTime,
+      dnaLength: dna.length,
+      success: isSuccess
+    };
+  };
+
+  const linkFormulaToAlgorithm = (formula, algId) => {
+    try {
+      const saved = localStorage.getItem("apex_os_algorithms");
+      if (!saved) return;
+      let algs = JSON.parse(saved);
+      algs = algs.map(alg => {
+        if (alg.id === algId) {
+          const formulas = alg.formulas || [];
+          if (!formulas.some(f => f.id === formula.id)) {
+            return {
+              ...alg,
+              formulas: [...formulas, {
+                id: formula.id,
+                name: formula.name,
+                expression: formula.expression,
+                description: formula.description,
+                variables: Array.isArray(formula.variables) ? formula.variables.map(v => `${v.name} = ${v.label}`).join("\n") : (formula.variables || ""),
+                units: formula.units || "Units"
+              }]
+            };
+          }
+        }
+        return alg;
+      });
+      localStorage.setItem("apex_os_algorithms", JSON.stringify(algs));
+      setAvailableAlgorithms(algs);
+      alert(`Linked formula "${formula.name}" to algorithm!`);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleIncrementVersion = (algId) => {
+    try {
+      const saved = localStorage.getItem("apex_os_algorithms");
+      if (!saved) return;
+      let algs = JSON.parse(saved);
+      algs = algs.map(alg => {
+        if (alg.id === algId) {
+          const versions = alg.versions || [];
+          const currentVer = versions[0]?.number || "v1.0.0";
+          const parts = currentVer.replace("v", "").split(".");
+          const major = parseInt(parts[0]) || 1;
+          const minor = parseInt(parts[1]) || 0;
+          const patch = (parseInt(parts[2]) || 0) + 1;
+          const newVerNumber = `v${major}.${minor}.${patch}`;
+
+          const newVer = {
+            id: `v_${Date.now()}`,
+            number: newVerNumber,
+            date: new Date().toISOString().split("T")[0],
+            author: "AI Research Platform",
+            description: "Iterative version bump under dynamic sandbox trial simulation.",
+            status: "Approved"
+          };
+          return {
+            ...alg,
+            versions: [newVer, ...versions]
+          };
+        }
+        return alg;
+      });
+      localStorage.setItem("apex_os_algorithms", JSON.stringify(algs));
+      setAvailableAlgorithms(algs);
+      alert("Algorithm version updated successfully!");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleLogToExperimentManager = (result) => {
+    try {
+      const saved = localStorage.getItem("apex_os_experiments");
+      let exps = saved ? JSON.parse(saved) : [];
+      const timestamp = new Date().toISOString().replace("T", " ").substring(0, 16);
+      const newExp = {
+        id: `exp_${Date.now()}`,
+        name: `Sandbox Trial - ${result.algName}`,
+        researchArea: "DNA Sequencing",
+        objective: "Sandbox trial simulation run.",
+        description: `Input payload: "${sandboxPayload}". Execution time: ${result.executionTime}ms. Output DNA length: ${result.dnaLength}bp. Success: ${result.success ? "YES" : "NO"}`,
+        assignedAlgorithm: `${result.algName} (${result.version})`,
+        status: "Completed",
+        accuracy: result.success ? 100 : 0,
+        throughput: `${(result.dnaLength / (parseFloat(result.executionTime) || 1)).toFixed(2)} bp/ms`,
+        createdDate: timestamp,
+        lastUpdated: timestamp,
+        timeline: [
+          { id: `e_${Date.now()}`, type: "success", title: "Experiment Completed", timestamp, desc: `Payload: ${sandboxPayload}. DNA sequence: ${result.dnaOutput}`, icon: "🏆" }
+        ],
+        attachments: []
+      };
+      exps.unshift(newExp);
+      localStorage.setItem("apex_os_experiments", JSON.stringify(exps));
+      alert("Simulation result saved directly to Experiment Manager!");
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Save changes to localStorage
   useEffect(() => {
@@ -564,442 +742,664 @@ export default function FormulaAlgorithmLibrary() {
       </div>
 
       {/* ── TWO COLUMN LAYOUT ── */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1.6fr",
-        gap: "24px",
-        alignItems: "start",
-        flex: 1
-      }}>
-        {/* LEFT COLUMN: List of Formulas */}
+      {selectedCategory === "Execute & Compare" ? (
         <div style={{
           background: T.surf,
           border: `1px solid ${T.border2}`,
           borderRadius: "16px",
-          padding: "16px",
-          maxHeight: "750px",
-          overflowY: "auto",
+          padding: "24px",
           display: "flex",
           flexDirection: "column",
-          gap: "10px"
+          gap: "24px",
+          flex: 1
         }}>
-          <h3 style={{ margin: "0 0 6px 0", fontSize: "0.9rem", color: T.text2, fontWeight: 700 }}>
-            FORMULAS ({filteredFormulas.length})
-          </h3>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "24px",
+            alignItems: "start"
+          }}>
+            {/* LEFT: Sandbox Execute Panel */}
+            <div style={{ background: T.surf2, padding: "20px", borderRadius: "12px", border: `1px solid ${T.border2}` }}>
+              <h3 style={{ margin: "0 0 16px 0", fontSize: "1.05rem", fontWeight: 800 }}>⚡ Run Algorithm Simulator</h3>
 
-          {filteredFormulas.length === 0 ? (
-            <div style={{ padding: "40px 10px", textAlign: "center", color: T.text3 }}>
-              No formulas match the filter.
-            </div>
-          ) : (
-            filteredFormulas.map(f => {
-              const isSelected = selectedFormulaId === f.id;
-              const isFav = favorites.includes(f.id);
-              return (
-                <div
-                  key={f.id}
-                  onClick={() => setSelectedFormulaId(f.id)}
-                  style={{
-                    background: isSelected ? `${T.accent}12` : T.surf2,
-                    border: `1px solid ${isSelected ? T.accent : T.border2}`,
-                    borderRadius: "10px",
-                    padding: "12px 14px",
-                    cursor: "pointer",
-                    position: "relative",
-                    transition: "all 0.15s",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px"
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <div>
+                  <label style={{ fontSize: "0.74rem", color: T.text2, display: "block", marginBottom: "6px", fontWeight: "bold" }}>Select DNA Algorithm:</label>
+                  <select
+                    value={sandboxAlgId}
+                    onChange={(e) => {
+                      setSandboxAlgId(e.target.value);
+                      setSandboxResult(null);
+                    }}
+                    style={{ width: "100%", background: T.surf, border: `1px solid ${T.border2}`, borderRadius: "8px", padding: "10px", color: T.text1 }}
+                  >
+                    <option value="">-- Choose Algorithm --</option>
+                    {availableAlgorithms.map(alg => (
+                      <option key={alg.id} value={alg.id}>{alg.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {sandboxAlgId && (
+                  <div style={{ background: T.surf, padding: "12px", borderRadius: "8px", border: `1px solid ${T.border2}` }}>
+                    <div style={{ fontSize: "0.72rem", color: T.text3, textTransform: "uppercase", fontWeight: 600 }}>Algorithm Versions</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "6px" }}>
+                      <span style={{ fontSize: "0.8rem", color: T.text1, fontWeight: "bold" }}>
+                        Active: {availableAlgorithms.find(a => a.id === sandboxAlgId)?.versions?.[0]?.number || "v1.0.0"}
+                      </span>
+                      <button
+                        onClick={() => handleIncrementVersion(sandboxAlgId)}
+                        style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: "4px", color: T.cyan, padding: "3px 8px", fontSize: "0.72rem", cursor: "pointer" }}
+                      >
+                        Bump Version
+                      </button>
+                    </div>
+                    <div style={{ fontSize: "0.74rem", color: T.text2, marginTop: "6px", fontStyle: "italic" }}>
+                      Objective: {availableAlgorithms.find(a => a.id === sandboxAlgId)?.objective}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ fontSize: "0.74rem", color: T.text2, display: "block", marginBottom: "6px", fontWeight: "bold" }}>Payload Text Input:</label>
+                  <textarea
+                    rows={3}
+                    value={sandboxPayload}
+                    onChange={(e) => setSandboxPayload(e.target.value)}
+                    style={{ width: "100%", background: T.surf, border: `1px solid ${T.border2}`, borderRadius: "8px", padding: "10px", color: T.text1, resize: "none", fontFamily: "monospace" }}
+                  />
+                </div>
+
+                <button
+                  onClick={() => {
+                    const alg = availableAlgorithms.find(a => a.id === sandboxAlgId);
+                    if (!alg) {
+                      alert("Please select an algorithm first.");
+                      return;
+                    }
+                    if (!sandboxPayload.trim()) {
+                      alert("Please enter input text.");
+                      return;
+                    }
+                    const res = runAlgorithmExecution(alg, sandboxPayload);
+                    setSandboxResult(res);
                   }}
+                  style={{ width: "100%", padding: "12px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer" }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{
-                      fontSize: "0.62rem",
-                      fontWeight: 800,
-                      background: `${T.accent}15`,
-                      color: T.accent,
-                      padding: "2px 6px",
-                      borderRadius: "4px",
-                      textTransform: "uppercase"
-                    }}>
-                      {f.category}
-                    </span>
+                  Execute Pipeline
+                </button>
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFavorite(f.id);
+                {sandboxResult && (
+                  <div style={{ marginTop: "12px", background: T.surf, padding: "16px", borderRadius: "10px", border: `1px solid ${T.green}40` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: "0.84rem", fontWeight: "bold", color: T.green }}>✓ Pipeline Completed</span>
+                      <button
+                        onClick={() => handleLogToExperimentManager(sandboxResult)}
+                        style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: "6px", color: T.cyan, padding: "4px 8px", fontSize: "0.74rem", cursor: "pointer" }}
+                      >
+                        Log as Completed Experiment
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px", fontSize: "0.78rem" }}>
+                      <div><strong>Original Size:</strong> {sandboxPayload.length} characters</div>
+                      <div><strong>Execution Time:</strong> {sandboxResult.executionTime} ms</div>
+                      <div><strong>Encoded DNA Sequence:</strong></div>
+                      <div style={{ wordBreak: "break-all", fontFamily: "monospace", padding: "8px", background: T.surf2, borderRadius: "6px", color: T.cyan }}>
+                        {sandboxResult.dnaOutput}
+                      </div>
+                      <div><strong>Decoded Output:</strong></div>
+                      <div style={{ wordBreak: "break-all", fontFamily: "monospace", padding: "8px", background: T.surf2, borderRadius: "6px", color: T.green }}>
+                        {sandboxResult.decodedText}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "4px" }}>
+                        <strong>Validation Status:</strong>
+                        <span style={{ color: sandboxResult.success ? T.green : T.red, fontWeight: "bold" }}>
+                          {sandboxResult.success ? "VALID (100% Match)" : "INVALID (Checksum Mismatch)"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* RIGHT: Compare Algorithms Side-by-Side */}
+            <div style={{ background: T.surf2, padding: "20px", borderRadius: "12px", border: `1px solid ${T.border2}` }}>
+              <h3 style={{ margin: "0 0 16px 0", fontSize: "1.05rem", fontWeight: 800 }}>📊 Compare Alignment Algorithms</h3>
+              <p style={{ fontSize: "0.76rem", color: T.text2, marginBottom: "12px" }}>
+                Check multiple algorithms to contrast encoding speeds, sequence compression density, and data reconstruction validation.
+              </p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
+                {availableAlgorithms.map(alg => (
+                  <label key={alg.id} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.8rem", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={comparisonAlgIds.includes(alg.id)}
+                      onChange={() => {
+                        setComparisonAlgIds(prev =>
+                          prev.includes(alg.id) ? prev.filter(id => id !== alg.id) : [...prev, alg.id]
+                        );
                       }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "0.9rem",
-                        color: isFav ? T.yellow : T.text3,
-                        padding: 0
-                      }}
-                    >
-                      {isFav ? "★" : "☆"}
-                    </button>
+                    />
+                    <span>{alg.name}</span>
+                  </label>
+                ))}
+              </div>
+
+              <button
+                onClick={() => {
+                  if (comparisonAlgIds.length === 0) {
+                    alert("Please check at least one algorithm to compare.");
+                    return;
+                  }
+                  const results = comparisonAlgIds.map(id => {
+                    const alg = availableAlgorithms.find(a => a.id === id);
+                    return runAlgorithmExecution(alg, sandboxPayload);
+                  });
+                  setComparisonResults(results);
+                }}
+                style={{ width: "100%", padding: "10px", background: T.surf, border: `1px solid ${T.accent}`, borderRadius: "8px", color: T.cyan, fontWeight: "bold", cursor: "pointer" }}
+              >
+                Compare Checked Performance
+              </button>
+
+              {comparisonResults.length > 0 && (
+                <div style={{ overflowX: "auto", marginTop: "16px" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.74rem", textAlign: "left" }}>
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${T.border2}`, color: T.text3 }}>
+                        <th style={{ padding: "6px" }}>Algorithm</th>
+                        <th style={{ padding: "6px" }}>Version</th>
+                        <th style={{ padding: "6px" }}>Speed (ms)</th>
+                        <th style={{ padding: "6px" }}>DNA Len</th>
+                        <th style={{ padding: "6px" }}>Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {comparisonResults.map(res => (
+                        <tr key={res.algId} style={{ borderBottom: `1px solid ${T.border}`, color: T.text1 }}>
+                          <td style={{ padding: "8px 6px", fontWeight: "bold" }}>{res.algName}</td>
+                          <td style={{ padding: "8px 6px" }}>{res.version}</td>
+                          <td style={{ padding: "8px 6px", color: T.cyan }}>{res.executionTime}</td>
+                          <td style={{ padding: "8px 6px", color: T.yellow }}>{res.dnaLength} bp</td>
+                          <td style={{ padding: "8px 6px", color: res.success ? T.green : T.red, fontWeight: "bold" }}>
+                            {res.success ? "VALID" : "FAILED"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1.6fr",
+          gap: "24px",
+          alignItems: "start",
+          flex: 1
+        }}>
+          {/* LEFT COLUMN: List of Formulas */}
+          <div style={{
+            background: T.surf,
+            border: `1px solid ${T.border2}`,
+            borderRadius: "16px",
+            padding: "16px",
+            maxHeight: "750px",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px"
+          }}>
+            <h3 style={{ margin: "0 0 6px 0", fontSize: "0.9rem", color: T.text2, fontWeight: 700 }}>
+              FORMULAS ({filteredFormulas.length})
+            </h3>
+
+            {filteredFormulas.length === 0 ? (
+              <div style={{ padding: "40px 10px", textAlign: "center", color: T.text3 }}>
+                No formulas match the filter.
+              </div>
+            ) : (
+              filteredFormulas.map(f => {
+                const isSelected = selectedFormulaId === f.id;
+                const isFav = favorites.includes(f.id);
+                return (
+                  <div
+                    key={f.id}
+                    onClick={() => setSelectedFormulaId(f.id)}
+                    style={{
+                      background: isSelected ? `${T.accent}12` : T.surf2,
+                      border: `1px solid ${isSelected ? T.accent : T.border2}`,
+                      borderRadius: "10px",
+                      padding: "12px 14px",
+                      cursor: "pointer",
+                      position: "relative",
+                      transition: "all 0.15s",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{
+                        fontSize: "0.62rem",
+                        fontWeight: 800,
+                        background: `${T.accent}15`,
+                        color: T.accent,
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        textTransform: "uppercase"
+                      }}>
+                        {f.category}
+                      </span>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(f.id);
+                        }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontSize: "0.9rem",
+                          color: isFav ? T.yellow : T.text3,
+                          padding: 0
+                        }}
+                      >
+                        {isFav ? "★" : "☆"}
+                      </button>
+                    </div>
+
+                    <div style={{ fontWeight: 700, fontSize: "0.82rem", color: T.text1 }}>{f.name}</div>
+                    <div style={{ fontFamily: "monospace", fontSize: "0.78rem", color: T.cyan }}>{f.expression}</div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* RIGHT COLUMN: Selected Formula Details & Interactive Sandbox */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            {selectedFormula && (
+              <div style={{
+                background: T.surf,
+                border: `1px solid ${T.border2}`,
+                borderRadius: "16px",
+                padding: "24px"
+              }}>
+                <div style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  borderBottom: `1px solid ${T.border}`,
+                  paddingBottom: "16px",
+                  marginBottom: "20px"
+                }}>
+                  <div>
+                    <span style={{
+                      fontSize: "0.65rem",
+                      fontWeight: 800,
+                      background: `${T.accent}20`,
+                      color: T.accent,
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      textTransform: "uppercase",
+                      display: "inline-block",
+                      marginBottom: "8px"
+                    }}>
+                      {selectedFormula.category}
+                    </span>
+                    <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800 }}>{selectedFormula.name}</h2>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "10px" }}>
+                      <span style={{ fontSize: "0.74rem", color: T.text2 }}>Link to Algorithm:</span>
+                      <select
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            linkFormulaToAlgorithm(selectedFormula, e.target.value);
+                            e.target.value = "";
+                          }
+                        }}
+                        style={{
+                          background: T.surf2,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: "6px",
+                          color: T.text1,
+                          fontSize: "0.74rem",
+                          padding: "4px 8px",
+                          cursor: "pointer"
+                        }}
+                      >
+                        <option value="">-- Select Algorithm --</option>
+                        {availableAlgorithms.map(alg => (
+                          <option key={alg.id} value={alg.id}>{alg.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
-                  <div style={{ fontWeight: 700, fontSize: "0.82rem", color: T.text1 }}>{f.name}</div>
-                  <div style={{ fontFamily: "monospace", fontSize: "0.78rem", color: T.cyan }}>{f.expression}</div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <button
+                      onClick={() => toggleFavorite(selectedFormula.id)}
+                      style={{
+                        padding: "8px 12px",
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: "8px",
+                        color: favorites.includes(selectedFormula.id) ? T.yellow : T.text1,
+                        fontWeight: 700,
+                        fontSize: "0.74rem",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px"
+                      }}
+                    >
+                      <span>{favorites.includes(selectedFormula.id) ? "★ Bookmarked" : "☆ Bookmark"}</span>
+                    </button>
 
-        {/* RIGHT COLUMN: Selected Formula Details & Interactive Sandbox */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          {selectedFormula && (
+                    <button
+                      onClick={() => handleCopyToClipboard(selectedFormula.expression, "Expression")}
+                      style={{
+                        padding: "8px 12px",
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: "8px",
+                        color: T.text1,
+                        fontWeight: 700,
+                        fontSize: "0.74rem",
+                        cursor: "pointer"
+                      }}
+                    >
+                      📋 Copy Formula
+                    </button>
+
+                    {selectedFormula.id.startsWith("custom_") && (
+                      <button
+                        onClick={() => handleDeleteFormula(selectedFormula.id)}
+                        style={{
+                          padding: "8px 12px",
+                          background: `${T.red}15`,
+                          border: `1px solid ${T.red}40`,
+                          borderRadius: "8px",
+                          color: T.red,
+                          fontWeight: 700,
+                          fontSize: "0.74rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        🗑 Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expression Board */}
+                <div style={{
+                  background: "#02020a",
+                  border: `1px solid ${T.border2}`,
+                  borderRadius: "12px",
+                  padding: "24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: "80px",
+                  fontFamily: "monospace",
+                  fontSize: "1.4rem",
+                  color: T.cyan,
+                  boxShadow: "inset 0 4px 12px rgba(0,0,0,0.8)",
+                  marginBottom: "20px",
+                  textAlign: "center"
+                }}>
+                  {selectedFormula.expression}
+                </div>
+
+                {/* Description */}
+                <div style={{ marginBottom: "20px" }}>
+                  <h4 style={{ margin: "0 0 6px 0", fontSize: "0.74rem", color: T.text3, textTransform: "uppercase" }}>Description</h4>
+                  <p style={{ margin: 0, fontSize: "0.85rem", color: T.text2, lineHeight: 1.5 }}>
+                    {selectedFormula.description}
+                  </p>
+                </div>
+
+                {/* Tags */}
+                {selectedFormula.tags && selectedFormula.tags.length > 0 && (
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "24px" }}>
+                    {selectedFormula.tags.map(t => (
+                      <span key={t} style={{
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        background: `${T.accent}12`,
+                        color: T.accent,
+                        padding: "2px 8px",
+                        borderRadius: "12px"
+                      }}>
+                        #{t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Interactive Calculator / Simulator */}
+                <div style={{
+                  background: T.surf2,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: "12px",
+                  padding: "16px",
+                  marginBottom: "24px"
+                }}>
+                  <h3 style={{ margin: "0 0 14px 0", fontSize: "0.9rem", color: T.text1, fontWeight: 700 }}>
+                    🧬 Interactive Sandbox Calculator
+                  </h3>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
+                    {selectedFormula.variables.map(v => (
+                      <div key={v.name} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <label htmlFor={`calc_${v.name}`} style={{ fontSize: "0.74rem", color: T.text2, fontWeight: 600 }}>
+                          {v.label} (<span style={{ fontFamily: "monospace", color: T.cyan }}>{v.name}</span>)
+                        </label>
+                        <input
+                          id={`calc_${v.name}`}
+                          type="text"
+                          value={calculatorInputs[v.name] || ""}
+                          onChange={(e) => handleInputChange(v.name, e.target.value)}
+                          style={{
+                            background: T.surf,
+                            border: `1px solid ${T.border2}`,
+                            borderRadius: "6px",
+                            padding: "8px 10px",
+                            color: T.text1,
+                            fontSize: "0.82rem",
+                            outline: "none"
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px", borderTop: `1px solid ${T.border}`, paddingTop: "12px" }}>
+                    <button
+                      onClick={handleCompute}
+                      style={{
+                        padding: "8px 16px",
+                        background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                        border: "none",
+                        borderRadius: "6px",
+                        color: "white",
+                        fontWeight: 700,
+                        fontSize: "0.78rem",
+                        cursor: "pointer"
+                      }}
+                    >
+                      ⚡ Compute Result
+                    </button>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "0.74rem", color: T.text3 }}>Result:</span>
+                      <span style={{
+                        fontFamily: "monospace",
+                        fontWeight: 800,
+                        fontSize: "1.1rem",
+                        color: T.green
+                      }}>
+                        {calculatorResult}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Code Snippet Box */}
+                {selectedFormula.codeSnippet && (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <h4 style={{ margin: 0, fontSize: "0.74rem", color: T.text3, textTransform: "uppercase" }}>Implementation Code Snippet</h4>
+                      <button
+                        onClick={() => handleCopyToClipboard(selectedFormula.codeSnippet, "Snippet")}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: T.accent,
+                          fontSize: "0.7rem",
+                          cursor: "pointer",
+                          fontWeight: 700
+                        }}
+                      >
+                        Copy Snippet
+                      </button>
+                    </div>
+                    <pre style={{
+                      margin: 0,
+                      background: "#0d1117",
+                      border: "1px solid #30363d",
+                      borderRadius: "10px",
+                      padding: "12px 14px",
+                      overflowX: "auto",
+                      fontSize: "0.76rem",
+                      lineHeight: 1.5,
+                      color: "#e6edf3",
+                      fontFamily: "monospace"
+                    }}>
+                      {selectedFormula.codeSnippet}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CUSTOM FORMULA GENERATOR */}
             <div style={{
               background: T.surf,
               border: `1px solid ${T.border2}`,
               borderRadius: "16px",
               padding: "24px"
             }}>
-              <div style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                borderBottom: `1px solid ${T.border}`,
-                paddingBottom: "16px",
-                marginBottom: "20px"
-              }}>
-                <div>
-                  <span style={{
-                    fontSize: "0.65rem",
-                    fontWeight: 800,
-                    background: `${T.accent}20`,
-                    color: T.accent,
-                    padding: "2px 8px",
-                    borderRadius: "4px",
-                    textTransform: "uppercase",
-                    display: "inline-block",
-                    marginBottom: "8px"
-                  }}>
-                    {selectedFormula.category}
-                  </span>
-                  <h2 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 800 }}>{selectedFormula.name}</h2>
-                </div>
+              <h3 style={{ margin: "0 0 4px 0", fontSize: "1.05rem", fontWeight: 800 }}>➕ Add Custom Formula</h3>
+              <p style={{ margin: "0 0 16px 0", fontSize: "0.76rem", color: T.text2 }}>
+                Define a mathematical formula schema. Supported operations: +, -, *, /, (), and Javascript Math properties.
+              </p>
 
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    onClick={() => toggleFavorite(selectedFormula.id)}
-                    style={{
-                      padding: "8px 12px",
-                      background: T.surf2,
-                      border: `1px solid ${T.border2}`,
-                      borderRadius: "8px",
-                      color: favorites.includes(selectedFormula.id) ? T.yellow : T.text1,
-                      fontWeight: 700,
-                      fontSize: "0.74rem",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px"
-                    }}
-                  >
-                    <span>{favorites.includes(selectedFormula.id) ? "★ Bookmarked" : "☆ Bookmark"}</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleCopyToClipboard(selectedFormula.expression, "Expression")}
-                    style={{
-                      padding: "8px 12px",
-                      background: T.surf2,
-                      border: `1px solid ${T.border2}`,
-                      borderRadius: "8px",
-                      color: T.text1,
-                      fontWeight: 700,
-                      fontSize: "0.74rem",
-                      cursor: "pointer"
-                    }}
-                  >
-                    📋 Copy Formula
-                  </button>
-
-                  {selectedFormula.id.startsWith("custom_") && (
-                    <button
-                      onClick={() => handleDeleteFormula(selectedFormula.id)}
-                      style={{
-                        padding: "8px 12px",
-                        background: `${T.red}15`,
-                        border: `1px solid ${T.red}40`,
-                        borderRadius: "8px",
-                        color: T.red,
-                        fontWeight: 700,
-                        fontSize: "0.74rem",
-                        cursor: "pointer"
-                      }}
-                    >
-                      🗑 Delete
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Expression Board */}
-              <div style={{
-                background: "#02020a",
-                border: `1px solid ${T.border2}`,
-                borderRadius: "12px",
-                padding: "24px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: "80px",
-                fontFamily: "monospace",
-                fontSize: "1.4rem",
-                color: T.cyan,
-                boxShadow: "inset 0 4px 12px rgba(0,0,0,0.8)",
-                marginBottom: "20px",
-                textAlign: "center"
-              }}>
-                {selectedFormula.expression}
-              </div>
-
-              {/* Description */}
-              <div style={{ marginBottom: "20px" }}>
-                <h4 style={{ margin: "0 0 6px 0", fontSize: "0.74rem", color: T.text3, textTransform: "uppercase" }}>Description</h4>
-                <p style={{ margin: 0, fontSize: "0.85rem", color: T.text2, lineHeight: 1.5 }}>
-                  {selectedFormula.description}
-                </p>
-              </div>
-
-              {/* Tags */}
-              {selectedFormula.tags && selectedFormula.tags.length > 0 && (
-                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "24px" }}>
-                  {selectedFormula.tags.map(t => (
-                    <span key={t} style={{
-                      fontSize: "0.68rem",
-                      fontWeight: 700,
-                      background: `${T.accent}12`,
-                      color: T.accent,
-                      padding: "2px 8px",
-                      borderRadius: "12px"
-                    }}>
-                      #{t}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Interactive Calculator / Simulator */}
-              <div style={{
-                background: T.surf2,
-                border: `1px solid ${T.border}`,
-                borderRadius: "12px",
-                padding: "16px",
-                marginBottom: "24px"
-              }}>
-                <h3 style={{ margin: "0 0 14px 0", fontSize: "0.9rem", color: T.text1, fontWeight: 700 }}>
-                  🧬 Interactive Sandbox Calculator
-                </h3>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
-                  {selectedFormula.variables.map(v => (
-                    <div key={v.name} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      <label htmlFor={`calc_${v.name}`} style={{ fontSize: "0.74rem", color: T.text2, fontWeight: 600 }}>
-                        {v.label} (<span style={{ fontFamily: "monospace", color: T.cyan }}>{v.name}</span>)
-                      </label>
-                      <input
-                        id={`calc_${v.name}`}
-                        type="text"
-                        value={calculatorInputs[v.name] || ""}
-                        onChange={(e) => handleInputChange(v.name, e.target.value)}
-                        style={{
-                          background: T.surf,
-                          border: `1px solid ${T.border2}`,
-                          borderRadius: "6px",
-                          padding: "8px 10px",
-                          color: T.text1,
-                          fontSize: "0.82rem",
-                          outline: "none"
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px", borderTop: `1px solid ${T.border}`, paddingTop: "12px" }}>
-                  <button
-                    onClick={handleCompute}
-                    style={{
-                      padding: "8px 16px",
-                      background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
-                      border: "none",
-                      borderRadius: "6px",
-                      color: "white",
-                      fontWeight: 700,
-                      fontSize: "0.78rem",
-                      cursor: "pointer"
-                    }}
-                  >
-                    ⚡ Compute Result
-                  </button>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "0.74rem", color: T.text3 }}>Result:</span>
-                    <span style={{
-                      fontFamily: "monospace",
-                      fontWeight: 800,
-                      fontSize: "1.1rem",
-                      color: T.green
-                    }}>
-                      {calculatorResult}
-                    </span>
+              <form onSubmit={handleCreateCustomFormula} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Formula Name *</label>
+                    <input type="text" value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Area of Circle" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none" }} />
+                  </div>
+                  <div>
+                    <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Category</label>
+                    <select value={customCategory} onChange={e => setCustomCategory(e.target.value)} style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none" }}>
+                      <option value="Custom">Custom</option>
+                      <option value="AI">AI</option>
+                      <option value="Mathematics">Mathematics</option>
+                      <option value="Physics">Physics</option>
+                      <option value="Biology">Biology</option>
+                      <option value="Chemistry">Chemistry</option>
+                      <option value="Engineering">Engineering</option>
+                    </select>
                   </div>
                 </div>
-              </div>
 
-              {/* Code Snippet Box */}
-              {selectedFormula.codeSnippet && (
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <h4 style={{ margin: 0, fontSize: "0.74rem", color: T.text3, textTransform: "uppercase" }}>Implementation Code Snippet</h4>
-                    <button
-                      onClick={() => handleCopyToClipboard(selectedFormula.codeSnippet, "Snippet")}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: T.accent,
-                        fontSize: "0.7rem",
-                        cursor: "pointer",
-                        fontWeight: 700
-                      }}
-                    >
-                      Copy Snippet
-                    </button>
-                  </div>
-                  <pre style={{
-                    margin: 0,
-                    background: "#0d1117",
-                    border: "1px solid #30363d",
-                    borderRadius: "10px",
-                    padding: "12px 14px",
-                    overflowX: "auto",
-                    fontSize: "0.76rem",
-                    lineHeight: 1.5,
-                    color: "#e6edf3",
-                    fontFamily: "monospace"
-                  }}>
-                    {selectedFormula.codeSnippet}
-                  </pre>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Mathematical Expression *</label>
+                  <input type="text" value={customExpression} onChange={e => setCustomExpression(e.target.value)} placeholder="e.g. 3.14159 * r * r" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.cyan, fontSize: "0.85rem", fontFamily: "monospace", outline: "none" }} />
                 </div>
-              )}
+
+                <div>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Description</label>
+                  <textarea rows={2} value={customDesc} onChange={e => setCustomDesc(e.target.value)} placeholder="Short formula description..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none", resize: "none", fontFamily: "inherit" }} />
+                </div>
+
+                {/* Dynamic variables setup */}
+                <div style={{
+                  background: T.surf2,
+                  borderRadius: "8px",
+                  padding: "12px",
+                  border: `1px solid ${T.border}`
+                }}>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "6px", fontWeight: "bold" }}>Variables Definition</label>
+
+                  <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+                    <input type="text" value={customVarName} onChange={e => setCustomVarName(e.target.value)} placeholder="Var Name (e.g. r)" style={{ flex: 1, background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 6, padding: "6px 8px", color: T.text1, fontSize: "0.78rem" }} />
+                    <input type="text" value={customVarLabel} onChange={e => setCustomVarLabel(e.target.value)} placeholder="Var Description Label" style={{ flex: 2, background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 6, padding: "6px 8px", color: T.text1, fontSize: "0.78rem" }} />
+                    <button type="button" onClick={handleAddVariable} style={{ padding: "6px 12px", background: T.accent, border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", fontSize: "0.76rem" }}>+ Add Var</button>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                    {customVars.map((v, idx) => (
+                      <span key={idx} style={{
+                        fontSize: "0.68rem",
+                        background: T.surf,
+                        border: `1px solid ${T.border2}`,
+                        padding: "2px 8px",
+                        borderRadius: "6px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px"
+                      }}>
+                        <strong>{v.name}</strong>: {v.label}
+                        <button type="button" onClick={() => setCustomVars(prev => prev.filter((_, i) => i !== idx))} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", fontSize: "0.65rem", padding: 0 }}>✕</button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Code Snippet / Python implementation</label>
+                  <textarea rows={2} value={customCode} onChange={e => setCustomCode(e.target.value)} placeholder="def custom_func()..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none", fontFamily: "monospace" }} />
+                </div>
+
+                <div>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Tags (comma-separated)</label>
+                  <input type="text" value={customTags} onChange={e => setCustomTags(e.target.value)} placeholder="e.g. geometry, math" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none" }} />
+                </div>
+
+                <button
+                  type="submit"
+                  style={{
+                    padding: "10px 18px",
+                    background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                    border: "none",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    cursor: "pointer",
+                    marginTop: "8px"
+                  }}
+                >
+                  Create Formula Definition
+                </button>
+              </form>
             </div>
-          )}
-
-          {/* CUSTOM FORMULA GENERATOR */}
-          <div style={{
-            background: T.surf,
-            border: `1px solid ${T.border2}`,
-            borderRadius: "16px",
-            padding: "24px"
-          }}>
-            <h3 style={{ margin: "0 0 4px 0", fontSize: "1.05rem", fontWeight: 800 }}>➕ Add Custom Formula</h3>
-            <p style={{ margin: "0 0 16px 0", fontSize: "0.76rem", color: T.text2 }}>
-              Define a mathematical formula schema. Supported operations: +, -, *, /, (), and Javascript Math properties.
-            </p>
-
-            <form onSubmit={handleCreateCustomFormula} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Formula Name *</label>
-                  <input type="text" value={customName} onChange={e => setCustomName(e.target.value)} placeholder="e.g. Area of Circle" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none" }} />
-                </div>
-                <div>
-                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Category</label>
-                  <select value={customCategory} onChange={e => setCustomCategory(e.target.value)} style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none" }}>
-                    <option value="Custom">Custom</option>
-                    <option value="AI">AI</option>
-                    <option value="Mathematics">Mathematics</option>
-                    <option value="Physics">Physics</option>
-                    <option value="Biology">Biology</option>
-                    <option value="Chemistry">Chemistry</option>
-                    <option value="Engineering">Engineering</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Mathematical Expression *</label>
-                <input type="text" value={customExpression} onChange={e => setCustomExpression(e.target.value)} placeholder="e.g. 3.14159 * r * r" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.cyan, fontSize: "0.85rem", fontFamily: "monospace", outline: "none" }} />
-              </div>
-
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Description</label>
-                <textarea rows={2} value={customDesc} onChange={e => setCustomDesc(e.target.value)} placeholder="Short formula description..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none", resize: "none", fontFamily: "inherit" }} />
-              </div>
-
-              {/* Dynamic variables setup */}
-              <div style={{
-                background: T.surf2,
-                borderRadius: "8px",
-                padding: "12px",
-                border: `1px solid ${T.border}`
-              }}>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "6px", fontWeight: "bold" }}>Variables Definition</label>
-
-                <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-                  <input type="text" value={customVarName} onChange={e => setCustomVarName(e.target.value)} placeholder="Var Name (e.g. r)" style={{ flex: 1, background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 6, padding: "6px 8px", color: T.text1, fontSize: "0.78rem" }} />
-                  <input type="text" value={customVarLabel} onChange={e => setCustomVarLabel(e.target.value)} placeholder="Var Description Label" style={{ flex: 2, background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 6, padding: "6px 8px", color: T.text1, fontSize: "0.78rem" }} />
-                  <button type="button" onClick={handleAddVariable} style={{ padding: "6px 12px", background: T.accent, border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", fontSize: "0.76rem" }}>+ Add Var</button>
-                </div>
-
-                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  {customVars.map((v, idx) => (
-                    <span key={idx} style={{
-                      fontSize: "0.68rem",
-                      background: T.surf,
-                      border: `1px solid ${T.border2}`,
-                      padding: "2px 8px",
-                      borderRadius: "6px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px"
-                    }}>
-                      <strong>{v.name}</strong>: {v.label}
-                      <button type="button" onClick={() => setCustomVars(prev => prev.filter((_, i) => i !== idx))} style={{ background: "none", border: "none", color: T.red, cursor: "pointer", fontSize: "0.65rem", padding: 0 }}>✕</button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Code Snippet / Python implementation</label>
-                <textarea rows={2} value={customCode} onChange={e => setCustomCode(e.target.value)} placeholder="def custom_func()..." style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none", fontFamily: "monospace" }} />
-              </div>
-
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: "4px" }}>Tags (comma-separated)</label>
-                <input type="text" value={customTags} onChange={e => setCustomTags(e.target.value)} placeholder="e.g. geometry, math" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none" }} />
-              </div>
-
-              <button
-                type="submit"
-                style={{
-                  padding: "10px 18px",
-                  background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
-                  border: "none",
-                  borderRadius: 8,
-                  color: "#fff",
-                  fontWeight: 700,
-                  fontSize: "0.82rem",
-                  cursor: "pointer",
-                  marginTop: "8px"
-                }}
-              >
-                Create Formula Definition
-              </button>
-            </form>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

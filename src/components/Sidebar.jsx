@@ -6,6 +6,7 @@ export default function Sidebar({
   onSelectAlgorithm,
   onCreateNewAlgorithm,
   onToggleFavorite,
+  onDeleteAlgorithm,
   T
 }) {
   return (
@@ -73,12 +74,23 @@ export default function Sidebar({
                 }}>{alg.name || "Untitled Draft"}</div>
                 <div style={{ fontSize: "0.66rem", color: T.text3 }}>{alg.category}</div>
               </div>
-              <button
-                onClick={(e) => onToggleFavorite(alg.id, e)}
-                style={{ background: "none", border: "none", color: alg.favorite ? T.yellow : T.text3, cursor: "pointer", fontSize: "1rem", padding: 0 }}
-              >
-                ★
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }} onClick={e => e.stopPropagation()}>
+                <button
+                  onClick={(e) => onToggleFavorite(alg.id, e)}
+                  style={{ background: "none", border: "none", color: alg.favorite ? T.yellow : T.text3, cursor: "pointer", fontSize: "1rem", padding: 0 }}
+                >
+                  ★
+                </button>
+                {onDeleteAlgorithm && (
+                  <button
+                    onClick={(e) => onDeleteAlgorithm(alg.id, e)}
+                    style={{ background: "none", border: "none", color: T.red, cursor: "pointer", fontSize: "0.9rem", padding: 0 }}
+                    title="Delete Algorithm"
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
