@@ -7,6 +7,17 @@ import PipelineCanvas from "./components/PipelineCanvas";
 import FlowchartCanvas from "./components/FlowchartCanvas";
 import VersionHistory from "./components/VersionHistory";
 import ReviewValidation from "./components/ReviewValidation";
+import {
+  getAllAlgorithms,
+  saveAllAlgorithms,
+  createAlgorithm,
+  cloneAlgorithm,
+  editAlgorithm,
+  archiveAlgorithm,
+  versionAlgorithm,
+  executeAndBenchmarkAlgorithm,
+  compareAlgorithms
+} from "./core/AlgorithmEngine";
 
 // Design tokens matching App.jsx and ResearchLab.jsx
 const T = {
@@ -236,14 +247,12 @@ const BLOCK_DESCRIPTIONS = {
 
 export default function AlgorithmDesigner() {
   const [algorithms, setAlgorithms] = useState(() => {
-    try {
-      // Verified localStorage persistence key: 'apex_os_algorithms'
-      const saved = localStorage.getItem("apex_os_algorithms");
-      return saved ? JSON.parse(saved) : DEFAULT_ALGORITHMS;
-    } catch (e) {
-      console.error("Error reading algorithms from localStorage", e);
+    const loaded = getAllAlgorithms();
+    if (loaded.length === 0) {
+      saveAllAlgorithms(DEFAULT_ALGORITHMS);
       return DEFAULT_ALGORITHMS;
     }
+    return loaded;
   });
   const [selectedId, setSelectedId] = useState(() => {
     return localStorage.getItem("apex_os_selected_algorithm_id") || "alg_1";
@@ -455,9 +464,7 @@ export default function AlgorithmDesigner() {
   };
 
   const handleCreateNewAlgorithm = () => {
-    const newId = `alg_${Date.now()}`;
-    const newAlg = {
-      id: newId,
+    const newAlg = createAlgorithm({
       name: "New Untangled Sequence Draft",
       objective: "Enter objective...",
       description: "Enter description...",
@@ -469,88 +476,59 @@ export default function AlgorithmDesigner() {
       errorCorrection: "Reed-Solomon (255, 223)",
       version: "v1.0.0",
       createdDate: new Date().toISOString().split("T")[0],
-      problemStatement: "",
-      researchNotes: "",
-      favorite: false,
-      recent: true,
-      category: "Custom DNA",
-      formulas: [],
-      pipeline: { blocks: [], connections: [] },
-      versions: [],
-      review: {
-        completeness: 10,
-        readability: "Pending",
-        innovationScore: 50,
-        validationStatus: "Pending",
-        notes: "",
-        recommendation: "",
-        approvalStatus: "Needs Work"
-      }
-    };
-    setAlgorithms(prev => [newAlg, ...prev]);
-    setSelectedId(newId);
+      category: "Custom DNA"
+    });
+    const loaded = getAllAlgorithms();
+    setAlgorithms(loaded);
+    setSelectedId(newAlg.id);
     syncAlgorithmToResearchMemory(newAlg);
-    showToast("Created a new DNA algorithm draft", "success");
+    showToast("Created and benchmarked new DNA algorithm draft", "success");
   };
 
   const handleDuplicateAlgorithm = (id, e) => {
     if (e) e.stopPropagation();
-    const active = algorithms.find(a => a.id === id);
-    if (!active) return;
-    const duplicatedId = `alg_${Date.now()}`;
-    const duplicated = {
-      ...JSON.parse(JSON.stringify(active)),
-      id: duplicatedId,
-      name: `${active.name} (Copy)`,
-      createdDate: new Date().toISOString().split("T")[0],
-      favorite: false,
-      recent: true
-    };
-    setAlgorithms(prev => [duplicated, ...prev]);
-    setSelectedId(duplicatedId);
-    syncAlgorithmToResearchMemory(duplicated);
-    showToast(`Duplicated "${active.name}" successfully`, "success");
+    const cloned = cloneAlgorithm(id);
+    if (cloned) {
+      setAlgorithms(getAllAlgorithms());
+      setSelectedId(cloned.id);
+      syncAlgorithmToResearchMemory(cloned);
+      showToast(`Duplicated and registered "${cloned.name}" successfully`, "success");
+    }
   };
 
   const handleDeleteAlgorithm = (id, e) => {
     if (e) e.stopPropagation();
     if (window.confirm("Are you sure you want to delete this algorithm?")) {
-      setAlgorithms(prev => {
-        const nextAlgs = prev.filter(alg => alg.id !== id);
-        if (nextAlgs.length === 0) {
-          const defaultAlg = {
-            id: "alg_1",
-            name: "Base Aligner v1.0",
-            objective: "Perform high-fidelity nucleobase alignment for biological structures.",
-            description: "Our flagship high-fidelity sequence alignment algorithm designed for DNA-digital conversion.",
-            binaryMapping: "00=A, 01=C, 10=G, 11=T",
-            dnaMapping: "A=00, C=01, G=10, T=11",
-            gcRules: "40-60",
-            homopolymerRules: "Max run length 3",
-            errorDetection: "CRC-32 Checksum",
-            errorCorrection: "Reed-Solomon (255, 223)",
-            version: "v1.0.0",
-            createdDate: "2026-07-01",
-            problemStatement: "Current alignments are too slow and fail to identify complex structural transitions in sequence reads.",
-            researchNotes: "Integrated basic dynamic programming alignments with Smith-Waterman heuristics. Memory footprint optimized.",
-            favorite: true,
-            recent: true,
-            category: "DNA Sequencing",
-            formulas: [],
-            pipeline: { blocks: [], connections: [] },
-            versions: []
-          };
-          setSelectedId("alg_1");
-          syncAlgorithmToResearchMemory(defaultAlg);
-          return [defaultAlg];
-        }
+      const nextAlgs = algorithms.filter(alg => alg.id !== id);
+      if (nextAlgs.length === 0) {
+        const defaultAlg = DEFAULT_ALGORITHMS[0];
+        saveAllAlgorithms([defaultAlg]);
+        setAlgorithms([defaultAlg]);
+        setSelectedId(defaultAlg.id);
+        syncAlgorithmToResearchMemory(defaultAlg);
+      } else {
+        saveAllAlgorithms(nextAlgs);
+        setAlgorithms(nextAlgs);
         if (selectedId === id) {
           setSelectedId(nextAlgs[0].id);
         }
-        return nextAlgs;
-      });
+      }
       removeAlgorithmFromResearchMemory(id);
       showToast("Algorithm deleted successfully", "success");
+    }
+  };
+
+  const handleRunBenchmarkAlgorithm = () => {
+    if (!selectedId) {
+      showToast("Please select a saved algorithm first.", "error");
+      return;
+    }
+    const report = executeAndBenchmarkAlgorithm(selectedId, "APEX OS V3 Designer Workspace Execution Payload String Segment");
+    if (report) {
+      setAlgorithms(getAllAlgorithms());
+      showToast(`Benchmark Executed: Runtime ${(parseFloat(report.encodingTime + report.decodingTime)).toFixed(3)}ms | Similarity: ${report.similarity}`, "success");
+    } else {
+      showToast("Failed to run benchmark.", "error");
     }
   };
 
@@ -589,12 +567,20 @@ export default function AlgorithmDesigner() {
           approvalStatus
         }
       };
-      setAlgorithms(prev => prev.map(alg => (alg.id === selectedId ? updatedAlg : alg)));
+
+      const loaded = getAllAlgorithms();
+      const updatedList = loaded.map(alg => (alg.id === selectedId ? updatedAlg : alg));
+      saveAllAlgorithms(updatedList);
+      setAlgorithms(updatedList);
       syncAlgorithmToResearchMemory(updatedAlg);
-      showToast("Algorithm draft saved successfully!", "success");
+
+      // Auto benchmark execution upon save
+      executeAndBenchmarkAlgorithm(selectedId, "APEX OS V3 Automated Post-Save Payload Check Segment");
+      setAlgorithms(getAllAlgorithms());
+
+      showToast("Algorithm draft saved and benchmarked successfully!", "success");
     } else {
-      const newAlg = {
-        id: `alg_${Date.now()}`,
+      const newAlg = createAlgorithm({
         name: algName,
         objective,
         description,
@@ -608,26 +594,13 @@ export default function AlgorithmDesigner() {
         createdDate: new Date().toISOString().split("T")[0],
         problemStatement,
         researchNotes,
-        favorite: false,
-        recent: true,
-        category: "Custom DNA",
-        formulas: [],
-        pipeline: { blocks, connections },
-        versions: [],
-        review: {
-          completeness: 50,
-          readability: "Good",
-          innovationScore: 80,
-          validationStatus: "Pending",
-          notes: reviewNotes,
-          recommendation: reviewRecommendation,
-          approvalStatus
-        }
-      };
-      setAlgorithms(prev => [newAlg, ...prev]);
+        category: "Custom DNA"
+      });
+      const loaded = getAllAlgorithms();
+      setAlgorithms(loaded);
       setSelectedId(newAlg.id);
       syncAlgorithmToResearchMemory(newAlg);
-      showToast("New algorithm draft created!", "success");
+      showToast("New algorithm draft created and benchmarked!", "success");
     }
   };
 
@@ -1179,6 +1152,7 @@ export default function AlgorithmDesigner() {
                 onSave={handleSaveAlgorithmDraft}
                 onCancel={handleCancelAlgorithm}
                 onValidate={handleValidateAlgorithm}
+                onBenchmark={handleRunBenchmarkAlgorithm}
                 T={T}
               />
             </main>
