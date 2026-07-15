@@ -1,4 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react";
+import {
+  Encode,
+  Decode,
+  Validate,
+  Benchmark,
+  validateGCRule,
+  validateHomopolymerRule
+} from "../core/DNACoreEngine";
 
 // Design themes matching App.jsx and ResearchLab.jsx
 const THEME = {
@@ -21,7 +29,7 @@ const THEME = {
     yellowGlow: "rgba(245, 166, 35, 0.1)",
     cyan: "#00d4ff",
     pink: "#e040fb",
-    glass: "rgba(11, 11, 24, 0.85)",
+    glass: "rgba(11,11,24,0.85)",
     shadow: "rgba(0, 0, 0, 0.5)",
   },
   light: {
@@ -79,6 +87,7 @@ export default function DNASimulationEngine() {
   const [activeAlgorithm, setActiveAlgorithm] = useState(null);
   const [sandboxInput, setSandboxInput] = useState("Apex DNA Data Storage Archive Payload");
   const [sandboxResult, setSandboxResult] = useState(null);
+  const [corruptPayload, setCorruptPayload] = useState(false);
 
   // Load the currently selected algorithm from Algorithm Designer
   useEffect(() => {
@@ -98,191 +107,83 @@ export default function DNASimulationEngine() {
     }
   }, []);
 
-  const textToBinary = (text) => {
-    return text.split("")
-      .map(char => char.charCodeAt(0).toString(2).padStart(8, "0"))
-      .join("");
-  };
-
-  const binaryToText = (binary) => {
-    const bytes = [];
-    for (let i = 0; i < binary.length; i += 8) {
-      const byte = binary.slice(i, i + 8);
-      if (byte.length === 8) {
-        bytes.push(String.fromCharCode(parseInt(byte, 2)));
-      }
-    }
-    return bytes.join("");
-  };
-
-  const parseBinaryMapping = (str) => {
-    const map = {};
-    if (!str) return { "00": "A", "01": "C", "10": "G", "11": "T" };
-    const parts = str.split(/[,\s;\n]+/);
-    parts.forEach(part => {
-      const [k, v] = part.split("=");
-      if (k && v) {
-        map[k.trim()] = v.trim().toUpperCase();
-      }
-    });
-    if (Object.keys(map).length === 0) {
-      return { "00": "A", "01": "C", "10": "G", "11": "T" };
-    }
-    return map;
-  };
-
-  const parseDnaMapping = (str) => {
-    const map = {};
-    if (!str) return { "A": "00", "C": "01", "G": "10", "T": "11" };
-    const parts = str.split(/[,\s;\n]+/);
-    parts.forEach(part => {
-      const [k, v] = part.split("=");
-      if (k && v) {
-        map[k.trim().toUpperCase()] = v.trim();
-      }
-    });
-    if (Object.keys(map).length === 0) {
-      return { "A": "00", "C": "01", "G": "10", "T": "11" };
-    }
-    return map;
-  };
-
-  const encodeBinaryToDNA = (binary, bMap) => {
-    const bitLengths = Object.keys(bMap).map(k => k.length);
-    const sliceLen = bitLengths.length > 0 ? Math.max(...bitLengths) : 2;
-
-    let dna = "";
-    for (let i = 0; i < binary.length; i += sliceLen) {
-      let bits = binary.slice(i, i + sliceLen);
-      if (bits.length < sliceLen) {
-        bits = bits.padEnd(sliceLen, "0");
-      }
-      dna += bMap[bits] || "A";
-    }
-    return dna;
-  };
-
-  const decodeDNAToBinary = (dna, dMap) => {
-    let binary = "";
-    for (let i = 0; i < dna.length; i++) {
-      const base = dna[i].toUpperCase();
-      binary += dMap[base] || "00";
-    }
-    return binary;
-  };
-
-  const validateGCRule = (dna, gcRulesStr) => {
-    const len = dna.length || 1;
-    const gCount = (dna.match(/G/g) || []).length;
-    const cCount = (dna.match(/C/g) || []).length;
-    const gcPercent = ((gCount + cCount) / len) * 100;
-
-    let min = 40;
-    let max = 60;
-    if (gcRulesStr) {
-      const parts = gcRulesStr.split("-");
-      if (parts.length === 2) {
-        const minVal = parseInt(parts[0]);
-        const maxVal = parseInt(parts[1]);
-        if (!isNaN(minVal) && !isNaN(maxVal)) {
-          min = minVal;
-          max = maxVal;
-        }
-      }
-    }
-
-    const passed = gcPercent >= min && gcPercent <= max;
-    return {
-      passed,
-      gcPercent: Math.round(gcPercent),
-      min,
-      max,
-      message: passed
-        ? `GC Content: ${Math.round(gcPercent)}% (PASS - range is ${min}-${max}%)`
-        : `GC Content: ${Math.round(gcPercent)}% (FAIL - range is ${min}-${max}%)`
-    };
-  };
-
-  const validateHomopolymerRule = (dna, homopolymerRulesStr) => {
-    let limit = 3;
-    if (homopolymerRulesStr) {
-      const limitMatch = homopolymerRulesStr.match(/\d+/);
-      if (limitMatch) {
-        limit = parseInt(limitMatch[0]);
-      }
-    }
-
-    let maxRun = 1;
-    let currentRun = 1;
-    let violatingBase = "";
-    for (let i = 1; i < dna.length; i++) {
-      if (dna[i] === dna[i - 1]) {
-        currentRun++;
-        if (currentRun > maxRun) {
-          maxRun = currentRun;
-          if (maxRun > limit) {
-            violatingBase = dna[i];
-          }
-        }
-      } else {
-        currentRun = 1;
-      }
-    }
-
-    const passed = maxRun <= limit;
-    return {
-      passed,
-      maxRun,
-      limit,
-      message: passed
-        ? `Homopolymer Check: PASS (No run exceeds ${limit})`
-        : `Homopolymer Check: FAIL (Run of '${violatingBase}' is ${maxRun}, exceeds limit of ${limit})`
-    };
-  };
-
   const handleRunDnaSimulation = () => {
     if (!sandboxInput.trim()) {
       alert("Please enter input text payload.");
       return;
     }
-    const t0 = performance.now();
 
-    // 1. Text to Binary
-    const binary = textToBinary(sandboxInput);
+    // Benchmark performs: Encode -> Decode -> Validate under strict conditions
+    const report = Benchmark(sandboxInput, activeAlgorithm);
 
-    // 2. Binary to DNA using dynamic mappings
-    const bMap = parseBinaryMapping(activeAlgorithm?.binaryMapping);
-    const dna = encodeBinaryToDNA(binary, bMap);
+    // Simulate pipeline storage details
+    const encodeData = Encode(sandboxInput, activeAlgorithm);
 
-    // 3. DNA to Binary using dynamic mappings
-    const dMap = parseDnaMapping(activeAlgorithm?.dnaMapping);
-    const decodedBinary = decodeDNAToBinary(dna, dMap);
+    let processedDnaSequence = encodeData.dnaSequence;
+    let corruptedForShow = false;
 
-    // 4. Binary to Text
-    const decodedText = binaryToText(decodedBinary);
-    const t1 = performance.now();
+    // Direct demonstration of Error Detection / Checksumming failure if chosen
+    if (corruptPayload) {
+      // Intentionally change a single base to trigger checksum invalidation
+      const bases = ["A", "T", "C", "G"];
+      const targetPos = Math.floor(processedDnaSequence.length / 2);
+      const originalBase = processedDnaSequence[targetPos];
+      const otherBases = bases.filter(b => b !== originalBase);
+      const replacementBase = otherBases[0];
+      processedDnaSequence = processedDnaSequence.slice(0, targetPos) + replacementBase + processedDnaSequence.slice(targetPos + 1);
+      corruptedForShow = true;
+    }
 
-    // Verification
-    const isSuccess = decodedText.substring(0, sandboxInput.length) === sandboxInput;
-    const duration = (t1 - t0).toFixed(3);
+    const decodeData = Decode(processedDnaSequence, activeAlgorithm);
+    const validateData = Validate(sandboxInput, decodeData.decodedText, decodeData.checksumVerified);
 
-    // GC & Homopolymer rules check
-    const gcRuleResult = validateGCRule(dna, activeAlgorithm?.gcRules);
-    const homopolymerResult = validateHomopolymerRule(dna, activeAlgorithm?.homopolymerRules);
-
-    setDnaSeq(dna);
+    setDnaSeq(encodeData.dnaSequence);
     setCurrentSeqName(`Encoded sandbox: "${sandboxInput.slice(0, 15)}..."`);
 
+    // Rule compliance checks using Core Engine functions
+    const gcRuleResult = validateGCRule(encodeData.dnaSequence, activeAlgorithm?.gcRules);
+    const homopolymerResult = validateHomopolymerRule(encodeData.dnaSequence, activeAlgorithm?.homopolymerRules);
+
     setSandboxResult({
-      binaryInput: binary,
-      dnaOutput: dna,
-      decodedText: decodedText.substring(0, sandboxInput.length),
-      duration,
-      success: isSuccess,
+      executionId: report.executionId,
+      binaryInput: encodeData.combinedBinary,
+      dnaOutput: encodeData.dnaSequence,
+      processedDnaSequence,
+      decodedText: decodeData.decodedText,
+      duration: (encodeData.encodingTime + decodeData.decodingTime).toFixed(3),
+      success: validateData.pass === "PASS",
+      similarity: validateData.similarity,
+      errorCount: validateData.errorCount,
+      checksumVerified: decodeData.checksumVerified,
+      corruptionDetected: decodeData.corruptionDetected || corruptedForShow,
+      extractedChecksum: decodeData.extractedChecksum,
+      computedChecksum: decodeData.computedChecksum,
       gcRule: gcRuleResult,
       homopolymerRule: homopolymerResult
     });
-    triggerToast("Text successfully encoded and verified through full pipeline!");
+
+    // Save execution analytics globally for Dashboard stats
+    try {
+      const savedRuns = localStorage.getItem("apex_os_v3_dna_runs");
+      let runs = savedRuns ? JSON.parse(savedRuns) : [];
+      runs.unshift({
+        executionId: report.executionId,
+        algorithmName: selectedAlgName,
+        success: validateData.pass === "PASS",
+        time: parseFloat((encodeData.encodingTime + decodeData.decodingTime).toFixed(3)),
+        timestamp: new Date().toISOString()
+      });
+      localStorage.setItem("apex_os_v3_dna_runs", JSON.stringify(runs));
+    } catch(err) {
+      console.error(err);
+    }
+
+    triggerToast(
+      validateData.pass === "PASS"
+        ? "Text successfully encoded, decoded, and verified through shared DNA Core Engine!"
+        : "Execution completed. Integrity failure or corruption detected!",
+      validateData.pass === "PASS" ? "success" : "warning"
+    );
   };
 
   const handleSaveToExperimentManager = () => {
@@ -299,12 +200,12 @@ export default function DNASimulationEngine() {
         description: `Input string: "${sandboxInput}". Exec time: ${sandboxResult.duration}ms. DNA Output bases: ${sandboxResult.dnaOutput}. Decoded: "${sandboxResult.decodedText}". GC Rule: ${sandboxResult.gcRule.message}. Homopolymer: ${sandboxResult.homopolymerRule.message}.`,
         assignedAlgorithm: selectedAlgName,
         status: "Completed",
-        accuracy: sandboxResult.success ? 100 : 0,
+        accuracy: parseFloat(sandboxResult.similarity),
         throughput: `${(sandboxResult.dnaOutput.length / (parseFloat(sandboxResult.duration) || 1)).toFixed(2)} bp/ms`,
         createdDate: timestamp,
         lastUpdated: timestamp,
         timeline: [
-          { id: `e_${Date.now()}`, type: "success", title: "Simulation Finished", timestamp, desc: `Text encoded to DNA bases successfully. Validation checksum matches exactly.`, icon: "🏆" }
+          { id: `e_${Date.now()}`, type: "success", title: "Simulation Finished", timestamp, desc: `Text processed via DNA Core Engine successfully. Checksum validation: ${sandboxResult.checksumVerified ? "PASS" : "FAIL"}.`, icon: "🏆" }
         ],
         attachments: []
       };
@@ -316,10 +217,10 @@ export default function DNASimulationEngine() {
       let memories = cachedMem ? JSON.parse(cachedMem) : [];
       memories.unshift({
         id: `mem_dna_${Date.now()}`,
-        title: `[DNA Simulation] "${sandboxInput.slice(0, 20)}..."`,
+        title: `[DNA Core Engine Log] "${sandboxInput.slice(0, 20)}..."`,
         type: "Experiment Log",
-        content: `Algorithm: ${selectedAlgName}\nInput: "${sandboxInput}"\nOutput DNA: ${sandboxResult.dnaOutput}\nGC rule verification: ${sandboxResult.gcRule.message}\nHomopolymer rule verification: ${sandboxResult.homopolymerRule.message}\nReconstructed output: "${sandboxResult.decodedText}"\nStatus: ${sandboxResult.success ? "PASS" : "FAIL"}\nDuration: ${sandboxResult.duration} ms`,
-        tags: ["DNA Storage", "Simulation", "Validation"],
+        content: `Execution ID: ${sandboxResult.executionId}\nAlgorithm: ${selectedAlgName}\nInput: "${sandboxInput}"\nOutput DNA: ${sandboxResult.dnaOutput}\nGC rule verification: ${sandboxResult.gcRule.message}\nHomopolymer rule verification: ${sandboxResult.homopolymerRule.message}\nReconstructed output: "${sandboxResult.decodedText}"\nValidation Status: ${sandboxResult.success ? "PASS" : "FAIL"}\nChecksum Verified: ${sandboxResult.checksumVerified ? "YES" : "NO"}\nDuration: ${sandboxResult.duration} ms`,
+        tags: ["DNA Storage", "Simulation", "Validation", "CoreEngine"],
         timestamp,
         severity: sandboxResult.success ? "Low" : "High"
       });
@@ -666,7 +567,7 @@ export default function DNASimulationEngine() {
         {[
           { id: "dashboard", label: "📊 Dashboard" },
           { id: "queue", label: "📋 Queue Control" },
-          { id: "sequencing", label: "🧬 Sequence Preview" },
+          { id: "sequencing", label: "🧬 Sequence Preview & Pipeline" },
           { id: "mutations", label: "⚡ Mutation Diff" },
           { id: "translation", label: "🧪 Translation Preview" },
           { id: "mapping", label: "🗺️ Gene Mapping" },
@@ -1093,7 +994,7 @@ export default function DNASimulationEngine() {
           </div>
         )}
 
-        {/* ══ 3. DNA SEQUENCE PREVIEW PANEL ══ */}
+        {/* ══ 3. DNA SEQUENCE PREVIEW & CORE PIPELINE PANEL ══ */}
         {activeTab === "sequencing" && (
           <div style={{
             background: theme.surf,
@@ -1109,9 +1010,9 @@ export default function DNASimulationEngine() {
               padding: "20px",
               marginBottom: "24px"
             }}>
-              <h3 style={{ margin: "0 0 4px 0", fontSize: "1.05rem", fontWeight: 800 }}>📂 Digital Data ↔ DNA Storage Sandbox</h3>
+              <h3 style={{ margin: "0 0 4px 0", fontSize: "1.05rem", fontWeight: 800 }}>📂 Real-time Shared DNA Core Engine Sandbox</h3>
               <p style={{ margin: "0 0 16px 0", fontSize: "0.78rem", color: theme.text2 }}>
-                Enter ASCII text to simulate digital translation into physical DNA storage sequences. Uses the selected designer algorithm.
+                Enter ASCII text to run real digital-to-biological conversion. Execute direct encoding, decoding, verification, integrity checking, and telemetry reporting through the unified Core Engine.
               </p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -1120,14 +1021,15 @@ export default function DNASimulationEngine() {
                   <strong style={{ fontSize: "0.78rem", color: theme.accent }}>{selectedAlgName}</strong>
                 </div>
 
-                <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
                   <input
                     type="text"
                     value={sandboxInput}
                     onChange={(e) => setSandboxInput(e.target.value)}
-                    placeholder="Enter raw text to encode (e.g. hello)"
+                    placeholder="Enter raw text to encode (e.g. Hello World)"
                     style={{
                       flex: 1,
+                      minWidth: "220px",
                       background: theme.surf,
                       border: `1px solid ${theme.border2}`,
                       borderRadius: 8,
@@ -1137,6 +1039,15 @@ export default function DNASimulationEngine() {
                       outline: "none"
                     }}
                   />
+                  <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", color: theme.text2, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={corruptPayload}
+                      onChange={(e) => setCorruptPayload(e.target.checked)}
+                      style={{ accentColor: theme.accent }}
+                    />
+                    <span>Simulate Payload Corruption</span>
+                  </label>
                   <button
                     onClick={handleRunDnaSimulation}
                     style={{
@@ -1150,7 +1061,7 @@ export default function DNASimulationEngine() {
                       cursor: "pointer"
                     }}
                   >
-                    Run Simulation
+                    Run Core Pipeline
                   </button>
                 </div>
 
@@ -1162,6 +1073,34 @@ export default function DNASimulationEngine() {
                     padding: "16px",
                     marginTop: "12px"
                   }}>
+                    {/* Pipeline Visual Flow */}
+                    <div style={{ marginBottom: "20px", borderBottom: `1px solid ${theme.border2}`, paddingBottom: "14px" }}>
+                      <span style={{ fontSize: "0.7rem", color: theme.text3, textTransform: "uppercase", display: "block", marginBottom: "8px" }}>
+                        PIPELINE EXECUTION TELEMETRY FLOW
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "8px", fontSize: "0.72rem" }}>
+                        <span style={{ background: theme.surf2, padding: "4px 8px", borderRadius: 4, color: theme.text1 }}>
+                          Input: "{sandboxInput}"
+                        </span>
+                        <span style={{ color: theme.text3 }}>➔</span>
+                        <span style={{ background: `${theme.accent}20`, padding: "4px 8px", borderRadius: 4, color: theme.accent, border: `1px solid ${theme.accent}30` }}>
+                          Encode (UTF-8 & Checksum)
+                        </span>
+                        <span style={{ color: theme.text3 }}>➔</span>
+                        <span style={{ background: `${theme.cyan}20`, padding: "4px 8px", borderRadius: 4, color: theme.cyan, border: `1px solid ${theme.cyan}30`, fontFamily: "monospace" }}>
+                          {sandboxResult.dnaOutput.slice(0, 12)}...
+                        </span>
+                        <span style={{ color: theme.text3 }}>➔</span>
+                        <span style={{ background: `${theme.pink}20`, padding: "4px 8px", borderRadius: 4, color: theme.pink, border: `1px solid ${theme.pink}30` }}>
+                          Decode & Checksum Verify
+                        </span>
+                        <span style={{ color: theme.text3 }}>➔</span>
+                        <span style={{ background: sandboxResult.success ? `${theme.green}20` : `${theme.red}20`, padding: "4px 8px", borderRadius: 4, color: sandboxResult.success ? theme.green : theme.red, border: `1px solid ${sandboxResult.success ? theme.green : theme.red}30` }}>
+                          Validate & Complete
+                        </span>
+                      </div>
+                    </div>
+
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
                       <span style={{
                         fontSize: "0.72rem",
@@ -1172,7 +1111,7 @@ export default function DNASimulationEngine() {
                         borderRadius: "4px",
                         textTransform: "uppercase"
                       }}>
-                        {sandboxResult.success ? "✓ Valid Simulation" : "✗ Error"}
+                        {sandboxResult.success ? "✓ Pipeline Validation: PASS" : "✗ Pipeline Validation: FAIL"}
                       </span>
                       <button
                         onClick={handleSaveToExperimentManager}
@@ -1186,26 +1125,43 @@ export default function DNASimulationEngine() {
                           cursor: "pointer"
                         }}
                       >
-                        Save to Experiment Manager
+                        Save to Experiment Manager & Memory System
                       </button>
                     </div>
 
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "0.78rem" }}>
-                      <div><strong>Original Input:</strong> "{sandboxInput}" ({sandboxInput.length} chars)</div>
-                      <div><strong>Binary Representation:</strong></div>
+                      <div><strong>Execution ID:</strong> <span style={{ fontFamily: "monospace", color: theme.text2 }}>{sandboxResult.executionId}</span></div>
+                      <div><strong>Original Input payload:</strong> "{sandboxInput}" ({sandboxInput.length} characters, {new TextEncoder().encode(sandboxInput).length} bytes)</div>
+                      <div><strong>Binary + Checksum representation:</strong></div>
                       <div style={{ wordBreak: "break-all", fontFamily: "monospace", padding: "8px", background: theme.surf2, borderRadius: "6px", color: theme.text2 }}>
                         {sandboxResult.binaryInput}
                       </div>
-                      <div><strong>Encoded DNA Sequence (A, T, C, G):</strong></div>
+                      <div><strong>Encoded DNA Sequence (bases A, T, C, G):</strong></div>
                       <div style={{ wordBreak: "break-all", fontFamily: "monospace", padding: "8px", background: theme.surf2, borderRadius: "6px", color: theme.cyan, fontWeight: "bold" }}>
                         {sandboxResult.dnaOutput}
                       </div>
-                      <div><strong>Decoded Output:</strong> "{sandboxResult.decodedText}"</div>
-                      <div><strong>Execution Latency:</strong> {sandboxResult.duration} ms</div>
+
+                      {sandboxResult.corruptionDetected && (
+                        <div>
+                          <strong style={{ color: theme.red }}>Intentionally Corrupted Sequence for demonstration:</strong>
+                          <div style={{ wordBreak: "break-all", fontFamily: "monospace", padding: "8px", background: `${theme.red}10`, border: `1px solid ${theme.red}20`, borderRadius: "6px", color: theme.red }}>
+                            {sandboxResult.processedDnaSequence}
+                          </div>
+                        </div>
+                      )}
+
+                      <div><strong>Recovered Output:</strong> <span style={{ color: theme.text1, fontWeight: "bold" }}>"{sandboxResult.decodedText}"</span></div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", margin: "6px 0", background: theme.surf2, padding: "10px", borderRadius: "6px" }}>
+                        <div><strong>Original Checksum:</strong> <span style={{ fontFamily: "monospace" }}>{sandboxResult.computedChecksum}</span></div>
+                        <div><strong>Extracted Checksum:</strong> <span style={{ fontFamily: "monospace" }}>{sandboxResult.extractedChecksum}</span></div>
+                        <div><strong>Checksum Match:</strong> <span style={{ color: sandboxResult.checksumVerified ? theme.green : theme.red, fontWeight: "bold" }}>{sandboxResult.checksumVerified ? "VERIFIED" : "INTEGRITY ERROR"}</span></div>
+                        <div><strong>Execution Latency:</strong> {sandboxResult.duration} ms</div>
+                      </div>
 
                       {/* Rules verifications */}
                       <div style={{ marginTop: "10px", borderTop: `1px solid ${theme.border2}`, paddingTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                        <div><strong>Compliance Checks:</strong></div>
+                        <div><strong>Bio-Rule Compliance Verification:</strong></div>
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                           <span style={{
                             padding: "2px 6px",
