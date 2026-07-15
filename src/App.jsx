@@ -699,7 +699,7 @@ const initialAppState = () => {
     research: ls.research || [],
     builds: ls.builds || [],
     analytics: ls.analytics || { tasksByDay: [2,4,3,7,5,6,8], revenueByMonth: [0,0,0,0,0,0,0,0,0,0,0,0] },
-    proxyUrl: ls.proxyUrl || (typeof window !== "undefined" && window.location.hostname === "localhost" ? "http://localhost:8787" : DEFAULT_PROXY),
+    proxyUrl: ls.proxyUrl || DEFAULT_PROXY,
   };
 };
 
@@ -1732,6 +1732,7 @@ export default function ApexOS() {
   const [view, setView] = useState("dashboard");
   const [proxyStatus, setProxyStatus] = useState("checking");
   const [proxyDetails, setProxyDetails] = useState("");
+  const [ncbiApiKeySet, setNcbiApiKeySet] = useState(!!import.meta.env?.VITE_NCBI_API_KEY);
   const [activeEmp, setActiveEmp] = useState("cto");
   const [ceoInput, setCeoInput] = useState("");
   const [empInput, setEmpInput] = useState("");
@@ -1771,37 +1772,88 @@ export default function ApexOS() {
 
   // ── Proxy Connectivity Check ──
   useEffect(() => {
-    const checkProxy = async () => {
-      const base = PROXY_BASE_URL.replace(/\/+$/, '');
-      const start = Date.now();
-      try {
-        // Try /ping first as it's the simplest
-        const pRes = await fetch(`${base}/ping`, { mode: 'cors', cache: 'no-cache' });
-        if (!pRes.ok) throw new Error(`Ping failed: ${pRes.status} ${pRes.statusText}`);
+    let isMounted = true;
+    let timerId = null;
+    let intervalId = null;
 
-        // Then try /health
-        const hRes = await fetch(`${base}/health`, { mode: 'cors', cache: 'no-cache' });
-        const latency = Date.now() - start;
+    const checkProxyOnce = async (isFirstLoad, startTime = null) => {
+      const base = PROXY_BASE_URL.replace(/\/+$/, '');
+      const startFetch = Date.now();
+
+      try {
+        // Use AbortController for a reasonable timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+        const hRes = await fetch(`${base}/health`, {
+          mode: 'cors',
+          cache: 'no-cache',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        const latency = Date.now() - startFetch;
+
         if (hRes.ok) {
-          setProxyStatus("online");
-          setProxyDetails(`Connected to ${base} (${latency}ms)`);
-        } else {
-          setProxyStatus(`error-${hRes.status}`);
-          setProxyDetails(`Backend returned ${hRes.status} ${hRes.statusText}. Check server logs.`);
+          const data = await hRes.json();
+          if (data && data.status === "ok") {
+            if (!isMounted) return true;
+            setProxyStatus("online");
+            setProxyDetails(`Connected to ${base} (${latency}ms)`);
+            if (data.ncbiApiKeySet !== undefined) {
+              setNcbiApiKeySet(!!data.ncbiApiKeySet);
+            }
+            return true;
+          }
         }
+
+        throw new Error(`Health check returned status: ${hRes.status}`);
       } catch (e) {
-        setProxyStatus("offline");
+        if (!isMounted) return false;
+
         let msg = e.message;
-        if (msg === "Failed to fetch") {
+        if (msg === "Failed to fetch" || e.name === "AbortError") {
           msg = "Network Error: Failed to fetch. Possible causes: 1. Server is down. 2. CORS block. 3. Mixed Content (HTTP vs HTTPS). 4. Browser extension (AdBlock/Privacy) blocking the Render domain.";
         }
+
+        if (isFirstLoad) {
+          const elapsed = Date.now() - startTime;
+          if (elapsed < 60000) {
+            setProxyStatus("waking");
+            setProxyDetails(`Waking up backend... Retrying in 5s. (Elapsed: ${Math.round(elapsed / 1000)}s). Error: ${msg}`);
+            timerId = setTimeout(() => {
+              checkProxyOnce(true, startTime);
+            }, 5000);
+            return false;
+          }
+        }
+
+        setProxyStatus("offline");
         setProxyDetails(msg);
         console.warn(`[Proxy Check] Unreachable at ${base}:`, e);
+        return false;
       }
     };
-    checkProxy();
-    const interval = setInterval(checkProxy, 30000);
-    return () => clearInterval(interval);
+
+    const startLifecycle = async () => {
+      setProxyStatus("waking");
+      setProxyDetails("Waking up backend...");
+      await checkProxyOnce(true, Date.now());
+
+      if (isMounted) {
+        intervalId = setInterval(() => {
+          checkProxyOnce(false);
+        }, 30000);
+      }
+    };
+
+    startLifecycle();
+
+    return () => {
+      isMounted = false;
+      if (timerId) clearTimeout(timerId);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [state.proxyUrl]);
 
   // ── Scroll to bottom ──
@@ -2471,7 +2523,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
 
   const ncbiStats = useMemo(() => {
     try {
-      const apiKeyConfigured = import.meta.env?.VITE_NCBI_API_KEY ? "YES" : "NO";
+      const apiKeyConfigured = (import.meta.env?.VITE_NCBI_API_KEY || ncbiApiKeySet) ? "YES" : "NO";
 
       let importedCount = 0;
       const datasetsSaved = localStorage.getItem("apex_os_datasets");
@@ -2504,7 +2556,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
       processed: 0,
       executed: 0
     };
-  }, [view, dnaStats]);
+  }, [view, dnaStats, ncbiApiKeySet]);
 
   // ── SETUP SCREEN ──
   if (!state.setupDone) {
@@ -2630,7 +2682,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
               color: proxyStatus === "online" ? T.green : proxyStatus === "offline" ? T.red : T.yellow,
               padding: "4px 12px", borderRadius: 20, fontSize: "0.72rem", fontWeight: 600
             }}>
-              ● {proxyStatus === "online" ? "APEX Online" : proxyStatus === "offline" ? "Proxy Offline" : proxyStatus.startsWith("error") ? `Proxy Error (${proxyStatus.split('-')[1]})` : "Checking Proxy..."}
+              ● {proxyStatus === "online" ? "APEX Online" : proxyStatus === "waking" ? "Waking up backend..." : proxyStatus === "offline" ? "Proxy Offline" : proxyStatus.startsWith("error") ? `Proxy Error (${proxyStatus.split('-')[1]})` : "Checking Proxy..."}
             </div>
             <div style={{ background: T.surf2, border: `1px solid ${T.border2}`, padding: "4px 12px", borderRadius: 20, fontSize: "0.72rem", color: T.text2 }}>{state.tasks.length} tasks</div>
           </div>
@@ -3286,9 +3338,18 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                         const res = await fetch(`${base}/health`, { mode: 'cors', cache: 'no-cache' });
                         if (res.ok) {
                           const data = await res.json();
-                          toast(`Success! Model: ${data.model}`, "success");
-                          setProxyStatus("online");
-                          setProxyDetails(`Manual check passed: ${data.model}`);
+                          if (data && data.status === "ok") {
+                            toast(`Success! Model: ${data.model}`, "success");
+                            setProxyStatus("online");
+                            setProxyDetails(`Manual check passed: ${data.model}`);
+                            if (data.ncbiApiKeySet !== undefined) {
+                              setNcbiApiKeySet(!!data.ncbiApiKeySet);
+                            }
+                          } else {
+                            toast(`Failed: Health returned status: ${data?.status || 'not ok'}`, "error");
+                            setProxyStatus("offline");
+                            setProxyDetails(`Backend health status is not ok.`);
+                          }
                         } else {
                           toast(`Failed: ${res.status}`, "error");
                           setProxyStatus(`error-${res.status}`);
