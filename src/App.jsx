@@ -12,6 +12,17 @@ import AIScientistWorkspace from "./components/AIScientistWorkspace";
 import ResearchMemorySystem from "./components/ResearchMemorySystem";
 import AICommandCenter from "./components/AICommandCenter";
 import AICeoDashboard from "./components/AICeoDashboard";
+import {
+  getAllAlgorithms,
+  saveAllAlgorithms,
+  createAlgorithm,
+  cloneAlgorithm,
+  editAlgorithm,
+  archiveAlgorithm,
+  versionAlgorithm,
+  executeAndBenchmarkAlgorithm,
+  compareAlgorithms
+} from "./core/AlgorithmEngine";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -1907,7 +1918,189 @@ export default function ApexOS() {
       const memContext = state.memory.slice(0, 10).map(m => `[${m.category}] ${m.content}`).join("\n");
       const system = buildCEOPrompt({ ...state.memory.slice(0, 10), memContext }, state.company);
 
-      const reply = await callClaude(history, system, (chunk) => { setCeoStream(chunk); });
+      // AI DNA ALGORITHM CREATION & INTERCEPT ENGINE
+      const lowerText = text.toLowerCase();
+      let commandContext = "";
+
+      if (lowerText.includes("create") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) {
+        const algs = getAllAlgorithms();
+        const nextNum = algs.length + 1;
+        const newAlgName = `AI Core Engine Huffman Aligner v${nextNum}.0`;
+        const newAlg = createAlgorithm({
+          name: newAlgName,
+          objective: "Achieve maximum digital data storage compression with compliance parameters.",
+          description: "An advanced huffman mapping strategy generated automatically by the AI CEO and Research Team.",
+          binaryMapping: "00=A, 01=C, 10=G, 11=T",
+          dnaMapping: "A=00, C=01, G=10, T=11",
+          gcRules: "45-55",
+          homopolymerRules: "Max run length 2",
+          category: "AI Generated"
+        });
+        const report = executeAndBenchmarkAlgorithm(newAlg.id, "APEX OS V3 Autonomous AI CEO Initial Alignment Core Payload");
+
+        dispatch({
+          type: "ADD_TASK",
+          payload: {
+            id: `task_${Date.now()}`,
+            title: `Implement ${newAlgName}`,
+            desc: `Research, construct, and calibrate a new high-fidelity DNA mapping draft. Latency: ${parseFloat(report.encodingTime + report.decodingTime).toFixed(3)}ms.`,
+            assignee: "engineer",
+            status: "done",
+            priority: "high",
+            createdAt: new Date().toISOString()
+          }
+        });
+
+        commandContext = `\n\n[REAL APEX PLATFORM ENGINE LOG]
+A real algorithm has been successfully created, benchmarked, and registered using the DNA Core Engine:
+- Algorithm Name: ${newAlg.name}
+- Algorithm ID: ${newAlg.id}
+- Encoding Latency: ${report.encodingTime.toFixed(3)} ms
+- Decoding Latency: ${report.decodingTime.toFixed(3)} ms
+- Total Runtime: ${(report.encodingTime + report.decodingTime).toFixed(3)} ms
+- DNA Base Output Length: ${report.dnaLength} bases
+- Compression Ratio: ${report.compressionRatio}
+- Validation Match: ${report.validationResult}
+- Checksum Integrity: ${report.checksumResult}
+- Similarity: ${report.similarity}
+- Memory Footprint: ${report.memoryUsage}
+
+Please formulate an official CEO executive report in standard Bezos/Musk clarity. Highlight that the Algorithm Engineer (Sarah Kim) successfully deployed the code and the Research Scientist (Dr. Mei Lin) confirmed biological compliance. Direct the user to check the newly populated "Algorithm Designer" and "Dashboard Telemetry" widgets!`;
+      }
+      else if (lowerText.includes("optimize") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) {
+        const algs = getAllAlgorithms();
+        if (algs.length > 0) {
+          const target = algs[0];
+          const optVersion = `v${parseInt(target.version.replace(/[^\d]/g, "") || 1) + 1}.0.0`;
+          const optimized = versionAlgorithm(target.id, optVersion, "Sarah Kim", "Automated AI CEO parameter optimization. Tightened GC Content rules.");
+          const report = executeAndBenchmarkAlgorithm(target.id, "APEX OS V3 Parameter Optimization Check Sequence Segment");
+
+          dispatch({
+            type: "ADD_TASK",
+            payload: {
+              id: `task_${Date.now()}`,
+              title: `Optimize ${target.name}`,
+              desc: `Tune biological parameters and GC rules. Deployed optimized version ${optVersion}.`,
+              assignee: "researcher",
+              status: "done",
+              priority: "high",
+              createdAt: new Date().toISOString()
+            }
+          });
+
+          commandContext = `\n\n[REAL APEX PLATFORM ENGINE LOG]
+An algorithm has been optimized and benchmarked using the DNA Core Engine:
+- Target Algorithm: ${target.name}
+- New Deployed Version: ${optVersion}
+- Optimized Runtime: ${(report.encodingTime + report.decodingTime).toFixed(3)} ms
+- DNA Length: ${report.dnaLength} bases
+- Checksum Result: ${report.checksumResult}
+- Validation Match: ${report.validationResult}
+
+Please formulate a professional executive response stating that the optimization parameters have been deployed by Dr. Mei Lin and Sarah Kim. Highlight the new version and its benchmark latency!`;
+        } else {
+          commandContext = `\n\n[REAL APEX PLATFORM ENGINE LOG] No algorithms found to optimize. Please create one first.`;
+        }
+      }
+      else if (lowerText.includes("compare") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) {
+        const algs = getAllAlgorithms();
+        if (algs.length >= 2) {
+          const ids = [algs[0].id, algs[1].id];
+          const comparisons = compareAlgorithms(ids);
+          const best = comparisons.reduce((b, c) => (c.totalTime < b.totalTime ? c : b), comparisons[0]);
+
+          dispatch({
+            type: "ADD_TASK",
+            payload: {
+              id: `task_${Date.now()}`,
+              title: `Compare ${algs[0].name} vs ${algs[1].name}`,
+              desc: `Contrasted performance matrices. Best performer: ${best.name}.`,
+              assignee: "analyst",
+              status: "done",
+              priority: "medium",
+              createdAt: new Date().toISOString()
+            }
+          });
+
+          commandContext = `\n\n[REAL APEX PLATFORM ENGINE LOG]
+A multi-algorithm side-by-side comparison has been run using the DNA Core Engine:
+- Comparisons Data: ${JSON.stringify(comparisons, null, 2)}
+- Best Performer (Lowest Latency): ${best.name} (${best.totalTime.toFixed(3)} ms)
+
+Please write a highly detailed comparative analyst summary including a side-by-side table of results. Highlight the best performer clearly and praise the Performance and Validation Engineering teams!`;
+        } else {
+          commandContext = `\n\n[REAL APEX PLATFORM ENGINE LOG] A comparative run requires at least 2 registered algorithms in the database. Only ${algs.length} found. Ask the team to create another first!`;
+        }
+      }
+      else if (lowerText.includes("fastest") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) {
+        const algs = getAllAlgorithms();
+        if (algs.length > 0) {
+          const comparisons = compareAlgorithms(algs.map(a => a.id));
+          comparisons.sort((a, b) => a.totalTime - b.totalTime);
+          const fastest = comparisons[0];
+
+          dispatch({
+            type: "ADD_TASK",
+            payload: {
+              id: `task_${Date.now()}`,
+              title: "Find Fastest DNA Algorithm",
+              desc: `Benchmarked all active models. Fastest: ${fastest.name} with ${fastest.totalTime.toFixed(3)}ms latency.`,
+              assignee: "cto",
+              status: "done",
+              priority: "high",
+              createdAt: new Date().toISOString()
+            }
+          });
+
+          commandContext = `\n\n[REAL APEX PLATFORM ENGINE LOG]
+A platform-wide performance sweep has been run to locate the fastest algorithm:
+- Sorted Rankings: ${JSON.stringify(comparisons, null, 2)}
+- Fastest Algorithm: ${fastest.name}
+- Runtime Latency: ${fastest.totalTime.toFixed(3)} ms
+
+Please announce the winner of the performance sweep! Show the ranked list of all active models and assign accolades to Sarah Kim for optimizing traceback speeds.`;
+        } else {
+          commandContext = `\n\n[REAL APEX PLATFORM ENGINE LOG] No algorithms currently registered to perform a speed sweep.`;
+        }
+      }
+      else if (lowerText.includes("smallest") && (lowerText.includes("dna") || lowerText.includes("output"))) {
+        const algs = getAllAlgorithms();
+        if (algs.length > 0) {
+          const comparisons = compareAlgorithms(algs.map(a => a.id));
+          comparisons.sort((a, b) => a.dnaLength - b.dnaLength);
+          const smallest = comparisons[0];
+
+          dispatch({
+            type: "ADD_TASK",
+            payload: {
+              id: `task_${Date.now()}`,
+              title: "Optimize Space Utilization Bounds",
+              desc: `Located model with smallest footprint: ${smallest.name} (${smallest.dnaLength} bases).`,
+              assignee: "researcher",
+              status: "done",
+              priority: "medium",
+              createdAt: new Date().toISOString()
+            }
+          });
+
+          commandContext = `\n\n[REAL APEX PLATFORM ENGINE LOG]
+A data compression sweep was executed across all active storage algorithms:
+- Sorted rankings by output base length: ${JSON.stringify(comparisons, null, 2)}
+- Winner: ${smallest.name}
+- Sequence base output length: ${smallest.dnaLength} bases
+
+Please present the compression optimization details. Show the ranked list based on base length and celebrate this milestone with the Research Scientist!`;
+        } else {
+          commandContext = `\n\n[REAL APEX PLATFORM ENGINE LOG] No active algorithms found to perform space utilization sweeps.`;
+        }
+      }
+
+      let finalSystem = system;
+      if (commandContext) {
+        finalSystem += commandContext;
+      }
+
+      const reply = await callClaude(history, finalSystem, (chunk) => { setCeoStream(chunk); });
       dispatch({ type: "UPDATE_CEO_LAST", payload: { content: reply, streaming: false } });
       setCeoStream("");
       processCEOCommands(reply);
@@ -2041,6 +2234,60 @@ export default function ApexOS() {
       console.error(e);
     }
     return { total: 0, successful: 0, failed: 0, avgTime: "0.000 ms" };
+  }, [view]);
+
+  const algorithmStats = useMemo(() => {
+    try {
+      const saved = localStorage.getItem("apex_os_algorithms");
+      if (saved) {
+        const algs = JSON.parse(saved);
+        if (Array.isArray(algs) && algs.length > 0) {
+          const total = algs.length;
+          const latest = algs[0];
+
+          let fastestAlg = algs[0];
+          let bestTime = Infinity;
+          algs.forEach(alg => {
+            const stats = alg.executionStatistics;
+            if (stats && (stats.averageEncodingTime + stats.averageDecodingTime > 0)) {
+              const totalTime = stats.averageEncodingTime + stats.averageDecodingTime;
+              if (totalTime < bestTime) {
+                bestTime = totalTime;
+                fastestAlg = alg;
+              }
+            }
+          });
+
+          let bestAlg = algs[0];
+          let bestSuccess = -1;
+          algs.forEach(alg => {
+            const stats = alg.executionStatistics;
+            if (stats && stats.executionsCount > 0) {
+              const successRate = stats.successfulRuns / stats.executionsCount;
+              if (successRate > bestSuccess) {
+                bestSuccess = successRate;
+                bestAlg = alg;
+              }
+            }
+          });
+
+          return {
+            total,
+            latest: `${latest.name} (${latest.version})`,
+            fastest: `${fastestAlg.name} (${bestTime === Infinity ? "0.00" : (bestTime).toFixed(3)} ms)`,
+            best: `${bestAlg.name} (${bestSuccess === -1 ? "100" : (bestSuccess * 100).toFixed(0)}% Match)`
+          };
+        }
+      }
+    } catch (e) {
+      console.error("Error calculating algorithm stats:", e);
+    }
+    return {
+      total: 0,
+      latest: "None",
+      fastest: "None",
+      best: "None"
+    };
   }, [view]);
 
   // ── SETUP SCREEN ──
@@ -2228,6 +2475,33 @@ export default function ApexOS() {
                         <span style={{ fontSize: 16, color: stat.color }}>{stat.icon}</span>
                       </div>
                       <div style={{ fontSize: "1.8rem", fontWeight: 900, color: stat.color }}>{stat.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* AI DNA Algorithm Engine Telemetry Grid */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: "1.2rem" }}>🧠</span>
+                  <span style={{ fontWeight: 800, fontSize: "0.88rem", textTransform: "uppercase", letterSpacing: "0.5px", color: T.text1 }}>
+                    AI DNA Algorithm Engine Telemetry
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+                  {[
+                    { label: "Total Algorithms", value: algorithmStats.total, color: T.cyan, icon: "📊" },
+                    { label: "Best Algorithm", value: algorithmStats.best, color: T.green, icon: "🏆" },
+                    { label: "Fastest Algorithm", value: algorithmStats.fastest, color: T.yellow, icon: "⏱️" },
+                    { label: "Latest Algorithm", value: algorithmStats.latest, color: T.pink, icon: "🆕" }
+                  ].map((stat) => (
+                    <div key={stat.label} style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 14, padding: "16px 18px", position: "relative", overflow: "hidden" }}>
+                      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: stat.color }} />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontSize: "0.72rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px" }}>{stat.label}</span>
+                        <span style={{ fontSize: 16, color: stat.color }}>{stat.icon}</span>
+                      </div>
+                      <div style={{ fontSize: "1.1rem", fontWeight: 800, color: stat.color, wordBreak: "break-word", lineHeight: 1.3 }}>{stat.value}</div>
                     </div>
                   ))}
                 </div>

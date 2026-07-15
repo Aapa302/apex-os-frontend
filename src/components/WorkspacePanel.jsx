@@ -30,6 +30,7 @@ export default function WorkspacePanel({
   onSave,
   onCancel,
   onValidate,
+  onBenchmark,
   T
 }) {
   return (
@@ -220,6 +221,27 @@ export default function WorkspacePanel({
         >
           Save Draft
         </button>
+
+        {onBenchmark && (
+          <button
+            onClick={onBenchmark}
+            style={{
+              padding: "11px 24px",
+              background: `linear-gradient(135deg, ${T.green}, ${T.cyan})`,
+              border: "none",
+              borderRadius: 8,
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: "0.85rem",
+              cursor: "pointer",
+              transition: "opacity 0.15s"
+            }}
+            onMouseEnter={e => e.currentTarget.style.opacity = 0.9}
+            onMouseLeave={e => e.currentTarget.style.opacity = 1}
+          >
+            🚀 Run Benchmark
+          </button>
+        )}
 
         <button
           onClick={onValidate}
