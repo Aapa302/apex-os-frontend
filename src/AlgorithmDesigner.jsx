@@ -33,6 +33,15 @@ const DEFAULT_ALGORITHMS = [
     id: "alg_1",
     name: "Base Aligner v1.0",
     objective: "Perform high-fidelity nucleobase alignment for biological structures.",
+    description: "Our flagship high-fidelity sequence alignment algorithm designed for DNA-digital conversion.",
+    binaryMapping: "00=A, 01=C, 10=G, 11=T",
+    dnaMapping: "A=00, C=01, G=10, T=11",
+    gcRules: "40-60",
+    homopolymerRules: "Max run length 3",
+    errorDetection: "CRC-32 Checksum",
+    errorCorrection: "Reed-Solomon (255, 223)",
+    version: "v1.0.0",
+    createdDate: "2026-07-01",
     problemStatement: "Current alignments are too slow and fail to identify complex structural transitions in sequence reads.",
     researchNotes: "Integrated basic dynamic programming alignments with Smith-Waterman heuristics. Memory footprint optimized.",
     favorite: true,
@@ -109,6 +118,15 @@ const DEFAULT_ALGORITHMS = [
     id: "alg_2",
     name: "CRISPR PAM Searcher",
     objective: "Locate and evaluate optimal PAM guide-RNA match coordinates in target genomes.",
+    description: "Thermodynamic guide-RNA selector with standard matching and PAM identifier configurations.",
+    binaryMapping: "00=A, 01=C, 10=G, 11=T",
+    dnaMapping: "A=00, C=01, G=10, T=11",
+    gcRules: "40-60",
+    homopolymerRules: "Max run length 3",
+    errorDetection: "Hamming Distance Check",
+    errorCorrection: "Reed-Solomon Codes",
+    version: "v2.0.0",
+    createdDate: "2026-07-08",
     problemStatement: "High occurrence of off-target edits when mismatch parameters are set manually.",
     researchNotes: "Mapped off-target alignment frequencies against standard genome databases. Working on guides compatibility index.",
     favorite: false,
@@ -159,6 +177,15 @@ const DEFAULT_ALGORITHMS = [
     id: "alg_3",
     name: "Double Helix 3D Simulator",
     objective: "Simulate and visualize structural conformation variations under enzymatic friction.",
+    description: "Force-vector mechanics visualization model mapping double-stranded unwinding shear thresholds.",
+    binaryMapping: "00=A, 01=C, 10=G, 11=T",
+    dnaMapping: "A=00, C=01, G=10, T=11",
+    gcRules: "40-60",
+    homopolymerRules: "Max run length 3",
+    errorDetection: "None",
+    errorCorrection: "None",
+    version: "v1.0.0",
+    createdDate: "2026-07-15",
     problemStatement: "Molecular simulation software lacks realistic force-vector feedback for complex DNA-enzyme complexes.",
     researchNotes: "Calibrated dynamic constraints to use spatial force vectors. Need to test with bigger enzyme samples.",
     favorite: true,
@@ -244,7 +271,7 @@ export default function AlgorithmDesigner() {
         id: memId,
         title: `[Algorithm] ${alg.name}`,
         type: "AI Observation",
-        content: `Objective: ${alg.objective}\nProblem Statement: ${alg.problemStatement || ""}\nResearch Notes: ${alg.researchNotes || ""}`,
+        content: `Objective: ${alg.objective}\nDescription: ${alg.description || ""}\nBinary Mapping: ${alg.binaryMapping || ""}\nDNA Mapping: ${alg.dnaMapping || ""}\nGC Rules: ${alg.gcRules || ""}\nHomopolymer Rules: ${alg.homopolymerRules || ""}\nError Detection: ${alg.errorDetection || ""}\nError Correction: ${alg.errorCorrection || ""}\nVersion: ${alg.version || ""}\nCreated Date: ${alg.createdDate || ""}\nProblem Statement: ${alg.problemStatement || ""}\nResearch Notes: ${alg.researchNotes || ""}`,
         tags: [alg.category || "Custom DNA", "Algorithm"],
         timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
         severity: "Medium"
@@ -274,6 +301,15 @@ export default function AlgorithmDesigner() {
   // ── 1. ALGORITHM METADATA STATE ──
   const [algName, setAlgName] = useState("");
   const [objective, setObjective] = useState("");
+  const [description, setDescription] = useState("");
+  const [binaryMapping, setBinaryMapping] = useState("");
+  const [dnaMapping, setDnaMapping] = useState("");
+  const [gcRules, setGcRules] = useState("");
+  const [homopolymerRules, setHomopolymerRules] = useState("");
+  const [errorDetection, setErrorDetection] = useState("");
+  const [errorCorrection, setErrorCorrection] = useState("");
+  const [version, setVersion] = useState("");
+  const [createdDate, setCreatedDate] = useState("");
   const [problemStatement, setProblemStatement] = useState("");
   const [researchNotes, setResearchNotes] = useState("");
 
@@ -348,6 +384,15 @@ export default function AlgorithmDesigner() {
     if (active) {
       setAlgName(active.name || "");
       setObjective(active.objective || "");
+      setDescription(active.description || "");
+      setBinaryMapping(active.binaryMapping || "00=A, 01=C, 10=G, 11=T");
+      setDnaMapping(active.dnaMapping || "A=00, C=01, G=10, T=11");
+      setGcRules(active.gcRules || "40-60");
+      setHomopolymerRules(active.homopolymerRules || "Max run length 3");
+      setErrorDetection(active.errorDetection || "CRC-32 Checksum");
+      setErrorCorrection(active.errorCorrection || "Reed-Solomon (255, 223)");
+      setVersion(active.version || "v1.0.0");
+      setCreatedDate(active.createdDate || "2026-07-01");
       setProblemStatement(active.problemStatement || "");
       setResearchNotes(active.researchNotes || "");
 
@@ -383,6 +428,15 @@ export default function AlgorithmDesigner() {
     } else {
       setAlgName("");
       setObjective("");
+      setDescription("");
+      setBinaryMapping("");
+      setDnaMapping("");
+      setGcRules("");
+      setHomopolymerRules("");
+      setErrorDetection("");
+      setErrorCorrection("");
+      setVersion("");
+      setCreatedDate("");
       setProblemStatement("");
       setResearchNotes("");
       handleClearFormulaFields();
@@ -406,6 +460,15 @@ export default function AlgorithmDesigner() {
       id: newId,
       name: "New Untangled Sequence Draft",
       objective: "Enter objective...",
+      description: "Enter description...",
+      binaryMapping: "00=A, 01=C, 10=G, 11=T",
+      dnaMapping: "A=00, C=01, G=10, T=11",
+      gcRules: "40-60",
+      homopolymerRules: "Max run length 3",
+      errorDetection: "CRC-32 Checksum",
+      errorCorrection: "Reed-Solomon (255, 223)",
+      version: "v1.0.0",
+      createdDate: new Date().toISOString().split("T")[0],
       problemStatement: "",
       researchNotes: "",
       favorite: false,
@@ -430,6 +493,25 @@ export default function AlgorithmDesigner() {
     showToast("Created a new DNA algorithm draft", "success");
   };
 
+  const handleDuplicateAlgorithm = (id, e) => {
+    if (e) e.stopPropagation();
+    const active = algorithms.find(a => a.id === id);
+    if (!active) return;
+    const duplicatedId = `alg_${Date.now()}`;
+    const duplicated = {
+      ...JSON.parse(JSON.stringify(active)),
+      id: duplicatedId,
+      name: `${active.name} (Copy)`,
+      createdDate: new Date().toISOString().split("T")[0],
+      favorite: false,
+      recent: true
+    };
+    setAlgorithms(prev => [duplicated, ...prev]);
+    setSelectedId(duplicatedId);
+    syncAlgorithmToResearchMemory(duplicated);
+    showToast(`Duplicated "${active.name}" successfully`, "success");
+  };
+
   const handleDeleteAlgorithm = (id, e) => {
     if (e) e.stopPropagation();
     if (window.confirm("Are you sure you want to delete this algorithm?")) {
@@ -440,6 +522,15 @@ export default function AlgorithmDesigner() {
             id: "alg_1",
             name: "Base Aligner v1.0",
             objective: "Perform high-fidelity nucleobase alignment for biological structures.",
+            description: "Our flagship high-fidelity sequence alignment algorithm designed for DNA-digital conversion.",
+            binaryMapping: "00=A, 01=C, 10=G, 11=T",
+            dnaMapping: "A=00, C=01, G=10, T=11",
+            gcRules: "40-60",
+            homopolymerRules: "Max run length 3",
+            errorDetection: "CRC-32 Checksum",
+            errorCorrection: "Reed-Solomon (255, 223)",
+            version: "v1.0.0",
+            createdDate: "2026-07-01",
             problemStatement: "Current alignments are too slow and fail to identify complex structural transitions in sequence reads.",
             researchNotes: "Integrated basic dynamic programming alignments with Smith-Waterman heuristics. Memory footprint optimized.",
             favorite: true,
@@ -478,6 +569,15 @@ export default function AlgorithmDesigner() {
         id: selectedId,
         name: algName,
         objective,
+        description,
+        binaryMapping,
+        dnaMapping,
+        gcRules,
+        homopolymerRules,
+        errorDetection,
+        errorCorrection,
+        version,
+        createdDate,
         problemStatement,
         researchNotes,
         recent: true,
@@ -497,6 +597,15 @@ export default function AlgorithmDesigner() {
         id: `alg_${Date.now()}`,
         name: algName,
         objective,
+        description,
+        binaryMapping,
+        dnaMapping,
+        gcRules,
+        homopolymerRules,
+        errorDetection,
+        errorCorrection,
+        version,
+        createdDate: new Date().toISOString().split("T")[0],
         problemStatement,
         researchNotes,
         favorite: false,
@@ -522,12 +631,68 @@ export default function AlgorithmDesigner() {
     }
   };
 
+  const handleValidateAlgorithm = () => {
+    // 1. Check name
+    if (!algName.trim()) {
+      showToast("Validation Failed: Algorithm Name is required.", "error");
+      return;
+    }
+    // 2. Check binaryMapping and dnaMapping
+    if (!binaryMapping.trim() || !dnaMapping.trim()) {
+      showToast("Validation Failed: Mappings cannot be empty.", "error");
+      return;
+    }
+    // Parse binary mapping entries
+    const bEntries = binaryMapping.split(/[,\s;\n]+/).filter(Boolean);
+    const dEntries = dnaMapping.split(/[,\s;\n]+/).filter(Boolean);
+    if (bEntries.length === 0 || dEntries.length === 0) {
+      showToast("Validation Failed: Invalid mapping definitions.", "error");
+      return;
+    }
+    // Check if mappings are valid
+    let validMappings = true;
+    bEntries.forEach(entry => {
+      const parts = entry.split("=");
+      if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
+        validMappings = false;
+      }
+    });
+    if (!validMappings) {
+      showToast("Validation Failed: Binary mapping must be formatted as key=value (e.g. 00=A).", "error");
+      return;
+    }
+    // 3. Check GC rules format (should be numeric range e.g. 40-60)
+    const gcParts = gcRules.split("-");
+    if (gcParts.length === 2) {
+      const min = parseInt(gcParts[0]);
+      const max = parseInt(gcParts[1]);
+      if (isNaN(min) || isNaN(max) || min < 0 || max > 100 || min > max) {
+        showToast("Validation Failed: GC Content range must be valid percentages (e.g. 40-60).", "error");
+        return;
+      }
+    } else {
+      showToast("Validation Failed: GC Content Rule must be formatted as min-max (e.g. 40-60).", "error");
+      return;
+    }
+
+    showToast("Validation Passed: Algorithm specifications are clean and compliant!", "success");
+  };
+
   const handleCancelAlgorithm = () => {
     if (selectedId) {
       const current = algorithms.find(a => a.id === selectedId);
       if (current) {
         setAlgName(current.name || "");
         setObjective(current.objective || "");
+        setDescription(current.description || "");
+        setBinaryMapping(current.binaryMapping || "00=A, 01=C, 10=G, 11=T");
+        setDnaMapping(current.dnaMapping || "A=00, C=01, G=10, T=11");
+        setGcRules(current.gcRules || "40-60");
+        setHomopolymerRules(current.homopolymerRules || "Max run length 3");
+        setErrorDetection(current.errorDetection || "CRC-32 Checksum");
+        setErrorCorrection(current.errorCorrection || "Reed-Solomon (255, 223)");
+        setVersion(current.version || "v1.0.0");
+        setCreatedDate(current.createdDate || "2026-07-01");
         setProblemStatement(current.problemStatement || "");
         setResearchNotes(current.researchNotes || "");
         showToast("Reverted algorithm changes", "info");
@@ -535,6 +700,15 @@ export default function AlgorithmDesigner() {
     } else {
       setAlgName("");
       setObjective("");
+      setDescription("");
+      setBinaryMapping("");
+      setDnaMapping("");
+      setGcRules("");
+      setHomopolymerRules("");
+      setErrorDetection("");
+      setErrorCorrection("");
+      setVersion("");
+      setCreatedDate("");
       setProblemStatement("");
       setResearchNotes("");
       showToast("Cleared unsaved draft", "info");
@@ -954,6 +1128,7 @@ export default function AlgorithmDesigner() {
           onCreateNewAlgorithm={handleCreateNewAlgorithm}
           onToggleFavorite={toggleFavorite}
           onDeleteAlgorithm={handleDeleteAlgorithm}
+          onDuplicateAlgorithm={handleDuplicateAlgorithm}
           T={T}
         />
 
@@ -979,12 +1154,31 @@ export default function AlgorithmDesigner() {
                 setAlgName={setAlgName}
                 objective={objective}
                 setObjective={setObjective}
+                description={description}
+                setDescription={setDescription}
+                binaryMapping={binaryMapping}
+                setBinaryMapping={setBinaryMapping}
+                dnaMapping={dnaMapping}
+                setDnaMapping={setDnaMapping}
+                gcRules={gcRules}
+                setGcRules={setGcRules}
+                homopolymerRules={homopolymerRules}
+                setHomopolymerRules={setHomopolymerRules}
+                errorDetection={errorDetection}
+                setErrorDetection={setErrorDetection}
+                errorCorrection={errorCorrection}
+                setErrorCorrection={setErrorCorrection}
+                version={version}
+                setVersion={setVersion}
+                createdDate={createdDate}
+                setCreatedDate={setCreatedDate}
                 problemStatement={problemStatement}
                 setProblemStatement={setProblemStatement}
                 researchNotes={researchNotes}
                 setResearchNotes={setResearchNotes}
                 onSave={handleSaveAlgorithmDraft}
                 onCancel={handleCancelAlgorithm}
+                onValidate={handleValidateAlgorithm}
                 T={T}
               />
             </main>

@@ -3,31 +3,31 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 // Pre-populated research memory items
 const INITIAL_MEMORIES = [
   {
-    id: "mem_1",
-    title: "Centromeric Alignments in Chromosome 21",
+    id: "mem_alg_1",
+    title: "[Algorithm] Base Aligner v1.0",
     type: "AI Observation",
-    content: "Vast gap alignments resolved. Noted higher density of sequence matches using recursive dynamic scoring heuristics.",
-    tags: ["Genomics", "Heuristics", "Chromosome 21"],
+    content: "Objective: Perform high-fidelity nucleobase alignment for biological structures.\nDescription: Our flagship high-fidelity sequence alignment algorithm designed for DNA-digital conversion.\nBinary Mapping: 00=A, 01=C, 10=G, 11=T\nDNA Mapping: A=00, C=01, G=10, T=11\nGC Rules: 40-60\nHomopolymer Rules: Max run length 3\nError Detection: CRC-32 Checksum\nError Correction: Reed-Solomon (255, 223)\nVersion: v1.0.0\nCreated Date: 2026-07-01",
+    tags: ["DNA Sequencing", "Algorithm"],
     timestamp: "2026-07-11 14:23",
-    severity: "High"
-  },
-  {
-    id: "mem_2",
-    title: "Spike Protein Torsional Vector Calibration",
-    type: "Experiment Log",
-    content: "Rotational forces calculated around the S1 subunit RBD. Found stable convergence limits under 45 degrees of strain.",
-    tags: ["Virology", "Protein", "Shear Matrix"],
-    timestamp: "2026-07-13 09:12",
     severity: "Medium"
   },
   {
-    id: "mem_3",
-    title: "Decoherence mapping across 128 logical Qubits",
-    type: "Research Paper Notes",
-    content: "Microwave telemetry channels mapped successfully. Found coherence drops during continuous multi-channel excitation loops.",
-    tags: ["Quantum", "Decoherence", "Calibration"],
+    id: "mem_link_1",
+    title: "[Link] Formula to Algorithm",
+    type: "AI Observation",
+    content: "Linked formula \"Softmax Activation Function\" to algorithm ID: alg_1.",
+    tags: ["Formula", "Link"],
+    timestamp: "2026-07-13 09:12",
+    severity: "Low"
+  },
+  {
+    id: "mem_dna_1",
+    title: "[DNA Simulation] \"Apex DNA Data...\"",
+    type: "Experiment Log",
+    content: "Algorithm: Base Aligner v1.0 (Active)\nInput: \"Apex DNA Data Storage Archive Payload\"\nOutput DNA: ATCGATCGATCGATCGATCGATCGATCG\nGC rule verification: GC Content: 50% (PASS - range is 40-60%)\nHomopolymer rule verification: Homopolymer Check: PASS (No run exceeds 3)\nReconstructed output: \"Apex DNA Data Storage Archive Payload\"\nStatus: PASS\nDuration: 0.124 ms",
+    tags: ["DNA Storage", "Simulation", "Validation"],
     timestamp: "2026-07-14 18:45",
-    severity: "Critical"
+    severity: "Low"
   }
 ];
 
@@ -451,7 +451,7 @@ export default function ResearchMemorySystem() {
                   {m.title}
                 </h3>
 
-                <p style={{ margin: "0 0 16px 0", fontSize: "0.85rem", color: T.text2, lineHeight: 1.6 }}>
+                <p style={{ margin: "0 0 16px 0", fontSize: "0.85rem", color: T.text2, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
                   {m.content}
                 </p>
 

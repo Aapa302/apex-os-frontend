@@ -20,7 +20,10 @@ const INITIAL_FORMULAS = [
       return (Math.exp(xi) / sum).toFixed(6);
     },
     codeSnippet: "import numpy as np\n\ndef softmax(x):\n    e_x = np.exp(x - np.max(x))\n    return e_x / e_x.sum(axis=0)",
-    tags: ["Deep Learning", "Activation", "Neural Networks"]
+    tags: ["Deep Learning", "Activation", "Neural Networks"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-01", changes: "Initial pre-populated formula representation." }
+    ]
   },
   {
     id: "ai_shannon_entropy",
@@ -34,12 +37,14 @@ const INITIAL_FORMULAS = [
     compute: (vals) => {
       const pi = parseFloat(vals["p_i"]);
       if (isNaN(pi) || pi <= 0 || pi >= 1) return "Invalid Input (p must be in (0, 1))";
-      // Let's compute single term entropy and remaining class entropy
       const h_pi = -pi * Math.log2(pi) - (1 - pi) * Math.log2(1 - pi);
       return h_pi.toFixed(6) + " bits (for 2-state distribution)";
     },
     codeSnippet: "import numpy as np\n\ndef shannon_entropy(p):\n    # p is an array of probabilities summing to 1\n    return -np.sum(p * np.log2(p + 1e-12))",
-    tags: ["Information Theory", "Loss Functions", "Decision Trees"]
+    tags: ["Information Theory", "Loss Functions", "Decision Trees"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-01", changes: "Initial pre-populated formula representation." }
+    ]
   },
   // --- Mathematics ---
   {
@@ -65,7 +70,10 @@ const INITIAL_FORMULAS = [
       return `Δ = ${disc} (${nature})`;
     },
     codeSnippet: "def discriminant(a, b, c):\n    return b**2 - 4*a*c",
-    tags: ["Algebra", "Polynomials", "Roots"]
+    tags: ["Algebra", "Polynomials", "Roots"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-01", changes: "Initial pre-populated formula representation." }
+    ]
   },
   {
     id: "math_fibonacci",
@@ -84,7 +92,10 @@ const INITIAL_FORMULAS = [
       return Math.round(term).toString();
     },
     codeSnippet: "import math\n\ndef binet_fibonacci(n):\n    phi = (1 + math.sqrt(5)) / 2\n    return round((phi**n - (1 - phi)**n) / math.sqrt(5))",
-    tags: ["Sequences", "Number Theory", "Golden Ratio"]
+    tags: ["Sequences", "Number Theory", "Golden Ratio"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-01", changes: "Initial pre-populated formula representation." }
+    ]
   },
   // --- Physics ---
   {
@@ -104,7 +115,10 @@ const INITIAL_FORMULAS = [
       return E.toExponential(6) + " Joules";
     },
     codeSnippet: "def mass_energy_equivalence(m):\n    c = 299792458 # Speed of light m/s\n    return m * (c ** 2)",
-    tags: ["Relativity", "Cosmology", "Einstein"]
+    tags: ["Relativity", "Cosmology", "Einstein"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-01", changes: "Initial pre-populated formula representation." }
+    ]
   },
   {
     id: "phys_schwarzschild",
@@ -124,7 +138,10 @@ const INITIAL_FORMULAS = [
       return Rs.toFixed(2) + " meters (" + (Rs / 1000).toFixed(4) + " km)";
     },
     codeSnippet: "def schwarzschild_radius(M):\n    G = 6.6743e-11\n    c = 299792458\n    return (2 * G * M) / (c ** 2)",
-    tags: ["Astrophysics", "Gravity", "General Relativity"]
+    tags: ["Astrophysics", "Gravity", "General Relativity"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-01", changes: "Initial pre-populated formula representation." }
+    ]
   },
   // --- Biology ---
   {
@@ -146,7 +163,10 @@ const INITIAL_FORMULAS = [
       return `p²=${p_sq.toFixed(4)}, 2pq=${two_pq.toFixed(4)}, q²=${q_sq.toFixed(4)}`;
     },
     codeSnippet: "def hardy_weinberg(p):\n    q = 1.0 - p\n    return p**2, 2*p*q, q**2",
-    tags: ["Genetics", "Population Ecology", "Evolution"]
+    tags: ["Genetics", "Population Ecology", "Evolution"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-01", changes: "Initial pre-populated formula representation." }
+    ]
   },
   // --- Chemistry ---
   {
@@ -170,7 +190,10 @@ const INITIAL_FORMULAS = [
       return k.toExponential(6) + " s^-1";
     },
     codeSnippet: "import math\n\ndef arrhenius_rate(A, Ea, T):\n    R = 8.314462618\n    return A * math.exp(-Ea / (R * T))",
-    tags: ["Kinetics", "Physical Chemistry", "Rates"]
+    tags: ["Kinetics", "Physical Chemistry", "Rates"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-01", changes: "Initial pre-populated formula representation." }
+    ]
   },
   // --- Engineering ---
   {
@@ -192,7 +215,10 @@ const INITIAL_FORMULAS = [
       return (C / 1000000).toFixed(4) + " Mbps";
     },
     codeSnippet: "import math\n\ndef channel_capacity(B, SNR_dB):\n    snr = 10 ** (SNR_dB / 10)\n    return B * math.log2(1 + snr)",
-    tags: ["Telecommunication", "Bandwidth", "Signal Processing"]
+    tags: ["Telecommunication", "Bandwidth", "Signal Processing"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-01", changes: "Initial pre-populated formula representation." }
+    ]
   }
 ];
 
@@ -227,7 +253,8 @@ export default function FormulaAlgorithmLibrary() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFormulaId, setSelectedFormulaId] = useState(INITIAL_FORMULAS[0].id);
 
-  // Custom Form Creator Fields
+  // Custom Form Creator / Editor Fields
+  const [isEditingFormulaId, setIsEditingFormulaId] = useState(null);
   const [customName, setCustomName] = useState("");
   const [customExpression, setCustomExpression] = useState("");
   const [customCategory, setCustomCategory] = useState("Custom");
@@ -348,6 +375,25 @@ export default function FormulaAlgorithmLibrary() {
       });
       localStorage.setItem("apex_os_algorithms", JSON.stringify(algs));
       setAvailableAlgorithms(algs);
+
+      // Store in Research Memory
+      try {
+        const cached = localStorage.getItem("apex_os_v4_research_memories");
+        let memories = cached ? JSON.parse(cached) : [];
+        memories.unshift({
+          id: `mem_link_${Date.now()}`,
+          title: `[Link] Formula to Algorithm`,
+          type: "AI Observation",
+          content: `Linked formula "${formula.name}" to algorithm ID: ${algId}.`,
+          tags: ["Formula", "Link"],
+          timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
+          severity: "Low"
+        });
+        localStorage.setItem("apex_os_v4_research_memories", JSON.stringify(memories));
+      } catch (err) {
+        console.error(err);
+      }
+
       alert(`Linked formula "${formula.name}" to algorithm!`);
     } catch (err) {
       console.error(err);
@@ -504,6 +550,29 @@ export default function FormulaAlgorithmLibrary() {
     setCustomVarLabel("");
   };
 
+  const handleLoadFormulaForEdit = (formula) => {
+    setIsEditingFormulaId(formula.id);
+    setCustomName(formula.name || "");
+    setCustomExpression(formula.expression || "");
+    setCustomCategory(formula.category || "Custom");
+    setCustomDesc(formula.description || "");
+    setCustomCode(formula.codeSnippet || "");
+    setCustomVars(formula.variables || []);
+    setCustomTags(formula.tags ? formula.tags.join(", ") : "");
+    alert(`Loaded "${formula.name}" into the form for editing!`);
+  };
+
+  const handleCancelFormulaEdit = () => {
+    setIsEditingFormulaId(null);
+    setCustomName("");
+    setCustomExpression("");
+    setCustomCategory("Custom");
+    setCustomDesc("");
+    setCustomCode("");
+    setCustomVars([]);
+    setCustomTags("");
+  };
+
   const handleCreateCustomFormula = (e) => {
     e.preventDefault();
     if (!customName.trim() || !customExpression.trim()) {
@@ -511,41 +580,74 @@ export default function FormulaAlgorithmLibrary() {
       return;
     }
 
-    const newFormula = {
-      id: `custom_${Date.now()}`,
-      name: customName,
-      category: customCategory,
-      expression: customExpression,
-      description: customDesc,
-      variables: customVars.length > 0 ? customVars : [{ name: "x", label: "Generic Parameter", defaultValue: "1.0" }],
-      compute: (vals) => {
-        // Evaluate dynamic simple expressions
-        try {
-          // Replace variable names with values safely
-          let expr = customExpression;
-          Object.keys(vals).forEach(k => {
-            const val = parseFloat(vals[k]) || 0;
-            // Match whole word variables
-            expr = expr.replace(new RegExp(`\\b${k}\\b`, "g"), val);
-          });
-          // Remove malicious chars but allow letters for Math functions and variables
-          const cleanExpr = expr.replace(/[^a-zA-Z0-9+\-*/().\s]/g, "");
-          const blacklist = ["window", "document", "fetch", "cookie", "alert", "eval", "Function", "XMLHttpRequest", "xml", "http", "localStorage", "sessionStorage"];
-          if (blacklist.some(b => cleanExpr.toLowerCase().includes(b.toLowerCase()))) {
-            return "Security Blocked";
-          }
-          const evaluated = new Function(`return (${cleanExpr})`)();
-          return isNaN(evaluated) ? "Evaluation Error" : evaluated.toFixed(4);
-        } catch (err) {
-          return "Math Evaluation Error";
+    const computeFn = (vals) => {
+      // Evaluate dynamic simple expressions
+      try {
+        let expr = customExpression;
+        Object.keys(vals).forEach(k => {
+          const val = parseFloat(vals[k]) || 0;
+          expr = expr.replace(new RegExp(`\\b${k}\\b`, "g"), val);
+        });
+        const cleanExpr = expr.replace(/[^a-zA-Z0-9+\-*/().\s]/g, "");
+        const blacklist = ["window", "document", "fetch", "cookie", "alert", "eval", "Function", "XMLHttpRequest", "xml", "http", "localStorage", "sessionStorage"];
+        if (blacklist.some(b => cleanExpr.toLowerCase().includes(b.toLowerCase()))) {
+          return "Security Blocked";
         }
-      },
-      codeSnippet: customCode || `# Custom Python implementation\ndef ${customName.toLowerCase().replace(/\s+/g, "_")}(${customVars.map(v => v.name).join(", ") || "x"}):\n    # TODO: Add logic here\n    pass`,
-      tags: customTags.split(",").map(t => t.trim()).filter(Boolean)
+        const evaluated = new Function(`return (${cleanExpr})`)();
+        return isNaN(evaluated) ? "Evaluation Error" : evaluated.toFixed(4);
+      } catch (err) {
+        return "Math Evaluation Error";
+      }
     };
 
-    setFormulas(prev => [...prev, newFormula]);
-    setSelectedFormulaId(newFormula.id);
+    if (isEditingFormulaId) {
+      // Edit existing
+      setFormulas(prev => prev.map(f => {
+        if (f.id === isEditingFormulaId) {
+          const updatedHistory = [
+            {
+              version: `v1.0.${(f.history || []).length + 1}`,
+              date: new Date().toISOString().split("T")[0],
+              changes: `Edited via dynamic configuration tool.`
+            },
+            ...(f.history || [])
+          ];
+          return {
+            ...f,
+            name: customName,
+            expression: customExpression,
+            category: customCategory,
+            description: customDesc,
+            variables: customVars.length > 0 ? customVars : f.variables,
+            compute: computeFn,
+            codeSnippet: customCode || f.codeSnippet,
+            tags: customTags.split(",").map(t => t.trim()).filter(Boolean),
+            history: updatedHistory
+          };
+        }
+        return f;
+      }));
+      setIsEditingFormulaId(null);
+      alert("Formula updated successfully!");
+    } else {
+      // Create new
+      const newFormula = {
+        id: `custom_${Date.now()}`,
+        name: customName,
+        category: customCategory,
+        expression: customExpression,
+        description: customDesc,
+        variables: customVars.length > 0 ? customVars : [{ name: "x", label: "Generic Parameter", defaultValue: "1.0" }],
+        compute: computeFn,
+        codeSnippet: customCode || `# Custom Python implementation\ndef ${customName.toLowerCase().replace(/\s+/g, "_")}(${customVars.map(v => v.name).join(", ") || "x"}):\n    # TODO: Add logic here\n    pass`,
+        tags: customTags.split(",").map(t => t.trim()).filter(Boolean),
+        history: [{ version: "v1.0.0", date: new Date().toISOString().split("T")[0], changes: "Initial custom creation." }]
+      };
+
+      setFormulas(prev => [...prev, newFormula]);
+      setSelectedFormulaId(newFormula.id);
+      alert("Custom formula added to library!");
+    }
 
     // Clear state
     setCustomName("");
@@ -555,12 +657,11 @@ export default function FormulaAlgorithmLibrary() {
     setCustomCode("");
     setCustomVars([]);
     setCustomTags("");
-    alert("Custom formula added to library!");
   };
 
   // Delete formula
   const handleDeleteFormula = (id) => {
-    if (window.confirm("Are you sure you want to delete this custom formula?")) {
+    if (window.confirm("Are you sure you want to delete this formula?")) {
       setFormulas(prev => prev.filter(f => f.id !== id));
       setFavorites(prev => prev.filter(favId => favId !== id));
       // Reset selected formula
@@ -649,7 +750,7 @@ export default function FormulaAlgorithmLibrary() {
             </h1>
           </div>
           <p style={{ margin: 0, fontSize: "0.8rem", color: T.text2 }}>
-            Search, bookmark, simulate, and export mathematical formulas, activation functions, and physics models.
+            Search, bookmark, simulate, edit, and link formulas to your active designer algorithms.
           </p>
         </div>
 
@@ -1105,6 +1206,22 @@ export default function FormulaAlgorithmLibrary() {
                     </button>
 
                     <button
+                      onClick={() => handleLoadFormulaForEdit(selectedFormula)}
+                      style={{
+                        padding: "8px 12px",
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: "8px",
+                        color: T.cyan,
+                        fontWeight: 700,
+                        fontSize: "0.74rem",
+                        cursor: "pointer"
+                      }}
+                    >
+                      ✏️ Edit Formula
+                    </button>
+
+                    <button
                       onClick={() => handleCopyToClipboard(selectedFormula.expression, "Expression")}
                       style={{
                         padding: "8px 12px",
@@ -1255,6 +1372,32 @@ export default function FormulaAlgorithmLibrary() {
                   </div>
                 </div>
 
+                {/* Formula Version History / Changelog (Requested Step 2) */}
+                {selectedFormula.history && selectedFormula.history.length > 0 && (
+                  <div style={{
+                    background: T.surf2,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: "12px",
+                    padding: "16px",
+                    marginBottom: "24px"
+                  }}>
+                    <h3 style={{ margin: "0 0 10px 0", fontSize: "0.9rem", color: T.text1, fontWeight: 700 }}>
+                      📋 Formula Version History
+                    </h3>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {selectedFormula.history.map((h, hIdx) => (
+                        <div key={hIdx} style={{ fontSize: "0.76rem", borderBottom: hIdx < selectedFormula.history.length - 1 ? `1px solid ${T.border}` : "none", paddingBottom: "6px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", color: T.cyan }}>
+                            <strong>{h.version}</strong>
+                            <span>{h.date}</span>
+                          </div>
+                          <p style={{ margin: "2px 0 0 0", color: T.text2 }}>{h.changes}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Code Snippet Box */}
                 {selectedFormula.codeSnippet && (
                   <div>
@@ -1293,16 +1436,18 @@ export default function FormulaAlgorithmLibrary() {
               </div>
             )}
 
-            {/* CUSTOM FORMULA GENERATOR */}
+            {/* CUSTOM FORMULA GENERATOR & EDITOR */}
             <div style={{
               background: T.surf,
               border: `1px solid ${T.border2}`,
               borderRadius: "16px",
               padding: "24px"
             }}>
-              <h3 style={{ margin: "0 0 4px 0", fontSize: "1.05rem", fontWeight: 800 }}>➕ Add Custom Formula</h3>
+              <h3 style={{ margin: "0 0 4px 0", fontSize: "1.05rem", fontWeight: 800 }}>
+                {isEditingFormulaId ? `📝 Edit Formula: ${customName}` : "➕ Add Custom Formula"}
+              </h3>
               <p style={{ margin: "0 0 16px 0", fontSize: "0.76rem", color: T.text2 }}>
-                Define a mathematical formula schema. Supported operations: +, -, *, /, (), and Javascript Math properties.
+                {isEditingFormulaId ? "Modify this formula's parameters and save changes." : "Define a mathematical formula schema. Supported operations: +, -, *, /, (), and Javascript Math properties."}
               </p>
 
               <form onSubmit={handleCreateCustomFormula} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -1379,22 +1524,43 @@ export default function FormulaAlgorithmLibrary() {
                   <input type="text" value={customTags} onChange={e => setCustomTags(e.target.value)} placeholder="e.g. geometry, math" style={{ width: "100%", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "8px 10px", color: T.text1, fontSize: "0.82rem", outline: "none" }} />
                 </div>
 
-                <button
-                  type="submit"
-                  style={{
-                    padding: "10px 18px",
-                    background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
-                    border: "none",
-                    borderRadius: 8,
-                    color: "#fff",
-                    fontWeight: 700,
-                    fontSize: "0.82rem",
-                    cursor: "pointer",
-                    marginTop: "8px"
-                  }}
-                >
-                  Create Formula Definition
-                </button>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="submit"
+                    style={{
+                      flex: 1,
+                      padding: "10px 18px",
+                      background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                      border: "none",
+                      borderRadius: 8,
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: "0.82rem",
+                      cursor: "pointer"
+                    }}
+                  >
+                    {isEditingFormulaId ? "Save Formula Changes" : "Create Formula Definition"}
+                  </button>
+
+                  {isEditingFormulaId && (
+                    <button
+                      type="button"
+                      onClick={handleCancelFormulaEdit}
+                      style={{
+                        padding: "10px 18px",
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: 8,
+                        color: T.text2,
+                        fontWeight: 700,
+                        fontSize: "0.82rem",
+                        cursor: "pointer"
+                      }}
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
           </div>

@@ -7,6 +7,7 @@ export default function Sidebar({
   onCreateNewAlgorithm,
   onToggleFavorite,
   onDeleteAlgorithm,
+  onDuplicateAlgorithm,
   T
 }) {
   return (
@@ -78,9 +79,19 @@ export default function Sidebar({
                 <button
                   onClick={(e) => onToggleFavorite(alg.id, e)}
                   style={{ background: "none", border: "none", color: alg.favorite ? T.yellow : T.text3, cursor: "pointer", fontSize: "1rem", padding: 0 }}
+                  title="Favorite"
                 >
                   ★
                 </button>
+                {onDuplicateAlgorithm && (
+                  <button
+                    onClick={(e) => onDuplicateAlgorithm(alg.id, e)}
+                    style={{ background: "none", border: "none", color: T.cyan, cursor: "pointer", fontSize: "0.9rem", padding: 0 }}
+                    title="Duplicate Algorithm"
+                  >
+                    📑
+                  </button>
+                )}
                 {onDeleteAlgorithm && (
                   <button
                     onClick={(e) => onDeleteAlgorithm(alg.id, e)}
