@@ -76,19 +76,21 @@ export default function DNASimulationEngine() {
   const [dnaSeq, setDnaSeq] = useState(SAMPLE_SEQUENCES[0].seq);
 
   const [selectedAlgName, setSelectedAlgName] = useState("Default DNA Encoder");
+  const [activeAlgorithm, setActiveAlgorithm] = useState(null);
   const [sandboxInput, setSandboxInput] = useState("Apex DNA Data Storage Archive Payload");
   const [sandboxResult, setSandboxResult] = useState(null);
 
   // Load the currently selected algorithm from Algorithm Designer
   useEffect(() => {
     try {
-      const activeId = localStorage.getItem("apex_os_selected_algorithm_id");
+      const activeId = localStorage.getItem("apex_os_selected_algorithm_id") || "alg_1";
       const algsSaved = localStorage.getItem("apex_os_algorithms");
       if (activeId && algsSaved) {
         const algs = JSON.parse(algsSaved);
         const activeAlg = algs.find(a => a.id === activeId);
         if (activeAlg) {
           setSelectedAlgName(`${activeAlg.name} (Active)`);
+          setActiveAlgorithm(activeAlg);
         }
       }
     } catch (err) {
@@ -102,28 +104,6 @@ export default function DNASimulationEngine() {
       .join("");
   };
 
-  const binaryToDNA = (binary) => {
-    let padded = binary;
-    if (padded.length % 2 !== 0) padded += "0";
-    let dna = "";
-    const map = { "00": "A", "01": "C", "10": "G", "11": "T" };
-    for (let i = 0; i < padded.length; i += 2) {
-      const bits = padded.slice(i, i + 2);
-      dna += map[bits] || "A";
-    }
-    return dna;
-  };
-
-  const dnaToBinary = (dna) => {
-    let binary = "";
-    const map = { "A": "00", "C": "01", "G": "10", "T": "11" };
-    for (let i = 0; i < dna.length; i++) {
-      const base = dna[i].toUpperCase();
-      binary += map[base] || "00";
-    }
-    return binary;
-  };
-
   const binaryToText = (binary) => {
     const bytes = [];
     for (let i = 0; i < binary.length; i += 8) {
@@ -135,20 +115,160 @@ export default function DNASimulationEngine() {
     return bytes.join("");
   };
 
+  const parseBinaryMapping = (str) => {
+    const map = {};
+    if (!str) return { "00": "A", "01": "C", "10": "G", "11": "T" };
+    const parts = str.split(/[,\s;\n]+/);
+    parts.forEach(part => {
+      const [k, v] = part.split("=");
+      if (k && v) {
+        map[k.trim()] = v.trim().toUpperCase();
+      }
+    });
+    if (Object.keys(map).length === 0) {
+      return { "00": "A", "01": "C", "10": "G", "11": "T" };
+    }
+    return map;
+  };
+
+  const parseDnaMapping = (str) => {
+    const map = {};
+    if (!str) return { "A": "00", "C": "01", "G": "10", "T": "11" };
+    const parts = str.split(/[,\s;\n]+/);
+    parts.forEach(part => {
+      const [k, v] = part.split("=");
+      if (k && v) {
+        map[k.trim().toUpperCase()] = v.trim();
+      }
+    });
+    if (Object.keys(map).length === 0) {
+      return { "A": "00", "C": "01", "G": "10", "T": "11" };
+    }
+    return map;
+  };
+
+  const encodeBinaryToDNA = (binary, bMap) => {
+    const bitLengths = Object.keys(bMap).map(k => k.length);
+    const sliceLen = bitLengths.length > 0 ? Math.max(...bitLengths) : 2;
+
+    let dna = "";
+    for (let i = 0; i < binary.length; i += sliceLen) {
+      let bits = binary.slice(i, i + sliceLen);
+      if (bits.length < sliceLen) {
+        bits = bits.padEnd(sliceLen, "0");
+      }
+      dna += bMap[bits] || "A";
+    }
+    return dna;
+  };
+
+  const decodeDNAToBinary = (dna, dMap) => {
+    let binary = "";
+    for (let i = 0; i < dna.length; i++) {
+      const base = dna[i].toUpperCase();
+      binary += dMap[base] || "00";
+    }
+    return binary;
+  };
+
+  const validateGCRule = (dna, gcRulesStr) => {
+    const len = dna.length || 1;
+    const gCount = (dna.match(/G/g) || []).length;
+    const cCount = (dna.match(/C/g) || []).length;
+    const gcPercent = ((gCount + cCount) / len) * 100;
+
+    let min = 40;
+    let max = 60;
+    if (gcRulesStr) {
+      const parts = gcRulesStr.split("-");
+      if (parts.length === 2) {
+        const minVal = parseInt(parts[0]);
+        const maxVal = parseInt(parts[1]);
+        if (!isNaN(minVal) && !isNaN(maxVal)) {
+          min = minVal;
+          max = maxVal;
+        }
+      }
+    }
+
+    const passed = gcPercent >= min && gcPercent <= max;
+    return {
+      passed,
+      gcPercent: Math.round(gcPercent),
+      min,
+      max,
+      message: passed
+        ? `GC Content: ${Math.round(gcPercent)}% (PASS - range is ${min}-${max}%)`
+        : `GC Content: ${Math.round(gcPercent)}% (FAIL - range is ${min}-${max}%)`
+    };
+  };
+
+  const validateHomopolymerRule = (dna, homopolymerRulesStr) => {
+    let limit = 3;
+    if (homopolymerRulesStr) {
+      const limitMatch = homopolymerRulesStr.match(/\d+/);
+      if (limitMatch) {
+        limit = parseInt(limitMatch[0]);
+      }
+    }
+
+    let maxRun = 1;
+    let currentRun = 1;
+    let violatingBase = "";
+    for (let i = 1; i < dna.length; i++) {
+      if (dna[i] === dna[i - 1]) {
+        currentRun++;
+        if (currentRun > maxRun) {
+          maxRun = currentRun;
+          if (maxRun > limit) {
+            violatingBase = dna[i];
+          }
+        }
+      } else {
+        currentRun = 1;
+      }
+    }
+
+    const passed = maxRun <= limit;
+    return {
+      passed,
+      maxRun,
+      limit,
+      message: passed
+        ? `Homopolymer Check: PASS (No run exceeds ${limit})`
+        : `Homopolymer Check: FAIL (Run of '${violatingBase}' is ${maxRun}, exceeds limit of ${limit})`
+    };
+  };
+
   const handleRunDnaSimulation = () => {
     if (!sandboxInput.trim()) {
       alert("Please enter input text payload.");
       return;
     }
     const t0 = performance.now();
+
+    // 1. Text to Binary
     const binary = textToBinary(sandboxInput);
-    const dna = binaryToDNA(binary);
-    const decodedBinary = dnaToBinary(dna);
+
+    // 2. Binary to DNA using dynamic mappings
+    const bMap = parseBinaryMapping(activeAlgorithm?.binaryMapping);
+    const dna = encodeBinaryToDNA(binary, bMap);
+
+    // 3. DNA to Binary using dynamic mappings
+    const dMap = parseDnaMapping(activeAlgorithm?.dnaMapping);
+    const decodedBinary = decodeDNAToBinary(dna, dMap);
+
+    // 4. Binary to Text
     const decodedText = binaryToText(decodedBinary);
     const t1 = performance.now();
 
+    // Verification
     const isSuccess = decodedText.substring(0, sandboxInput.length) === sandboxInput;
     const duration = (t1 - t0).toFixed(3);
+
+    // GC & Homopolymer rules check
+    const gcRuleResult = validateGCRule(dna, activeAlgorithm?.gcRules);
+    const homopolymerResult = validateHomopolymerRule(dna, activeAlgorithm?.homopolymerRules);
 
     setDnaSeq(dna);
     setCurrentSeqName(`Encoded sandbox: "${sandboxInput.slice(0, 15)}..."`);
@@ -158,9 +278,11 @@ export default function DNASimulationEngine() {
       dnaOutput: dna,
       decodedText: decodedText.substring(0, sandboxInput.length),
       duration,
-      success: isSuccess
+      success: isSuccess,
+      gcRule: gcRuleResult,
+      homopolymerRule: homopolymerResult
     });
-    triggerToast("Text successfully encoded into DNA bases!");
+    triggerToast("Text successfully encoded and verified through full pipeline!");
   };
 
   const handleSaveToExperimentManager = () => {
@@ -173,8 +295,8 @@ export default function DNASimulationEngine() {
         id: `exp_${Date.now()}`,
         name: `Simulation run: "${sandboxInput.substring(0, 15)}..."`,
         researchArea: "DNA Sequencing",
-        objective: "Simulated digital-biological sequence roundtrip run.",
-        description: `Input string: "${sandboxInput}". Exec time: ${sandboxResult.duration}ms. DNA Output bases: ${sandboxResult.dnaOutput}`,
+        objective: "Dynamic digital-biological sequence roundtrip run.",
+        description: `Input string: "${sandboxInput}". Exec time: ${sandboxResult.duration}ms. DNA Output bases: ${sandboxResult.dnaOutput}. Decoded: "${sandboxResult.decodedText}". GC Rule: ${sandboxResult.gcRule.message}. Homopolymer: ${sandboxResult.homopolymerRule.message}.`,
         assignedAlgorithm: selectedAlgName,
         status: "Completed",
         accuracy: sandboxResult.success ? 100 : 0,
@@ -188,7 +310,22 @@ export default function DNASimulationEngine() {
       };
       exps.unshift(newExp);
       localStorage.setItem("apex_os_experiments", JSON.stringify(exps));
-      triggerToast("Experiment saved directly to Experiment Manager!", "success");
+
+      // Save to Research Memory System
+      const cachedMem = localStorage.getItem("apex_os_v4_research_memories");
+      let memories = cachedMem ? JSON.parse(cachedMem) : [];
+      memories.unshift({
+        id: `mem_dna_${Date.now()}`,
+        title: `[DNA Simulation] "${sandboxInput.slice(0, 20)}..."`,
+        type: "Experiment Log",
+        content: `Algorithm: ${selectedAlgName}\nInput: "${sandboxInput}"\nOutput DNA: ${sandboxResult.dnaOutput}\nGC rule verification: ${sandboxResult.gcRule.message}\nHomopolymer rule verification: ${sandboxResult.homopolymerRule.message}\nReconstructed output: "${sandboxResult.decodedText}"\nStatus: ${sandboxResult.success ? "PASS" : "FAIL"}\nDuration: ${sandboxResult.duration} ms`,
+        tags: ["DNA Storage", "Simulation", "Validation"],
+        timestamp,
+        severity: sandboxResult.success ? "Low" : "High"
+      });
+      localStorage.setItem("apex_os_v4_research_memories", JSON.stringify(memories));
+
+      triggerToast("Experiment saved directly to Experiment Manager and Research Memory System!", "success");
     } catch (err) {
       console.error(err);
     }
@@ -219,7 +356,7 @@ export default function DNASimulationEngine() {
     localStorage.setItem("apex_os_dna_configs", JSON.stringify(savedConfigs));
   }, [savedConfigs]);
 
-  // Mock Simulations & Queue
+  // Simulations & Queue
   const [simulations, setSimulations] = useState([
     { id: "SIM-001", name: "SARS-Cov-2 Mutation Propensity", type: "Mutation Drift", status: "running", progress: 68, estTime: "45s", date: "2026-07-20 14:22" },
     { id: "SIM-002", name: "Hemoglobin Beta Chain Translation", type: "Protein Synthesis", status: "queued", progress: 0, estTime: "2m 15s", date: "2026-07-20 14:25" },
@@ -287,13 +424,12 @@ export default function DNASimulationEngine() {
     triggerToast(`Transcribed RNA Sequence: ${rna}`, "success");
   };
 
-  // Simulated reports calculation
+  // Diagnostic calculations
   const reportStats = useMemo(() => {
     const len = dnaSeq.length || 1;
     const gCount = (dnaSeq.match(/G/g) || []).length;
     const cCount = (dnaSeq.match(/C/g) || []).length;
     const gcPercent = Math.round(((gCount + cCount) / len) * 100);
-    // Rough estimate for melting temperature
     const aCount = (dnaSeq.match(/A/g) || []).length;
     const tCount = (dnaSeq.match(/T/g) || []).length;
     const tm = 2 * (aCount + tCount) + 4 * (gCount + cCount);
@@ -1066,6 +1202,41 @@ export default function DNASimulationEngine() {
                       </div>
                       <div><strong>Decoded Output:</strong> "{sandboxResult.decodedText}"</div>
                       <div><strong>Execution Latency:</strong> {sandboxResult.duration} ms</div>
+
+                      {/* Rules verifications */}
+                      <div style={{ marginTop: "10px", borderTop: `1px solid ${theme.border2}`, paddingTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <div><strong>Compliance Checks:</strong></div>
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          <span style={{
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontSize: "0.68rem",
+                            fontWeight: "bold",
+                            background: sandboxResult.gcRule.passed ? `${theme.green}20` : `${theme.red}20`,
+                            color: sandboxResult.gcRule.passed ? theme.green : theme.red
+                          }}>
+                            {sandboxResult.gcRule.passed ? "GC Rule: PASS" : "GC Rule: FAIL"}
+                          </span>
+                          <span style={{ fontSize: "0.74rem", color: theme.text2 }}>
+                            {sandboxResult.gcRule.message}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          <span style={{
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontSize: "0.68rem",
+                            fontWeight: "bold",
+                            background: sandboxResult.homopolymerRule.passed ? `${theme.green}20` : `${theme.red}20`,
+                            color: sandboxResult.homopolymerRule.passed ? theme.green : theme.red
+                          }}>
+                            {sandboxResult.homopolymerRule.passed ? "Homopolymer Rule: PASS" : "Homopolymer Rule: FAIL"}
+                          </span>
+                          <span style={{ fontSize: "0.74rem", color: theme.text2 }}>
+                            {sandboxResult.homopolymerRule.message}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1920,7 +2091,7 @@ export default function DNASimulationEngine() {
               </div>
             </div>
 
-            {/* Right configurations save/load (Step 5D functional) */}
+            {/* Right configurations save/load */}
             <div style={{
               background: theme.surf,
               border: `1px solid ${theme.border2}`,
