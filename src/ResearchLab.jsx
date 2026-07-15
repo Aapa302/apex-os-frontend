@@ -20,7 +20,7 @@ const THEME = {
     yellow: "#f5a623",
     yellowGlow: "rgba(245, 166, 35, 0.1)",
     cyan: "#00d4ff",
-    glass: "rgba(11, 11, 24, 0.85)",
+    glass: "rgba(11,11,24,0.85)",
     shadow: "rgba(0, 0, 0, 0.5)",
   },
   light: {
@@ -131,14 +131,18 @@ const LAB_MODULES = [
 ];
 
 const DEFAULT_PROJECTS = [
-  { id: "p1", name: "High-Throughput Smith-Waterman Optimization", category: "Biomedical", progress: 85, status: "Active", date: "2026-07-10" },
-  { id: "p2", name: "SARS-CoV-2 Lineage Traceback Map", category: "Biomedical", progress: 100, status: "Completed", date: "2026-03-15" },
-  { id: "p3", name: "Qubit Calibration & Coherence Simulations", category: "Digital", progress: 40, status: "Active", date: "2026-07-12" }
+  { id: "p1", name: "High-Throughput Smith-Waterman Optimization", description: "Optimize SW alignments to achieve sub-millisecond genomic searches.", category: "Biomedical", progress: 85, status: "Active", date: "2026-07-10", lastUpdated: "2026-07-10", archived: false },
+  { id: "p2", name: "SARS-CoV-2 Lineage Traceback Map", description: "Trace spike protein mutations using thermodynamic alignments.", category: "Biomedical", progress: 100, status: "Completed", date: "2026-03-15", lastUpdated: "2026-03-15", archived: false },
+  { id: "p3", name: "Qubit Calibration & Coherence Simulations", description: "Map microwave telemetry channels againstLogical Qubits.", category: "Digital", progress: 40, status: "Active", date: "2026-07-12", lastUpdated: "2026-07-12", archived: false }
 ];
 
 const DEFAULT_TIMELINE = [
   { id: "t1", title: "SARS-CoV-2 Traceback Finalized", project: "SARS-CoV-2 Lineage Traceback Map", date: "2026-07-14", desc: "Lineage models and spike coordinates fully validated." },
   { id: "t2", title: "Smith-Waterman Cache Optimization", project: "High-Throughput Smith-Waterman Optimization", date: "2026-07-13", desc: "Traceback local cache optimizations are running." }
+];
+
+const DEFAULT_MILESTONES = [
+  { id: "m1", title: "First sequence alignment success", projectId: "p1", desc: "Successfully aligned standard DNA sample." }
 ];
 
 // Stats summary component
@@ -331,10 +335,14 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [activeLabDetail, setActiveLabDetail] = useState(null);
 
+  // Search & Filters for Dashboard
+  const [dashboardSearch, setDashboardSearch] = useState("");
+  const [dashboardFilter, setDashboardFilter] = useState("All"); // All, Active, Completed, Archived
+
   // Active navigation tab inside Research Lab: "dashboard" or "labs"
   const [currentTab, setCurrentTab] = useState("dashboard");
 
-  // Persistent Active Projects and Timeline states
+  // Persistent Active Projects, Timeline, and Milestones states
   const [projects, setProjects] = useState(() => {
     try {
       const saved = localStorage.getItem("apex_os_research_projects");
@@ -353,19 +361,49 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
     }
   });
 
+  const [milestones, setMilestones] = useState(() => {
+    try {
+      const saved = localStorage.getItem("apex_os_research_milestones");
+      return saved ? JSON.parse(saved) : DEFAULT_MILESTONES;
+    } catch {
+      return DEFAULT_MILESTONES;
+    }
+  });
+
   // Project Form States
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDesc, setNewProjectDesc] = useState("");
   const [newProjectCategory, setNewProjectCategory] = useState("Biomedical");
   const [newProjectProgress, setNewProjectProgress] = useState(0);
   const [newProjectStatus, setNewProjectStatus] = useState("Active");
   const [editingProjectId, setEditingProjectId] = useState(null);
 
-  // Timeline Form States
-  const [newTimelineTitle, setNewTimelineTitle] = useState("");
-  const [newTimelineProject, setNewTimelineProject] = useState("");
-  const [newTimelineDesc, setNewTimelineDesc] = useState("");
+  // Milestone Form States
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
+  const [newMilestoneProject, setNewMilestoneProject] = useState("");
+  const [newMilestoneDesc, setNewMilestoneDesc] = useState("");
+  const [editingMilestoneId, setEditingMilestoneId] = useState(null);
 
-  // Save to localStorage
+  // Sync to local storage & Research Memory when states update
+  const syncToResearchMemory = (type, title, text) => {
+    try {
+      const cached = localStorage.getItem("apex_os_v4_research_memories");
+      let memories = cached ? JSON.parse(cached) : [];
+      memories.unshift({
+        id: `mem_lab_${Date.now()}`,
+        title: `[Lab ${type}] ${title}`,
+        type: "AI Observation",
+        content: text,
+        tags: ["Research Lab", type],
+        timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
+        severity: "Low"
+      });
+      localStorage.setItem("apex_os_v4_research_memories", JSON.stringify(memories));
+    } catch (err) {
+      console.error("Error syncing to Research Memory:", err);
+    }
+  };
+
   useEffect(() => {
     localStorage.setItem("apex_os_research_projects", JSON.stringify(projects));
   }, [projects]);
@@ -373,6 +411,64 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
   useEffect(() => {
     localStorage.setItem("apex_os_research_timeline", JSON.stringify(timeline));
   }, [timeline]);
+
+  useEffect(() => {
+    localStorage.setItem("apex_os_research_milestones", JSON.stringify(milestones));
+  }, [milestones]);
+
+  // Listen to Storage events for real-time synchronization across views/tabs
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "apex_os_research_projects") {
+        setProjects(JSON.parse(e.newValue || "[]"));
+      } else if (e.key === "apex_os_research_timeline") {
+        setTimeline(JSON.parse(e.newValue || "[]"));
+      } else if (e.key === "apex_os_research_milestones") {
+        setMilestones(JSON.parse(e.newValue || "[]"));
+      } else if (e.key === "apex_os_experiments" || e.key === "apex_os_algorithms") {
+        const timestamp = new Date().toISOString().replace("T", " ").substring(0, 16);
+        if (e.key === "apex_os_experiments") {
+          const exps = JSON.parse(e.newValue || "[]");
+          if (exps.length > 0) {
+            const latest = exps[0];
+            setTimeline(prev => {
+              if (prev.some(t => t.id === `t_exp_${latest.id}`)) return prev;
+              const newEv = {
+                id: `t_exp_${latest.id || Date.now()}`,
+                title: `Experiment Executed: ${latest.name}`,
+                project: latest.assignedAlgorithm || "DNA Sequencing",
+                date: timestamp.split(" ")[0],
+                desc: latest.description
+              };
+              const next = [newEv, ...prev];
+              localStorage.setItem("apex_os_research_timeline", JSON.stringify(next));
+              return next;
+            });
+          }
+        } else if (e.key === "apex_os_algorithms") {
+          const algs = JSON.parse(e.newValue || "[]");
+          if (algs.length > 0) {
+            const latest = algs[0];
+            setTimeline(prev => {
+              if (prev.some(t => t.id === `t_alg_${latest.id}`)) return prev;
+              const newEv = {
+                id: `t_alg_${latest.id || Date.now()}`,
+                title: `Algorithm Saved: ${latest.name}`,
+                project: "Algorithm Designer",
+                date: timestamp.split(" ")[0],
+                desc: `Objective: ${latest.objective}. Version: ${latest.version}.`
+              };
+              const next = [newEv, ...prev];
+              localStorage.setItem("apex_os_research_timeline", JSON.stringify(next));
+              return next;
+            });
+          }
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
 
   const theme = isLight ? THEME.light : THEME.dark;
 
@@ -386,6 +482,29 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
     });
   }, [search, categoryFilter]);
 
+  // Filter and search projects based on filters and search queries
+  const filteredProjects = useMemo(() => {
+    return projects.filter(p => {
+      const q = dashboardSearch.toLowerCase();
+      const matchesSearch = p.name.toLowerCase().includes(q) ||
+                            p.category.toLowerCase().includes(q) ||
+                            p.status.toLowerCase().includes(q);
+
+      let matchesFilter = true;
+      if (dashboardFilter === "Active") {
+        matchesFilter = p.status === "Active" && !p.archived;
+      } else if (dashboardFilter === "Completed") {
+        matchesFilter = p.status === "Completed" && !p.archived;
+      } else if (dashboardFilter === "Archived") {
+        matchesFilter = !!p.archived;
+      } else {
+        matchesFilter = !p.archived; // Default to non-archived projects
+      }
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [projects, dashboardSearch, dashboardFilter]);
+
   const categories = ["All", "Biomedical", "Digital", "Engineering", "Special"];
 
   // Projects CRUD handlers
@@ -393,23 +512,42 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
     e.preventDefault();
     if (!newProjectName.trim()) return;
 
+    const timestamp = new Date().toISOString().split("T")[0];
+
     if (editingProjectId) {
       setProjects(prev => prev.map(p => p.id === editingProjectId ? {
         ...p,
         name: newProjectName,
+        description: newProjectDesc,
         category: newProjectCategory,
         progress: Number(newProjectProgress),
-        status: newProjectStatus
+        status: newProjectStatus,
+        lastUpdated: timestamp
       } : p));
+
+      // Append Timeline event
+      const editEvent = {
+        id: `t_${Date.now()}`,
+        title: `Project Updated: ${newProjectName}`,
+        project: newProjectName,
+        date: timestamp,
+        desc: `Updated project parameters. Status: ${newProjectStatus}, Progress: ${newProjectProgress}%.`
+      };
+      setTimeline(prev => [editEvent, ...prev]);
+      syncToResearchMemory("Project Edit", newProjectName, `Project Updated: ${newProjectName}\nDescription: ${newProjectDesc}\nStatus: ${newProjectStatus}\nProgress: ${newProjectProgress}%`);
+
       setEditingProjectId(null);
     } else {
       const newProj = {
         id: `p_${Date.now()}`,
         name: newProjectName,
+        description: newProjectDesc,
         category: newProjectCategory,
         progress: Number(newProjectProgress),
         status: newProjectStatus,
-        date: new Date().toISOString().split("T")[0]
+        date: timestamp,
+        lastUpdated: timestamp,
+        archived: false
       };
       setProjects(prev => [newProj, ...prev]);
 
@@ -418,13 +556,15 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
         id: `t_${Date.now()}`,
         title: `Project Created: ${newProjectName}`,
         project: newProjectName,
-        date: new Date().toISOString().split("T")[0],
+        date: timestamp,
         desc: `New research project initialized in category ${newProjectCategory}.`
       };
       setTimeline(prev => [newTime, ...prev]);
+      syncToResearchMemory("Project Create", newProjectName, `Project Created: ${newProjectName}\nDescription: ${newProjectDesc}\nCategory: ${newProjectCategory}`);
     }
 
     setNewProjectName("");
+    setNewProjectDesc("");
     setNewProjectProgress(0);
     setNewProjectStatus("Active");
   };
@@ -432,6 +572,7 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
   const handleEditProject = (p) => {
     setEditingProjectId(p.id);
     setNewProjectName(p.name);
+    setNewProjectDesc(p.description || "");
     setNewProjectCategory(p.category);
     setNewProjectProgress(p.progress);
     setNewProjectStatus(p.status);
@@ -439,45 +580,160 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
 
   const handleDeleteProject = (id) => {
     const projToDelete = projects.find(p => p.id === id);
+    if (!projToDelete) return;
     setProjects(prev => prev.filter(p => p.id !== id));
-    if (projToDelete) {
-      setTimeline(prev => prev.filter(t => t.project !== projToDelete.name));
-    }
+    setTimeline(prev => prev.filter(t => t.project !== projToDelete.name));
+    setMilestones(prev => prev.filter(m => m.projectId !== id));
+
+    // Timeline event
+    const delEvent = {
+      id: `t_${Date.now()}`,
+      title: `Project Deleted: ${projToDelete.name}`,
+      project: projToDelete.name,
+      date: new Date().toISOString().split("T")[0],
+      desc: `Project and associated records successfully removed.`
+    };
+    setTimeline(prev => [delEvent, ...prev]);
+    syncToResearchMemory("Project Delete", projToDelete.name, `Project deleted: ${projToDelete.name}`);
+
     if (editingProjectId === id) {
       setEditingProjectId(null);
       setNewProjectName("");
+      setNewProjectDesc("");
       setNewProjectProgress(0);
     }
   };
 
-  // Timeline CRUD handlers
-  const handleAddTimeline = (e) => {
-    e.preventDefault();
-    if (!newTimelineTitle.trim()) return;
+  const handleArchiveProject = (id) => {
+    const proj = projects.find(p => p.id === id);
+    if (!proj) return;
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, archived: true, lastUpdated: new Date().toISOString().split("T")[0] } : p));
 
-    const newTime = {
+    // Timeline event
+    const arcEvent = {
       id: `t_${Date.now()}`,
-      title: newTimelineTitle,
-      project: newTimelineProject || "General",
+      title: `Project Archived: ${proj.name}`,
+      project: proj.name,
       date: new Date().toISOString().split("T")[0],
-      desc: newTimelineDesc
+      desc: `Project status successfully set to Archived.`
     };
-
-    setTimeline(prev => [newTime, ...prev]);
-    setNewTimelineTitle("");
-    setNewTimelineProject("");
-    setNewTimelineDesc("");
+    setTimeline(prev => [arcEvent, ...prev]);
+    syncToResearchMemory("Project Archive", proj.name, `Project archived: ${proj.name}`);
   };
 
-  const handleDeleteTimeline = (id) => {
-    setTimeline(prev => prev.filter(t => t.id !== id));
+  const handleRestoreProject = (id) => {
+    const proj = projects.find(p => p.id === id);
+    if (!proj) return;
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, archived: false, lastUpdated: new Date().toISOString().split("T")[0] } : p));
+
+    // Timeline event
+    const restEvent = {
+      id: `t_${Date.now()}`,
+      title: `Project Restored: ${proj.name}`,
+      project: proj.name,
+      date: new Date().toISOString().split("T")[0],
+      desc: `Project restored to active board.`
+    };
+    setTimeline(prev => [restEvent, ...prev]);
+    syncToResearchMemory("Project Restore", proj.name, `Project restored: ${proj.name}`);
   };
 
-  // Stats calculation
-  const totalProjects = projects.length;
-  const activeProjectsCount = projects.filter(p => p.status === "Active").length;
-  const completedProjectsCount = projects.filter(p => p.status === "Completed").length;
-  const avgProgress = totalProjects > 0 ? Math.round(projects.reduce((sum, p) => sum + p.progress, 0) / totalProjects) : 0;
+  // Milestones CRUD handlers
+  const handleAddMilestone = (e) => {
+    e.preventDefault();
+    if (!newMilestoneTitle.trim() || !newMilestoneProject) {
+      alert("Milestone Title and Project link are required!");
+      return;
+    }
+
+    const timestamp = new Date().toISOString().split("T")[0];
+    const linkedProj = projects.find(p => p.id === newMilestoneProject);
+
+    if (editingMilestoneId) {
+      setMilestones(prev => prev.map(m => m.id === editingMilestoneId ? {
+        ...m,
+        title: newMilestoneTitle,
+        projectId: newMilestoneProject,
+        desc: newMilestoneDesc
+      } : m));
+
+      // Timeline event
+      const editMilEvent = {
+        id: `t_${Date.now()}`,
+        title: `Milestone Edited: ${newMilestoneTitle}`,
+        project: linkedProj ? linkedProj.name : "General",
+        date: timestamp,
+        desc: `Edited milestone details: ${newMilestoneDesc}`
+      };
+      setTimeline(prev => [editMilEvent, ...prev]);
+      syncToResearchMemory("Milestone Edit", newMilestoneTitle, `Milestone Edited: ${newMilestoneTitle}\nDetails: ${newMilestoneDesc}`);
+
+      setEditingMilestoneId(null);
+    } else {
+      const newMil = {
+        id: `m_${Date.now()}`,
+        title: newMilestoneTitle,
+        projectId: newMilestoneProject,
+        desc: newMilestoneDesc
+      };
+      setMilestones(prev => [newMil, ...prev]);
+
+      // Automatically add a timeline event for new milestone
+      const newTime = {
+        id: `t_${Date.now()}`,
+        title: `Milestone Achieved: ${newMilestoneTitle}`,
+        project: linkedProj ? linkedProj.name : "General",
+        date: timestamp,
+        desc: `New milestone logged: ${newMilestoneDesc}`
+      };
+      setTimeline(prev => [newTime, ...prev]);
+      syncToResearchMemory("Milestone Create", newMilestoneTitle, `Milestone Achieved: ${newMilestoneTitle}\nProject: ${linkedProj ? linkedProj.name : "General"}\nDetails: ${newMilestoneDesc}`);
+    }
+
+    setNewMilestoneTitle("");
+    setNewMilestoneProject("");
+    setNewMilestoneDesc("");
+  };
+
+  const handleEditMilestone = (m) => {
+    setEditingMilestoneId(m.id);
+    setNewMilestoneTitle(m.title);
+    setNewMilestoneProject(m.projectId);
+    setNewMilestoneDesc(m.desc || "");
+  };
+
+  const handleDeleteMilestone = (id) => {
+    const mil = milestones.find(m => m.id === id);
+    if (!mil) return;
+    setMilestones(prev => prev.filter(m => m.id !== id));
+
+    const linkedProj = projects.find(p => p.id === mil.projectId);
+
+    // Timeline event
+    const delMilEvent = {
+      id: `t_${Date.now()}`,
+      title: `Milestone Deleted: ${mil.title}`,
+      project: linkedProj ? linkedProj.name : "General",
+      date: new Date().toISOString().split("T")[0],
+      desc: `Milestone record successfully removed.`
+    };
+    setTimeline(prev => [delMilEvent, ...prev]);
+    syncToResearchMemory("Milestone Delete", mil.title, `Milestone Deleted: ${mil.title}`);
+
+    if (editingMilestoneId === id) {
+      setEditingMilestoneId(null);
+      setNewMilestoneTitle("");
+      setNewMilestoneProject("");
+      setNewMilestoneDesc("");
+    }
+  };
+
+  // Stats calculation over non-archived projects
+  const nonArchivedProjects = useMemo(() => projects.filter(p => !p.archived), [projects]);
+  const totalProjects = nonArchivedProjects.length;
+  const activeProjectsCount = nonArchivedProjects.filter(p => p.status === "Active").length;
+  const completedProjectsCount = nonArchivedProjects.filter(p => p.status === "Completed").length;
+  const avgProgress = totalProjects > 0 ? Math.round(nonArchivedProjects.reduce((sum, p) => sum + p.progress, 0) / totalProjects) : 0;
 
   return (
     <div style={{
@@ -653,23 +909,73 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* Active Projects List */}
             <div style={{ background: theme.surf, border: `1px solid ${theme.border2}`, borderRadius: 12, padding: "24px" }}>
-              <h2 style={{ margin: "0 0 16px 0", fontSize: "1.1rem", fontWeight: 800, color: theme.text1 }}>
-                📁 Active Research Projects
-              </h2>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: 12 }}>
+                <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: theme.text1 }}>
+                  📁 Research Projects Board
+                </h2>
+
+                {/* Filters */}
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  {["All", "Active", "Completed", "Archived"].map(filt => (
+                    <button
+                      key={filt}
+                      onClick={() => setDashboardFilter(filt)}
+                      style={{
+                        padding: "4px 10px",
+                        background: dashboardFilter === filt ? theme.accent : theme.surf2,
+                        border: `1px solid ${dashboardFilter === filt ? theme.accent : theme.border2}`,
+                        borderRadius: 6,
+                        color: dashboardFilter === filt ? "#fff" : theme.text2,
+                        fontSize: "0.7rem",
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      {filt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search Bar */}
+              <input
+                type="text"
+                value={dashboardSearch}
+                onChange={e => setDashboardSearch(e.target.value)}
+                placeholder="🔍 Search projects by name, category, or status..."
+                style={{
+                  width: "100%",
+                  background: theme.surf2,
+                  border: `1px solid ${theme.border2}`,
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  color: theme.text1,
+                  fontSize: "0.82rem",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  marginBottom: "16px"
+                }}
+              />
 
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {projects.length === 0 ? (
-                  <div style={{ color: theme.text3, textAlign: "center", padding: "24px" }}>No projects configured. Create one below!</div>
+                {filteredProjects.length === 0 ? (
+                  <div style={{ color: theme.text3, textAlign: "center", padding: "24px" }}>No projects match your search/filter parameters.</div>
                 ) : (
-                  projects.map(p => (
+                  filteredProjects.map(p => (
                     <div key={p.id} style={{ background: theme.surf2, border: `1px solid ${theme.border}`, borderRadius: 8, padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
                           <span style={{ fontSize: "0.68rem", color: theme.accent, fontWeight: 700, textTransform: "uppercase" }}>{p.category}</span>
                           <h3 style={{ margin: "2px 0 0 0", fontSize: "0.95rem", fontWeight: 700, color: theme.text1 }}>{p.name}</h3>
+                          {p.description && <p style={{ margin: "4px 0 0 0", fontSize: "0.78rem", color: theme.text2, lineHeight: 1.4 }}>{p.description}</p>}
                         </div>
                         <div style={{ display: "flex", gap: "8px" }}>
                           <button onClick={() => handleEditProject(p)} style={{ background: "none", border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.cyan, padding: "4px 8px", fontSize: "0.72rem", cursor: "pointer" }}>✏️ Edit</button>
+                          {p.archived ? (
+                            <button onClick={() => handleRestoreProject(p.id)} style={{ background: "none", border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.green, padding: "4px 8px", fontSize: "0.72rem", cursor: "pointer" }}>Restore</button>
+                          ) : (
+                            <button onClick={() => handleArchiveProject(p.id)} style={{ background: "none", border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.yellow, padding: "4px 8px", fontSize: "0.72rem", cursor: "pointer" }}>Archive</button>
+                          )}
                           <button onClick={() => handleDeleteProject(p.id)} style={{ background: "none", border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.red, padding: "4px 8px", fontSize: "0.72rem", cursor: "pointer" }}>🗑️ Delete</button>
                         </div>
                       </div>
@@ -705,6 +1011,16 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
                     onChange={e => setNewProjectName(e.target.value)}
                     placeholder="e.g. DNA Sequence Pathfinding Heuristic"
                     style={{ width: "100%", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 8, padding: "10px 12px", color: theme.text1, fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ color: theme.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 6, fontWeight: 600 }}>Description</label>
+                  <textarea
+                    rows={2}
+                    value={newProjectDesc}
+                    onChange={e => setNewProjectDesc(e.target.value)}
+                    placeholder="e.g. Optimize SW alignments to achieve sub-millisecond searches"
+                    style={{ width: "100%", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 8, padding: "10px 12px", color: theme.text1, fontSize: "0.85rem", outline: "none", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" }}
                   />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -750,12 +1066,42 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
                     {editingProjectId ? "Save Changes" : "Create Project"}
                   </button>
                   {editingProjectId && (
-                    <button type="button" onClick={() => { setEditingProjectId(null); setNewProjectName(""); setNewProjectProgress(0); }} style={{ padding: "10px 16px", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 8, color: theme.text2, fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>
+                    <button type="button" onClick={() => { setEditingProjectId(null); setNewProjectName(""); setNewProjectDesc(""); setNewProjectProgress(0); }} style={{ padding: "10px 16px", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 8, color: theme.text2, fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>
                       Cancel
                     </button>
                   )}
                 </div>
               </form>
+            </div>
+
+            {/* Milestones Directory */}
+            <div style={{ background: theme.surf, border: `1px solid ${theme.border2}`, borderRadius: 12, padding: "24px" }}>
+              <h2 style={{ margin: "0 0 16px 0", fontSize: "1.1rem", fontWeight: 800, color: theme.text1 }}>
+                🏆 Logged Milestones Directory
+              </h2>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {milestones.length === 0 ? (
+                  <div style={{ color: theme.text3, textAlign: "center", padding: "12px" }}>No milestones logged. Log one below!</div>
+                ) : (
+                  milestones.map(m => {
+                    const pInfo = projects.find(proj => proj.id === m.projectId);
+                    return (
+                      <div key={m.id} style={{ background: theme.surf2, border: `1px solid ${theme.border}`, borderRadius: 8, padding: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <strong style={{ fontSize: "0.85rem", color: theme.text1 }}>{m.title}</strong>
+                          <div style={{ fontSize: "0.74rem", color: theme.text2, marginTop: "2px" }}>{m.desc}</div>
+                          <span style={{ display: "inline-block", marginTop: "4px", fontSize: "0.65rem", background: theme.surf, padding: "2px 6px", borderRadius: "4px", color: theme.green }}>{pInfo ? pInfo.name : "Unlinked / General"}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button onClick={() => handleEditMilestone(m)} style={{ background: "none", border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.cyan, padding: "3px 6px", fontSize: "0.7rem", cursor: "pointer" }}>Edit</button>
+                          <button onClick={() => handleDeleteMilestone(m.id)} style={{ background: "none", border: `1px solid ${theme.border2}`, borderRadius: 6, color: theme.red, padding: "3px 6px", fontSize: "0.7rem", cursor: "pointer" }}>Delete</button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
 
@@ -767,7 +1113,7 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
                 ⚡ Research Timeline
               </h2>
 
-              <div style={{ display: "flex", flexDirection: "column", borderLeft: `2px solid ${theme.border2}`, paddingLeft: "16px", gap: "20px", maxHeight: "300px", overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", borderLeft: `2px solid ${theme.border2}`, paddingLeft: "16px", gap: "20px", maxHeight: "400px", overflowY: "auto" }}>
                 {timeline.length === 0 ? (
                   <div style={{ color: theme.text3, fontSize: "0.8rem", paddingLeft: "8px" }}>No timeline logs recorded.</div>
                 ) : (
@@ -788,33 +1134,34 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
               </div>
             </div>
 
-            {/* Timeline Log Form */}
+            {/* Milestone Log Form */}
             <div style={{ background: theme.surf, border: `1px solid ${theme.border2}`, borderRadius: 12, padding: "24px" }}>
               <h2 style={{ margin: "0 0 16px 0", fontSize: "1.1rem", fontWeight: 800, color: theme.text1 }}>
-                📢 Log Milestone
+                {editingMilestoneId ? "📝 Edit Milestone" : "🏆 Log Milestone"}
               </h2>
-              <form onSubmit={handleAddTimeline} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <form onSubmit={handleAddMilestone} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div>
                   <label style={{ color: theme.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 4, fontWeight: 600 }}>Title *</label>
                   <input
                     type="text"
                     required
-                    value={newTimelineTitle}
-                    onChange={e => setNewTimelineTitle(e.target.value)}
+                    value={newMilestoneTitle}
+                    onChange={e => setNewMilestoneTitle(e.target.value)}
                     placeholder="e.g. Smith-Waterman optimization approved"
                     style={{ width: "100%", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 8, padding: "8px 10px", color: theme.text1, fontSize: "0.8rem", outline: "none", boxSizing: "border-box" }}
                   />
                 </div>
                 <div>
-                  <label style={{ color: theme.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 4, fontWeight: 600 }}>Associated Project</label>
+                  <label style={{ color: theme.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 4, fontWeight: 600 }}>Associated Project *</label>
                   <select
-                    value={newTimelineProject}
-                    onChange={e => setNewTimelineProject(e.target.value)}
+                    required
+                    value={newMilestoneProject}
+                    onChange={e => setNewMilestoneProject(e.target.value)}
                     style={{ width: "100%", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 8, padding: "8px 10px", color: theme.text1, fontSize: "0.8rem", outline: "none" }}
                   >
-                    <option value="">None / General</option>
+                    <option value="">-- Select Project --</option>
                     {projects.map(p => (
-                      <option key={p.id} value={p.name}>{p.name}</option>
+                      <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
                 </div>
@@ -822,15 +1169,22 @@ export default function ResearchLab({ onOpenDNA, onOpenLab }) {
                   <label style={{ color: theme.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 4, fontWeight: 600 }}>Description</label>
                   <textarea
                     rows={3}
-                    value={newTimelineDesc}
-                    onChange={e => setNewTimelineDesc(e.target.value)}
-                    placeholder="Provide detailed description of the research outcome..."
+                    value={newMilestoneDesc}
+                    onChange={e => setNewMilestoneDesc(e.target.value)}
+                    placeholder="Provide detailed description of the milestone outcome..."
                     style={{ width: "100%", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 8, padding: "8px 10px", color: theme.text1, fontSize: "0.8rem", outline: "none", resize: "none", boxSizing: "border-box", fontFamily: "inherit" }}
                   />
                 </div>
-                <button type="submit" style={{ width: "100%", padding: "8px", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 8, color: theme.text1, fontWeight: 700, fontSize: "0.8rem", cursor: "pointer" }}>
-                  Log Event
-                </button>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button type="submit" style={{ flex: 1, padding: "10px", background: `linear-gradient(135deg, ${theme.accent}, ${theme.accent2})`, border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer" }}>
+                    {editingMilestoneId ? "Save Changes" : "Log Event"}
+                  </button>
+                  {editingMilestoneId && (
+                    <button type="button" onClick={() => { setEditingMilestoneId(null); setNewMilestoneTitle(""); setNewMilestoneProject(""); setNewMilestoneDesc(""); }} style={{ padding: "10px 16px", background: theme.surf2, border: `1px solid ${theme.border2}`, borderRadius: 8, color: theme.text2, fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
           </div>
