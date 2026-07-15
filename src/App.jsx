@@ -2023,6 +2023,26 @@ export default function ApexOS() {
 
   const emp = EMP_REGISTRY[activeEmp];
 
+  const dnaStats = useMemo(() => {
+    try {
+      const runsStr = localStorage.getItem("apex_os_v3_dna_runs");
+      if (runsStr) {
+        const runs = JSON.parse(runsStr);
+        if (Array.isArray(runs) && runs.length > 0) {
+          const total = runs.length;
+          const successful = runs.filter(r => r.success).length;
+          const failed = total - successful;
+          const totalTime = runs.reduce((acc, r) => acc + (parseFloat(r.time) || 0), 0);
+          const avgTime = (totalTime / total).toFixed(3) + " ms";
+          return { total, successful, failed, avgTime };
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return { total: 0, successful: 0, failed: 0, avgTime: "0.000 ms" };
+  }, [view]);
+
   // ── SETUP SCREEN ──
   if (!state.setupDone) {
     return (
@@ -2088,6 +2108,7 @@ export default function ApexOS() {
 
   const doneTasks = state.tasks.filter(t => t.status === "done").length;
   const inProgressTasks = state.tasks.filter(t => t.status === "inprogress").length;
+
   const filteredMemory = state.memory.filter(m => memFilter === "all" || m.category === memFilter);
 
   // ── CHAT SEARCH ──
@@ -2183,6 +2204,33 @@ export default function ApexOS() {
                     <div style={{ fontSize: "1.8rem", fontWeight: 900, color }}>{value}</div>
                   </div>
                 ))}
+              </div>
+
+              {/* DNA Core Engine Real-time Telemetry Grid */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: "1.2rem" }}>🧬</span>
+                  <span style={{ fontWeight: 800, fontSize: "0.88rem", textTransform: "uppercase", letterSpacing: "0.5px", color: T.text1 }}>
+                    DNA Storage Core Engine Telemetry
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+                  {[
+                    { label: "Executions", value: dnaStats.total, color: T.cyan, icon: "⚡" },
+                    { label: "Successful Runs", value: dnaStats.successful, color: T.green, icon: "✓" },
+                    { label: "Failed Runs", value: dnaStats.failed, color: T.red, icon: "✗" },
+                    { label: "Average Runtime", value: dnaStats.avgTime, color: T.pink, icon: "⏱️" }
+                  ].map((stat) => (
+                    <div key={stat.label} style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 14, padding: "16px 18px", position: "relative", overflow: "hidden" }}>
+                      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: stat.color }} />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontSize: "0.72rem", color: T.text2, textTransform: "uppercase", letterSpacing: "0.5px" }}>{stat.label}</span>
+                        <span style={{ fontSize: 16, color: stat.color }}>{stat.icon}</span>
+                      </div>
+                      <div style={{ fontSize: "1.8rem", fontWeight: 900, color: stat.color }}>{stat.value}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Autonomous Mode */}

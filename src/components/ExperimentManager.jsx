@@ -1,4 +1,10 @@
 import React, { useState, useMemo, useEffect } from "react";
+import {
+  Encode,
+  Decode,
+  Validate,
+  Benchmark
+} from "../core/DNACoreEngine";
 
 // Design Tokens matching App.jsx and ResearchLab.jsx (Default Dark Theme)
 const DEFAULT_T = {
@@ -132,45 +138,6 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
   const [runPayload, setRunPayload] = useState("Biological Sequence Data Storage Segment v4.2");
   const [runResult, setRunResult] = useState(null);
 
-  const textToBinary = (text) => {
-    return text.split("")
-      .map(char => char.charCodeAt(0).toString(2).padStart(8, "0"))
-      .join("");
-  };
-
-  const binaryToDNA = (binary) => {
-    let padded = binary;
-    if (padded.length % 2 !== 0) padded += "0";
-    let dna = "";
-    const map = { "00": "A", "01": "C", "10": "G", "11": "T" };
-    for (let i = 0; i < padded.length; i += 2) {
-      const bits = padded.slice(i, i + 2);
-      dna += map[bits] || "A";
-    }
-    return dna;
-  };
-
-  const dnaToBinary = (dna) => {
-    let binary = "";
-    const map = { "A": "00", "C": "01", "G": "10", "T": "11" };
-    for (let i = 0; i < dna.length; i++) {
-      const base = dna[i].toUpperCase();
-      binary += map[base] || "00";
-    }
-    return binary;
-  };
-
-  const binaryToText = (binary) => {
-    const bytes = [];
-    for (let i = 0; i < binary.length; i += 8) {
-      const byte = binary.slice(i, i + 8);
-      if (byte.length === 8) {
-        bytes.push(String.fromCharCode(parseInt(byte, 2)));
-      }
-    }
-    return bytes.join("");
-  };
-
   const executeExperimentRun = (exp) => {
     const alg = availableAlgorithms.find(a => a.id === runAlgId);
     if (!alg) {
@@ -182,17 +149,18 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
       return;
     }
 
-    const t0 = performance.now();
-    const binary = textToBinary(runPayload);
-    const dna = binaryToDNA(binary);
-    const decodedBinary = dnaToBinary(dna);
-    const decodedText = binaryToText(decodedBinary);
-    const t1 = performance.now();
+    // Call shared DNACoreEngine Benchmark directly
+    const benchmark = Benchmark(runPayload, alg);
 
-    const isSuccess = decodedText.substring(0, runPayload.length) === runPayload;
-    const duration = (t1 - t0).toFixed(3);
-    const accuracy = isSuccess ? 100 : 0;
-    const throughput = `${(dna.length / (parseFloat(duration) || 1)).toFixed(2)} bp/ms`;
+    // Call Encode and Decode to match exact pipeline values
+    const encodeData = Encode(runPayload, alg);
+    const decodeData = Decode(encodeData.dnaSequence, alg);
+    const validateData = Validate(runPayload, decodeData.decodedText, decodeData.checksumVerified);
+
+    const isSuccess = validateData.pass === "PASS";
+    const duration = (encodeData.encodingTime + decodeData.decodingTime).toFixed(3);
+    const accuracy = parseFloat(validateData.similarity);
+    const throughput = `${(encodeData.dnaSequence.length / (parseFloat(duration) || 1)).toFixed(2)} bp/ms`;
 
     const timestamp = new Date().toISOString().replace("T", " ").substring(0, 16);
 
@@ -202,15 +170,15 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
       accuracy,
       throughput,
       assignedAlgorithm: alg.name,
-      description: `Input: "${runPayload}". Output DNA: ${dna}. Latency: ${duration}ms.`,
+      description: `Input: "${runPayload}". Output DNA: ${encodeData.dnaSequence}. Latency: ${duration}ms.`,
       lastUpdated: timestamp,
       timeline: [
         {
           id: `evt_${Date.now()}`,
-          type: "success",
+          type: isSuccess ? "success" : "warning",
           title: "Pipeline Executed",
           timestamp,
-          desc: `Executed ${alg.name}. Checksum validation: ${isSuccess ? "MATCHED (100% Correct)" : "MISMATCH"}. Latency: ${duration} ms.`,
+          desc: `Executed ${alg.name}. Checksum validation: ${isSuccess ? "PASS (100% Match)" : "FAIL"}. Latency: ${duration} ms.`,
           icon: "⚡"
         },
         ...(exp.timeline || [])
@@ -221,10 +189,28 @@ export default function ExperimentManager({ T = DEFAULT_T }) {
     setSelectedExperiment(updatedExp);
     setRunResult({
       duration,
-      dna,
-      decodedText: decodedText.substring(0, runPayload.length),
+      dna: encodeData.dnaSequence,
+      decodedText: decodeData.decodedText,
       success: isSuccess
     });
+
+    // Sync execution run details globally for dashboard indicators
+    try {
+      const savedRuns = localStorage.getItem("apex_os_v3_dna_runs");
+      let runs = savedRuns ? JSON.parse(savedRuns) : [];
+      runs.unshift({
+        executionId: benchmark.executionId,
+        algorithmName: alg.name,
+        success: isSuccess,
+        time: parseFloat(duration),
+        timestamp: new Date().toISOString()
+      });
+      localStorage.setItem("apex_os_v3_runs", JSON.stringify(runs)); // standard synchronization key
+      localStorage.setItem("apex_os_v3_dna_runs", JSON.stringify(runs));
+    } catch(err) {
+      console.error(err);
+    }
+
     triggerToast("Simulation execution finished and recorded!");
   };
 
