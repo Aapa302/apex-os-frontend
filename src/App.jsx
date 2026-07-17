@@ -2211,8 +2211,10 @@ Completed using: [PubMed API] — Gemini was not required for these steps`;
           const simResults = JSON.parse(localStorage.getItem("apex_os_simulation_results") || "[]");
 
           let listMd = algs.map((alg, i) => {
-            return `### ${i + 1}. ${alg.name} (${alg.version})
-- **Objective**: ${alg.objective || "N/A"}
+            const versionStr = alg.version && alg.version !== "undefined" ? alg.version : "v1.0.0";
+            const objectiveStr = alg.objective && alg.objective !== "N/A" && alg.objective !== "Enter objective..." ? alg.objective : (alg.description && alg.description !== "Enter description..." ? alg.description : "General-purpose DNA encoding algorithm");
+            return `### ${i + 1}. ${alg.name} (${versionStr})
+- **Objective**: ${objectiveStr}
 - **GC Content limit**: ${alg.gcRules || "N/A"}%
 - **Homopolymer limit**: ${alg.homopolymerRules || "N/A"}
 - **Binary Mapping**: \`${alg.binaryMapping || "N/A"}\`

@@ -35,6 +35,8 @@ export function createAlgorithmModel(params = {}) {
     favorite: !!params.favorite,
     recent: true,
     archived: !!params.archived,
+    objective: params.objective || "General-purpose DNA encoding algorithm",
+    createdDate: params.createdDate || params.creationDate || new Date().toISOString().split("T")[0],
     category: params.category || "Custom DNA",
     formulas: params.formulas || [], // Referenced formula IDs or objects
     versions: params.versions || [
@@ -70,7 +72,27 @@ export function getAllAlgorithms() {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        let modified = false;
+        const processed = parsed.map(alg => {
+          let updated = { ...alg };
+          if (!updated.version || updated.version === "undefined") {
+            if (updated.name && updated.name.includes("CRISPR")) {
+              updated.version = "v2.0.0";
+            } else {
+              updated.version = "v1.0.0";
+            }
+            modified = true;
+          }
+          if (!updated.objective || updated.objective === "N/A" || updated.objective.trim() === "" || updated.objective === "Enter objective...") {
+            updated.objective = updated.description && updated.description !== "Enter description..." ? updated.description : "General-purpose DNA encoding algorithm";
+            modified = true;
+          }
+          return updated;
+        });
+        if (modified) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(processed));
+        }
+        return processed;
       }
     }
   } catch (e) {
@@ -82,12 +104,194 @@ export function getAllAlgorithms() {
     {
       id: "alg_1",
       name: "Base Aligner v1.0",
-      version: "v1.0.0",
       objective: "Perform high-fidelity nucleobase alignment for biological structures.",
+      description: "Our flagship high-fidelity sequence alignment algorithm designed for DNA-digital conversion.",
+      binaryMapping: "00=A, 01=C, 10=G, 11=T",
+      dnaMapping: "A=00, C=01, G=10, T=11",
       gcRules: "40-60",
       homopolymerRules: "Max run length 3",
+      errorDetection: "CRC-32 Checksum",
+      errorCorrection: "Reed-Solomon (255, 223)",
+      version: "v1.0.0",
+      createdDate: "2026-07-01",
+      creationDate: "2026-07-01",
+      problemStatement: "Current alignments are too slow and fail to identify complex structural transitions in sequence reads.",
+      researchNotes: "Integrated basic dynamic programming alignments with Smith-Waterman heuristics. Memory footprint optimized.",
+      favorite: true,
+      recent: true,
+      category: "DNA Sequencing",
+      formulas: [
+        {
+          id: "f_1_1",
+          name: "Alignment Match Score Ratio",
+          expression: "S_r = (M * c_m - G * c_g) / L",
+          description: "Normalizes matches and gap penalty coefficients over the total read length.",
+          variables: "M = number of matches\nc_m = match reward constant (e.g. 2.0)\nG = number of gaps\nc_g = gap open penalty constant (e.g. 3.0)\nL = total alignment length",
+          units: "Dimensionless ratio (Score/Length)"
+        },
+        {
+          id: "f_1_2",
+          name: "Gap Extension Scaling",
+          expression: "P_gap = o + e * (k - 1)",
+          description: "Calculates the affine gap penalty for continuous sequence read gaps of length k.",
+          variables: "o = gap open cost\ne = gap extension cost\nk = length of the gap",
+          units: "Heuristic score units"
+        }
+      ],
+      pipeline: {
+        blocks: [
+          { id: "b1", type: "Input Data", x: 60, y: 160, params: "Format: FASTA\nSize: 4.8 MB", notes: "Primary genome raw sequence reads." },
+          { id: "b2", type: "Data Validation", x: 250, y: 160, params: "PhredThreshold: Q30", notes: "Filters out low-quality sequence reads." },
+          { id: "b3", type: "DNA Encoding", x: 440, y: 160, params: "Algorithm: Huffman-Bio\nBitsPerBase: 2", notes: "Compiles binary blocks into nucleobase sequences." },
+          { id: "b4", type: "Output", x: 630, y: 160, params: "SynthesisTarget: OligoArc", notes: "Synthesized product ready for physical chemical assembly." }
+        ],
+        connections: [
+          { id: "c1", from: "b1", to: "b2" },
+          { id: "c2", from: "b2", to: "b3" },
+          { id: "c3", from: "b3", to: "b4" }
+        ]
+      },
+      versions: [
+        {
+          id: "v_1_1_0",
+          number: "v1.1.0",
+          date: "2026-07-13",
+          author: "Sarah Kim",
+          description: "Added affine gap extension coefficient calculations and validated mismatch weights.",
+          status: "Draft"
+        },
+        {
+          id: "v_1_0_1",
+          number: "v1.0.1",
+          date: "2026-07-10",
+          author: "Alex Chen",
+          description: "Fixed local traceback pointer indexing issue for high-throughput fasta files.",
+          status: "Review"
+        },
+        {
+          id: "v_1_0_0",
+          number: "v1.0.0",
+          date: "2026-07-01",
+          author: "Sarah Kim",
+          description: "Initial release of base aligner featuring primary score matrices and standard dynamic routing.",
+          status: "Approved"
+        }
+      ],
+      review: {
+        completeness: 92,
+        readability: "Excellent",
+        innovationScore: 94,
+        validationStatus: "Verified",
+        notes: "The alignment scoring ratios and dynamic programming heuristics conform fully to standard FASTQ/FASTA sequence definitions.",
+        recommendation: "Deploy in optimization environments. Ensure memory bounds are checked against > 10 GB sequence reads.",
+        approvalStatus: "Approved"
+      }
+    },
+    {
+      id: "alg_2",
+      name: "CRISPR PAM Searcher",
+      objective: "Locate and evaluate optimal PAM guide-RNA match coordinates in target genomes.",
+      description: "Thermodynamic guide-RNA selector with standard matching and PAM identifier configurations.",
       binaryMapping: "00=A, 01=C, 10=G, 11=T",
-      errorCorrection: "Reed-Solomon (255, 223)"
+      dnaMapping: "A=00, C=01, G=10, T=11",
+      gcRules: "40-60",
+      homopolymerRules: "Max run length 3",
+      errorDetection: "Hamming Distance Check",
+      errorCorrection: "Reed-Solomon Codes",
+      version: "v2.0.0",
+      createdDate: "2026-07-08",
+      creationDate: "2026-07-08",
+      problemStatement: "High occurrence of off-target edits when mismatch parameters are set manually.",
+      researchNotes: "Mapped off-target alignment frequencies against standard genome databases. Working on guides compatibility index.",
+      favorite: false,
+      recent: true,
+      category: "Gene Editing",
+      formulas: [
+        {
+          id: "f_2_1",
+          name: "PAM Binding Probability",
+          expression: "P_bind = \u03c0 * \u03b7 * e^(- \u0394G / (R * T))",
+          description: "Thermodynamic model estimating guide-RNA guide coordination with targeted PAM sequences.",
+          variables: "\u03c0 = guide access factor\n\u03b7 = nuclear concentration factor\n\u0394G = structural free energy binding state\nR = universal gas constant\nT = temperature in Kelvin",
+          units: "Probability coefficient (0 - 1)"
+        }
+      ],
+      pipeline: {
+        blocks: [
+          { id: "b2_1", type: "Input Data", x: 80, y: 120, params: "Format: FASTA\nTarget: Cas9-sgRNA", notes: "Guide RNA match profiles." },
+          { id: "b2_2", type: "DNA Encoding", x: 280, y: 120, params: "Format: PAM-Custom", notes: "Translate matching coordinates." },
+          { id: "b2_3", type: "Storage Layer", x: 480, y: 120, params: "Format: Physical DNA", notes: "Storage sequence alignment parameters." }
+        ],
+        connections: [
+          { id: "c2_1", from: "b2_1", to: "b2_2" },
+          { id: "c2_2", from: "b2_2", to: "b2_3" }
+        ]
+      },
+      versions: [
+        {
+          id: "v_2_0_0",
+          number: "v2.0.0",
+          date: "2026-07-08",
+          author: "Dr. Mei Lin",
+          description: "First production release of Cas9 matching model with coordinate indices.",
+          status: "Approved"
+        }
+      ],
+      review: {
+        completeness: 85,
+        readability: "Good",
+        innovationScore: 89,
+        validationStatus: "Verified",
+        notes: "Off-target frequency mapping operates with standard precision indices. Thermodynamics coefficients are fully verified.",
+        recommendation: "Provide literature references for free energy state constants. Run benchmark matches.",
+        approvalStatus: "Approved"
+      }
+    },
+    {
+      id: "alg_3",
+      name: "Double Helix 3D Simulator",
+      objective: "Simulate and visualize structural conformation variations under enzymatic friction.",
+      description: "Force-vector mechanics visualization model mapping double-stranded unwinding shear thresholds.",
+      binaryMapping: "00=A, 01=C, 10=G, 11=T",
+      dnaMapping: "A=00, C=01, G=10, T=11",
+      gcRules: "40-60",
+      homopolymerRules: "Max run length 3",
+      errorDetection: "None",
+      errorCorrection: "None",
+      version: "v1.0.0",
+      createdDate: "2026-07-15",
+      creationDate: "2026-07-15",
+      problemStatement: "Molecular simulation software lacks realistic force-vector feedback for complex DNA-enzyme complexes.",
+      researchNotes: "Calibrated dynamic constraints to use spatial force vectors. Need to test with bigger enzyme samples.",
+      favorite: true,
+      recent: false,
+      category: "Structural Biology",
+      formulas: [
+        {
+          id: "f_3_1",
+          name: "Torsional Shear Stress",
+          expression: "\u03c4 = (16 * T_m) / (\u03c0 * d^3)",
+          description: "Determines torsional shear limits of double-stranded DNA undergoing enzyme-driven unwinding.",
+          variables: "T_m = mechanical torque from enzyme translation\nd = outer helix cylinder diameter (e.g. 2.0 nm)",
+          units: "Pascals (Pa) or Newtons/m\u00b2"
+        }
+      ],
+      pipeline: {
+        blocks: [
+          { id: "b3_1", type: "Input Data", x: 100, y: 150, params: "ForceProfile: Active", notes: "Simulation parameters input." }
+        ],
+        connections: []
+      },
+      versions: [],
+      review: {
+        completeness: 45,
+        readability: "Excellent",
+        innovationScore: 95,
+        validationStatus: "Pending",
+        notes: "Torsional stress math formulas are added, but the simulation workflow pipeline blocks are currently incomplete.",
+        recommendation: "Complete pipeline blocks (DNA encoding/decoding and storage/retrieval layers) to allow full topological analysis.",
+        approvalStatus: "Needs Work"
+      }
     }
   ];
   try {
