@@ -25,6 +25,7 @@ import {
   compareAlgorithms
 } from "./core/AlgorithmEngine";
 import { Encode, Decode, Validate } from "./core/DNACoreEngine";
+import { executeWithFallback } from "./utils/aiExecutor";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -262,46 +263,7 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
 
 // ── CLAUDE API ────────────────────────────────────────────
 const callClaude = async (messages, system, onStream) => {
-  const endpoint = `${PROXY_BASE_URL || "https://api.anthropic.com"}/v1/messages`;
-  const res = await fetchWithRetry(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Requested-With": "XMLHttpRequest"
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1000,
-      system,
-      messages,
-    }),
-  });
-  const data = await res.json();
-
-  // Log execution mode from proxy headers/response
-  try {
-    const mode = data.usedGemini ? "LLM" : "Local";
-    localStorage.setItem("apex_os_recent_execution_mode", mode);
-    if (data.geminiStatus) {
-      localStorage.setItem("apex_os_gemini_status", data.geminiStatus);
-    }
-  } catch(e) {
-    console.warn("Storage check failed:", e);
-  }
-
-  const fullText = data.content?.map(b => b.text || "").join("") || "";
-  // Simulate streaming for UX
-  if (onStream) {
-    let i = 0;
-    await new Promise(resolve => {
-      const iv = setInterval(() => {
-        i = Math.min(i + Math.ceil(fullText.length / 60), fullText.length);
-        onStream(fullText.slice(0, i));
-        if (i >= fullText.length) { clearInterval(iv); resolve(); }
-      }, 16);
-    });
-  }
-  return fullText;
+  return executeWithFallback(messages, { system, onStream });
 };
 
 // ── PARSE CEO COMMANDS ────────────────────────────────────
@@ -932,21 +894,7 @@ const MemoryEngine = {
 
 // ── JSON CLAUDE CALL ─────────────────────────────────────
 const callClaudeJSON = async (messages, system, maxTokens = 1000) => {
-  // Use the dedicated /json endpoint on the proxy for Gemini JSON mode;
-  // falls back to the standard Claude endpoint when proxy is not configured.
-  const endpoint = PROXY_BASE_URL
-    ? `${PROXY_BASE_URL}/v1/messages/json`
-    : "https://api.anthropic.com/v1/messages";
-  const res = await fetchWithRetry(endpoint, {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens, system, messages }),
-  });
-  const data = await res.json();
-  const text = data.content?.map(b=>b.text||"").join("")||"";
-  const clean = text.replace(/```json\s*/gi,"").replace(/```\s*/g,"").trim();
-  const s = clean.indexOf("{"), e = clean.lastIndexOf("}");
-  if(s===-1) throw new Error("No JSON");
-  return JSON.parse(clean.slice(s,e+1));
+  return executeWithFallback(messages, { system, maxTokens, isJson: true });
 };
 
 // ── CEO ORCHESTRATOR ─────────────────────────────────────
@@ -3398,9 +3346,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
       dispatch({ type: "ADD_MEMORY", payload: { id: Date.now(), category: "decision", content: `Q: ${text.slice(0, 100)} | A: ${replyWithTrace.slice(0, 200)}`, importance: "medium", savedAt: new Date().toISOString() } });
     } catch (e) {
       console.warn("Gemini call failed, displaying unavailable fallback:", e);
-      const fallbackReply = `AI reasoning is temporarily unavailable (quota/offline). This specific request needs Gemini and couldn't be completed. Please retry in a moment.
-
-Completed using: [none] — Gemini was unavailable for this step.`;
+      const fallbackReply = e.message;
       dispatch({ type: "UPDATE_CEO_LAST", payload: { content: fallbackReply, streaming: false } });
       toast("AI reasoning is temporarily unavailable.", "error");
     }
@@ -3459,7 +3405,7 @@ Completed using: [none] — Gemini was unavailable for this step.`;
         }
       }
     } catch (e) {
-      dispatch({ type: "UPDATE_EMP_LAST", empId: activeEmp, payload: { content: `⚠️ Error: ${e.message}`, streaming: false } });
+      dispatch({ type: "UPDATE_EMP_LAST", empId: activeEmp, payload: { content: e.message, streaming: false } });
     }
     setEmpLoading(false);
   }, [empInput, empLoading, empFile, activeEmp, state.empChats, state.company, state.memory, addActivity]);

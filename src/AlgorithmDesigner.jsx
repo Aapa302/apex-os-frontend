@@ -18,6 +18,7 @@ import {
   executeAndBenchmarkAlgorithm,
   compareAlgorithms
 } from "./core/AlgorithmEngine";
+import { executeWithFallback } from "./utils/aiExecutor";
 
 // Design tokens matching App.jsx and ResearchLab.jsx
 const T = {
@@ -388,89 +389,62 @@ export default function AlgorithmDesigner() {
     setGenerationSource(null);
     setGeneratedDraft(null);
 
-    // 1. Fetch status of Gemini
-    let status = "offline";
     try {
-      const statusRes = await fetch("https://apex-os-nztm.onrender.com/api/gemini/status");
-      if (statusRes.ok) {
-        const data = await statusRes.json();
-        status = data.status || "offline";
-      }
-    } catch (e) {
-      console.warn("Gemini status check failed, using fallback:", e);
-    }
+      const systemPrompt = "You are a senior DNA bio-storage architect. Suggest a creative, highly optimized DNA-digital encoding algorithm mapping. Output ONLY valid JSON: {\"name\":\"...\",\"objective\":\"...\",\"description\":\"...\",\"binaryMapping\":\"00=A, 01=C, 10=G, 11=T\",\"dnaMapping\":\"A=00, C=01, G=10, T=11\",\"gcRules\":\"45-55\",\"homopolymerRules\":\"Max run length 3\",\"errorDetection\":\"CRC-32 Checksum\",\"errorCorrection\":\"Reed-Solomon (255, 223)\"}";
 
-    if (status === "available") {
-      // 2. Call Gemini
-      try {
-        const systemPrompt = "You are a senior DNA bio-storage architect. Suggest a creative, highly optimized DNA-digital encoding algorithm mapping. Output ONLY valid JSON: {\"name\":\"...\",\"objective\":\"...\",\"description\":\"...\",\"binaryMapping\":\"00=A, 01=C, 10=G, 11=T\",\"dnaMapping\":\"A=00, C=01, G=10, T=11\",\"gcRules\":\"45-55\",\"homopolymerRules\":\"Max run length 3\",\"errorDetection\":\"CRC-32 Checksum\",\"errorCorrection\":\"Reed-Solomon (255, 223)\"}";
-        const genRes = await fetch("https://apex-os-nztm.onrender.com/v1/messages/json", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 1000,
-            system: systemPrompt,
-            messages: [{ role: "user", content: "Suggest an advanced genomic DNA storage encoding draft." }]
-          })
-        });
-
-        if (genRes.ok) {
-          const rawText = await genRes.text();
-          const cleanText = rawText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-          const sIdx = cleanText.indexOf("{");
-          const eIdx = cleanText.lastIndexOf("}");
-          if (sIdx !== -1 && eIdx !== -1) {
-            const data = JSON.parse(cleanText.slice(sIdx, eIdx + 1));
-            setGeneratedDraft({
-              ...data,
-              version: "v1.0.0",
-              createdDate: new Date().toISOString().split("T")[0],
-              category: "AI Generated"
-            });
-            setGenerationSource("gemini");
-            showToast("Suggested algorithm generated successfully by Gemini!", "success");
-            setIsGenerating(false);
-            return;
-          }
+      const data = await executeWithFallback(
+        "Suggest an advanced genomic DNA storage encoding draft.",
+        {
+          system: systemPrompt,
+          isJson: true,
+          maxTokens: 1000,
+          toolCategory: "algorithm"
         }
-      } catch (err) {
-        console.warn("Gemini generation failed, falling back locally:", err);
+      );
+
+      setGeneratedDraft({
+        ...data,
+        version: "v1.0.0",
+        createdDate: new Date().toISOString().split("T")[0],
+        category: "AI Generated"
+      });
+      setGenerationSource("gemini");
+      showToast("Suggested algorithm generated successfully by Gemini!", "success");
+      setIsGenerating(false);
+    } catch (err) {
+      console.warn("Gemini generation failed, falling back locally:", err);
+      // Fallback locally if Gemini is busy, offline, or quota exceeded
+      const simResults = JSON.parse(localStorage.getItem("apex_os_simulation_results") || "[]");
+      let gcRule = "45-55";
+      let homopolymerRule = "Max run length 3";
+      let errorCorrection = "Reed-Solomon (255, 223)";
+
+      const bestSim = simResults.find(r => r.success);
+      if (bestSim) {
+        homopolymerRule = `Max run length ${bestSim.noiseRate > 2 ? 2 : 3}`;
       }
+
+      const randNum = Math.floor(Math.random() * 900) + 100;
+      const localAlg = {
+        name: `Locally Synthesized DNA Aligner v${Math.floor(Math.random() * 4) + 2}.0.${randNum}`,
+        objective: "Optimize digital sequence encoding with customized local compliance constraints.",
+        description: "A robust, locally synthesized biological storage mapping config retrieved from platform benchmark histories and verified bio-memories.",
+        binaryMapping: "00=A, 01=C, 10=G, 11=T",
+        dnaMapping: "A=00, C=01, G=10, T=11",
+        gcRules: gcRule,
+        homopolymerRules: homopolymerRule,
+        errorDetection: "CRC-32 Checksum",
+        errorCorrection: errorCorrection,
+        version: "v1.0.0",
+        createdDate: new Date().toISOString().split("T")[0],
+        category: "Local Synthesis"
+      };
+
+      setGeneratedDraft(localAlg);
+      setGenerationSource("local");
+      showToast("Suggested algorithm synthesized locally", "success");
+      setIsGenerating(false);
     }
-
-    // 3. Fallback locally if Gemini is busy, offline, or quota exceeded
-    // Extract research memory tags and simulation parameters to make it robust
-    const simResults = JSON.parse(localStorage.getItem("apex_os_simulation_results") || "[]");
-    let gcRule = "45-55";
-    let homopolymerRule = "Max run length 3";
-    let errorCorrection = "Reed-Solomon (255, 223)";
-
-    const bestSim = simResults.find(r => r.success);
-    if (bestSim) {
-      homopolymerRule = `Max run length ${bestSim.noiseRate > 2 ? 2 : 3}`;
-    }
-
-    const randNum = Math.floor(Math.random() * 900) + 100;
-    const localAlg = {
-      name: `Locally Synthesized DNA Aligner v${Math.floor(Math.random() * 4) + 2}.0.${randNum}`,
-      objective: "Optimize digital sequence encoding with customized local compliance constraints.",
-      description: "A robust, locally synthesized biological storage mapping config retrieved from platform benchmark histories and verified bio-memories.",
-      binaryMapping: "00=A, 01=C, 10=G, 11=T",
-      dnaMapping: "A=00, C=01, G=10, T=11",
-      gcRules: gcRule,
-      homopolymerRules: homopolymerRule,
-      errorDetection: "CRC-32 Checksum",
-      errorCorrection: errorCorrection,
-      version: "v1.0.0",
-      createdDate: new Date().toISOString().split("T")[0],
-      category: "Local Synthesis"
-    };
-
-    setGeneratedDraft(localAlg);
-    setGenerationSource("local");
-    showToast(`Suggested algorithm synthesized locally (Gemini: ${status})`, "success");
-    setIsGenerating(false);
   };
 
   const handleRegisterGeneratedDraft = () => {
