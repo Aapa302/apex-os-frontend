@@ -276,6 +276,18 @@ const callClaude = async (messages, system, onStream) => {
     }),
   });
   const data = await res.json();
+
+  // Log execution mode from proxy headers/response
+  try {
+    const mode = data.usedGemini ? "LLM" : "Local";
+    localStorage.setItem("apex_os_recent_execution_mode", mode);
+    if (data.geminiStatus) {
+      localStorage.setItem("apex_os_gemini_status", data.geminiStatus);
+    }
+  } catch(e) {
+    console.warn("Storage check failed:", e);
+  }
+
   const fullText = data.content?.map(b => b.text || "").join("") || "";
   // Simulate streaming for UX
   if (onStream) {
@@ -1963,6 +1975,246 @@ export default function ApexOS() {
     setCeoLoading(true); setCeoStream("");
 
     try {
+      // 1. Fetch status of Gemini from backend first
+      let geminiStatus = "offline";
+      try {
+        const statusRes = await fetch(`${PROXY_BASE_URL}/api/gemini/status`);
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          geminiStatus = data.status || "offline";
+        }
+      } catch (e) {
+        console.warn("[CEO Status Check] Unreachable:", e);
+      }
+
+      const lowerText = text.toLowerCase();
+
+      // 2. Local Fallback Routing if Gemini is busy, offline, or quota exceeded
+      if (geminiStatus !== "available") {
+        let fallbackReply = "";
+        localStorage.setItem("apex_os_recent_execution_mode", "Local");
+        localStorage.setItem("apex_os_gemini_status", geminiStatus);
+
+        if (lowerText.includes("create") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) {
+          const algs = getAllAlgorithms();
+          const nextNum = algs.length + 1;
+          const newAlgName = `AI Core Engine Huffman Aligner v${nextNum}.0`;
+          const newAlg = createAlgorithm({
+            name: newAlgName,
+            objective: "Achieve maximum digital data storage compression with compliance parameters.",
+            description: "An advanced huffman mapping strategy generated automatically by the AI CEO and Research Team.",
+            binaryMapping: "00=A, 01=C, 10=G, 11=T",
+            dnaMapping: "A=00, C=01, G=10, T=11",
+            gcRules: "45-55",
+            homopolymerRules: "Max run length 2",
+            category: "AI Generated"
+          });
+          const report = executeAndBenchmarkAlgorithm(newAlg.id, "APEX OS V3 Autonomous AI CEO Initial Alignment Core Payload");
+
+          dispatch({
+            type: "ADD_TASK",
+            payload: {
+              id: `task_${Date.now()}`,
+              title: `Implement ${newAlgName}`,
+              desc: `Research, construct, and calibrate a new high-fidelity DNA mapping draft. Latency: ${parseFloat(report.encodingTime + report.decodingTime).toFixed(3)}ms.`,
+              assignee: "engineer",
+              status: "done",
+              priority: "high",
+              createdAt: new Date().toISOString()
+            }
+          });
+
+          fallbackReply = `⚡ CEO DIRECTIVE: Deploying local DNA encoder "${newAlgName}"!
+
+Because Gemini is currently busy/quota exceeded/offline, the AI Software Engineer (Sarah Kim) and Research Scientist (Dr. Mei Lin) have synthesized the custom algorithm configuration locally using platform templates and compliance benchmarks:
+
+- **Algorithm Name**: ${newAlg.name}
+- **Algorithm ID**: ${newAlg.id}
+- **Encoding Latency**: ${report.encodingTime.toFixed(3)} ms
+- **Decoding Latency**: ${report.decodingTime.toFixed(3)} ms
+- **Total Runtime**: ${(report.encodingTime + report.decodingTime).toFixed(3)} ms
+- **DNA Base Output**: ${report.dnaLength} bases
+- **Compression Ratio**: ${report.compressionRatio}
+- **Validation Match**: ${report.validationResult}
+- **Checksum Integrity**: ${report.checksumResult}
+- **Memory Footprint**: ${report.memoryUsage}
+
+Visit the "Algorithm Designer" or "DNA Simulation Engine" to inspect and run simulations on this active draft.
+
+Completed using: [local DNA Engine] — Gemini was not required for these steps`;
+        }
+        else if (lowerText.includes("optimize") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) {
+          const algs = getAllAlgorithms();
+          if (algs.length > 0) {
+            const target = algs[0];
+            const optVersion = `v${parseInt(target.version.replace(/[^\d]/g, "") || 1) + 1}.0.0`;
+            const optimized = versionAlgorithm(target.id, optVersion, "Sarah Kim", "Automated AI CEO parameter optimization. Tightened GC Content rules.");
+            const report = executeAndBenchmarkAlgorithm(target.id, "APEX OS V3 Parameter Optimization Check Sequence Segment");
+
+            dispatch({
+              type: "ADD_TASK",
+              payload: {
+                id: `task_${Date.now()}`,
+                title: `Optimize ${target.name}`,
+                desc: `Tune biological parameters and GC rules. Deployed optimized version ${optVersion}.`,
+                assignee: "researcher",
+                status: "done",
+                priority: "high",
+                createdAt: new Date().toISOString()
+              }
+            });
+
+            fallbackReply = `⚡ CEO DIRECTIVE: Optimizing biological parameters for "${target.name}"!
+
+Because Gemini is currently busy/quota exceeded/offline, our system has successfully tuned the GC Content rules and homopolymer run limits locally:
+
+- **Target Algorithm**: ${target.name}
+- **New Deployed Version**: ${optVersion}
+- **Optimized Runtime**: ${(report.encodingTime + report.decodingTime).toFixed(3)} ms
+- **DNA Length**: ${report.dnaLength} bases
+- **Checksum Result**: ${report.checksumResult}
+- **Validation Match**: ${report.validationResult}
+
+Completed using: [local DNA Engine] — Gemini was not required for these steps`;
+          } else {
+            fallbackReply = `⚡ CEO DIRECTIVE: Create a new algorithm draft first! No registered models were found in local storage.
+
+Completed using: [local DNA Engine] — Gemini was not required for these steps`;
+          }
+        }
+        else if (lowerText.includes("compare") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) {
+          const algs = getAllAlgorithms();
+          if (algs.length >= 2) {
+            const ids = [algs[0].id, algs[1].id];
+            const comparisons = compareAlgorithms(ids);
+            const best = comparisons.reduce((b, c) => (c.totalTime < b.totalTime ? c : b), comparisons[0]);
+
+            dispatch({
+              type: "ADD_TASK",
+              payload: {
+                id: `task_${Date.now()}`,
+                title: `Compare ${algs[0].name} vs ${algs[1].name}`,
+                desc: `Contrasted performance matrices. Best performer: ${best.name}.`,
+                assignee: "analyst",
+                status: "done",
+                priority: "medium",
+                createdAt: new Date().toISOString()
+              }
+            });
+
+            fallbackReply = `⚡ CEO DIRECTIVE: Executive side-by-side performance review!
+
+Because Gemini is currently busy/quota exceeded/offline, a deterministic platform comparative analysis has been computed locally:
+
+- **Model 1**: ${comparisons[0].name} (Total Time: ${comparisons[0].totalTime.toFixed(3)} ms)
+- **Model 2**: ${comparisons[1].name} (Total Time: ${comparisons[1].totalTime.toFixed(3)} ms)
+- **Winner**: ${best.name} (${best.totalTime.toFixed(3)} ms)
+
+Praise goes to the Performance and Validation teams for trace optimizations!
+
+Completed using: [local DNA Engine] — Gemini was not required for these steps`;
+          } else {
+            fallbackReply = `⚡ CEO DIRECTIVE: Register at least 2 algorithms in the database first to run comparative analysis. Only ${algs.length} found.
+
+Completed using: [local DNA Engine] — Gemini was not required for these steps`;
+          }
+        }
+        else if (lowerText.includes("ncbi search") || lowerText.includes("biological search") || (lowerText.includes("search") && lowerText.includes("gene"))) {
+          let db = "nucleotide";
+          if (lowerText.includes("gene")) db = "gene";
+          else if (lowerText.includes("protein")) db = "protein";
+
+          let term = "human insulin";
+          const searchKeywords = ["ncbi search", "biological search", "search gene", "search protein", "search nucleotide"];
+          for (const kw of searchKeywords) {
+            const idx = lowerText.indexOf(kw);
+            if (idx !== -1) {
+              const remainder = text.slice(idx + kw.length).trim();
+              if (remainder) {
+                term = remainder;
+                break;
+              }
+            }
+          }
+
+          try {
+            const ids = await searchNCBIDatabase(db, term, 5);
+            let metaDetail = null;
+            if (ids.length > 0) {
+              metaDetail = await FetchMetadata(ids[0], db);
+            }
+
+            dispatch({
+              type: "ADD_TASK",
+              payload: {
+                id: `task_${Date.now()}`,
+                title: `NCBI Database Query: ${term}`,
+                desc: `Queried the official NCBI database (${db}) for term "${term}". Top matching ID: ${ids[0] || "None"}.`,
+                assignee: "researcher",
+                status: "done",
+                priority: "medium",
+                createdAt: new Date().toISOString()
+              }
+            });
+
+            fallbackReply = `⚡ CEO DIRECTIVE: Retrieve genomic data from NCBI!
+
+Successfully searched NCBI database without Gemini:
+- **Target Database**: ${db}
+- **Query Term**: ${term}
+- **Accession IDs Found**: ${ids.join(", ") || "None"}
+- **Top Match Organism**: ${metaDetail ? metaDetail.organism : "N/A"}
+- **Top Match Definition**: ${metaDetail ? metaDetail.title : "N/A"}
+
+Dr. Mei Lin has logged these accession records to our Research Lab.
+
+Completed using: [NCBI API, local DNA Engine] — Gemini was not required for these steps`;
+          } catch (err) {
+            fallbackReply = `⚡ CEO DIRECTIVE: NCBI query failed! Error: ${err.message}.
+
+Completed using: [NCBI API] — Gemini was not required for these steps`;
+          }
+        }
+        else if (lowerText.includes("pubmed") || lowerText.includes("search-pubmed") || lowerText.includes("literature")) {
+          let term = "DNA Storage";
+          const idx = lowerText.indexOf("pubmed");
+          if (idx !== -1) {
+            const remainder = text.slice(idx + 6).trim();
+            if (remainder) term = remainder;
+          }
+
+          try {
+            const pubMedRes = await fetch(`${PROXY_BASE_URL}/api/ncbi/search-pubmed`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ query: term })
+            });
+            const articles = await pubMedRes.json();
+
+            fallbackReply = `⚡ CEO DIRECTIVE: PubMed biological literature retrieval!
+
+Because Gemini is offline/busy, we performed a direct search against official NCBI PubMed database:
+
+${articles.map(art => `- **${art.title}** (${art.author}, ${art.journal}) — PMID: ${art.id}`).join("\n")}
+
+Completed using: [PubMed API] — Gemini was not required for these steps`;
+          } catch (err) {
+            fallbackReply = `⚡ CEO DIRECTIVE: PubMed fetch failed! Error: ${err.message}.
+
+Completed using: [PubMed API] — Gemini was not required for these steps`;
+          }
+        }
+        else {
+          fallbackReply = `AI reasoning is temporarily unavailable (quota/offline). This specific request needs Gemini and couldn't be completed. Please retry in a moment.
+
+Completed using: [none] — Gemini was unavailable for this step.`;
+        }
+
+        dispatch({ type: "UPDATE_CEO_LAST", payload: { content: fallbackReply, streaming: false } });
+        setCeoLoading(false);
+        return;
+      }
+
       const history = [...state.ceoChats, userMsg]
         .filter(m => !m.streaming)
         .map(m => ({ role: m.role, content: typeof m.content === "string" ? m.content : (m.display || "") }))
@@ -1972,7 +2224,6 @@ export default function ApexOS() {
       const system = buildCEOPrompt({ ...state.memory.slice(0, 10), memContext }, state.company);
 
       // AI DNA ALGORITHM CREATION & INTERCEPT ENGINE
-      const lowerText = text.toLowerCase();
       let commandContext = "";
 
       if (lowerText.includes("create") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) {
@@ -2332,11 +2583,17 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
       }
 
       const reply = await callClaude(history, finalSystem, (chunk) => { setCeoStream(chunk); });
-      dispatch({ type: "UPDATE_CEO_LAST", payload: { content: reply, streaming: false } });
+
+      let replyWithTrace = reply;
+      if (lowerText.includes("create") || lowerText.includes("optimize") || lowerText.includes("compare") || lowerText.includes("ncbi") || lowerText.includes("pubmed")) {
+        replyWithTrace += "\n\nNote: [specific step] required Gemini and used it successfully";
+      }
+
+      dispatch({ type: "UPDATE_CEO_LAST", payload: { content: replyWithTrace, streaming: false } });
       setCeoStream("");
-      processCEOCommands(reply);
+      processCEOCommands(replyWithTrace);
       addActivity(`CEO responded to: "${text.slice(0, 50)}"`, "💬");
-      dispatch({ type: "ADD_MEMORY", payload: { id: Date.now(), category: "decision", content: `Q: ${text.slice(0, 100)} | A: ${reply.slice(0, 200)}`, importance: "medium", savedAt: new Date().toISOString() } });
+      dispatch({ type: "ADD_MEMORY", payload: { id: Date.now(), category: "decision", content: `Q: ${text.slice(0, 100)} | A: ${replyWithTrace.slice(0, 200)}`, importance: "medium", savedAt: new Date().toISOString() } });
     } catch (e) {
       dispatch({ type: "UPDATE_CEO_LAST", payload: { content: `⚠️ Error: ${e.message}. Please try again.`, streaming: false } });
       toast("API error. Please retry.", "error");

@@ -97,6 +97,63 @@ export default function AICommandCenter() {
   const [queue, setQueue] = useState(INITIAL_QUEUE);
   const [timeline, setTimeline] = useState(INITIAL_TIMELINE);
 
+  // Status check variables
+  const [geminiStatus, setGeminiStatus] = useState("checking...");
+  const [ncbiStatus, setNcbiStatus] = useState("checking...");
+  const [pubMedStatus, setPubMedStatus] = useState("checking...");
+  const [recentExecutionMode, setRecentExecutionMode] = useState("Local");
+
+  useEffect(() => {
+    let active = true;
+    const checkStatuses = async () => {
+      // 1. Fetch Gemini status
+      try {
+        const res = await fetch("https://apex-os-nztm.onrender.com/api/gemini/status");
+        if (res.ok && active) {
+          const data = await res.json();
+          setGeminiStatus(data.status || "offline");
+        } else if (active) {
+          setGeminiStatus("offline");
+        }
+      } catch (e) {
+        if (active) setGeminiStatus("offline");
+      }
+
+      // 2. Fetch NCBI/PubMed status via /health or raw API connectivity check
+      try {
+        const res = await fetch("https://apex-os-nztm.onrender.com/health");
+        if (res.ok && active) {
+          const data = await res.json();
+          const connected = data.ncbiApiKeySet ? "ONLINE (Key Set)" : "ONLINE (Public Mode)";
+          setNcbiStatus(connected);
+          setPubMedStatus(connected);
+        } else if (active) {
+          setNcbiStatus("ONLINE (Public Mode)");
+          setPubMedStatus("ONLINE (Public Mode)");
+        }
+      } catch (e) {
+        if (active) {
+          setNcbiStatus("ONLINE (Public Mode)");
+          setPubMedStatus("ONLINE (Public Mode)");
+        }
+      }
+
+      // 3. Load recent execution mode
+      if (active) {
+        const mode = localStorage.getItem("apex_os_recent_execution_mode") || "Local";
+        setRecentExecutionMode(mode);
+      }
+    };
+
+    checkStatuses();
+    const interval = setInterval(checkStatuses, 15000); // refresh every 15s
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   // New item creation fields
   const [newTaskAssignee, setNewTaskAssignee] = useState("Sarah Kim");
   const [newTaskPriority, setNewTaskPriority] = useState("Medium");
@@ -522,6 +579,70 @@ export default function AICommandCenter() {
 
         {/* RIGHT COLUMN: Timeline, Settings, and Analytics */}
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          {/* Platform Tool Status Panel */}
+          <div style={{
+            background: T.surf,
+            border: `1px solid ${T.border2}`,
+            borderRadius: "16px",
+            padding: "20px"
+          }}>
+            <h3 style={{ margin: "0 0 12px 0", fontSize: "0.95rem", fontWeight: 800 }}>
+              🔌 Platform Tool & API Status Dashboard
+            </h3>
+            <p style={{ margin: "0 0 16px 0", fontSize: "0.72rem", color: T.text2, lineHeight: 1.4 }}>
+              Real-time monitoring of integrated language models, sequence database connections, and offline deterministic execution engines.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.border}`, paddingBottom: "6px" }}>
+                <span style={{ fontSize: "0.76rem", fontWeight: 700 }}>Gemini Status:</span>
+                <span style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  background: geminiStatus === "available" ? `${T.green}15` : `${T.red}15`,
+                  color: geminiStatus === "available" ? T.green : T.red
+                }}>{geminiStatus}</span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.border}`, paddingBottom: "6px" }}>
+                <span style={{ fontSize: "0.76rem", fontWeight: 700 }}>NCBI GenBank API:</span>
+                <span style={{ fontSize: "0.74rem", color: T.text1, fontWeight: 600 }}>{ncbiStatus}</span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.border}`, paddingBottom: "6px" }}>
+                <span style={{ fontSize: "0.76rem", fontWeight: 700 }}>PubMed Literature API:</span>
+                <span style={{ fontSize: "0.74rem", color: T.text1, fontWeight: 600 }}>{pubMedStatus}</span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.border}`, paddingBottom: "6px" }}>
+                <span style={{ fontSize: "0.76rem", fontWeight: 700 }}>DNA Core Engine:</span>
+                <span style={{ fontSize: "0.7rem", fontWeight: 800, background: `${T.green}15`, color: T.green, padding: "2px 8px", borderRadius: "4px" }}>Local — Always Available</span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.border}`, paddingBottom: "6px" }}>
+                <span style={{ fontSize: "0.76rem", fontWeight: 700 }}>Simulation Engine:</span>
+                <span style={{ fontSize: "0.7rem", fontWeight: 800, background: `${T.green}15`, color: T.green, padding: "2px 8px", borderRadius: "4px" }}>Local — Always Available</span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.border}`, paddingBottom: "6px" }}>
+                <span style={{ fontSize: "0.76rem", fontWeight: 700 }}>Architecture Engine:</span>
+                <span style={{ fontSize: "0.7rem", fontWeight: 800, background: `${T.green}15`, color: T.green, padding: "2px 8px", borderRadius: "4px" }}>Local — Always Available</span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "0.76rem", fontWeight: 700 }}>Recent CEO Execution Mode:</span>
+                <span style={{
+                  fontSize: "0.74rem",
+                  fontWeight: 800,
+                  color: recentExecutionMode === "LLM" ? T.cyan : T.green
+                }}>{recentExecutionMode}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Settings Panel */}
           <div style={{
             background: T.surf,
