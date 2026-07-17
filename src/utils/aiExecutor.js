@@ -697,11 +697,33 @@ Completed using: [NCBI API] — Gemini was not required for these steps`;
         });
         const articles = await pubMedRes.json();
 
+        console.log("Raw PubMed search-pubmed response:", JSON.stringify(articles));
+
+        let formattedArticles = "";
+        if (Array.isArray(articles)) {
+          if (articles.length === 0) {
+            formattedArticles = "No results found in PubMed database for this query.";
+          } else {
+            formattedArticles = articles.map(art => {
+              const title = art.title || "No Title";
+              const author = art.author || "Unknown Author";
+              const journal = art.journal || "Unknown Journal";
+              const id = art.id || "N/A";
+              return `- **${title}** (${author}, ${journal}) — PMID: ${id}`;
+            }).join("\n");
+          }
+        } else if (articles && articles.error) {
+          const errMsg = articles.error.message || JSON.stringify(articles.error);
+          formattedArticles = `Search failed: ${errMsg}`;
+        } else {
+          formattedArticles = "No results found (unexpected data format returned from PubMed search).";
+        }
+
         return `⚡ CEO DIRECTIVE: PubMed biological literature retrieval!
 
 Because Gemini is offline/busy, we performed a direct search against official NCBI PubMed database for term: **"${term}"**
 
-${articles.map(art => `- **${art.title}** (${art.author}, ${art.journal}) — PMID: ${art.id}`).join("\n")}
+${formattedArticles}
 
 Completed using: [PubMed API] — Gemini was not required for these steps`;
       } catch (err) {
