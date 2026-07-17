@@ -77,8 +77,25 @@ export function getAllAlgorithms() {
     console.error("Error loading algorithms:", e);
   }
 
-  // Fallback to defaults (can be populated or empty)
-  return [];
+  // Fallback to default templates if empty
+  const defaults = [
+    {
+      id: "alg_1",
+      name: "Base Aligner v1.0",
+      version: "v1.0.0",
+      objective: "Perform high-fidelity nucleobase alignment for biological structures.",
+      gcRules: "40-60",
+      homopolymerRules: "Max run length 3",
+      binaryMapping: "00=A, 01=C, 10=G, 11=T",
+      errorCorrection: "Reed-Solomon (255, 223)"
+    }
+  ];
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
+  } catch(e) {
+    console.error("Error saving fallback algorithms:", e);
+  }
+  return defaults;
 }
 
 /**

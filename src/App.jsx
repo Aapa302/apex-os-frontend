@@ -24,6 +24,7 @@ import {
   executeAndBenchmarkAlgorithm,
   compareAlgorithms
 } from "./core/AlgorithmEngine";
+import { Encode, Decode } from "./core/DNACoreEngine";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -2203,6 +2204,153 @@ Completed using: [PubMed API] — Gemini was not required for these steps`;
 
 Completed using: [PubMed API] — Gemini was not required for these steps`;
           }
+        }
+        else if ((lowerText.includes("show") || lowerText.includes("list") || lowerText.includes("display") || lowerText.includes("get")) && (lowerText.includes("algorithm") || lowerText.includes("algorithms") || lowerText.includes("design") || lowerText.includes("designs") || lowerText.includes("models"))) {
+          const algs = getAllAlgorithms();
+          const memories = JSON.parse(localStorage.getItem("apex_os_v4_research_memories") || "[]");
+          const simResults = JSON.parse(localStorage.getItem("apex_os_simulation_results") || "[]");
+
+          let listMd = algs.map((alg, i) => {
+            return `### ${i + 1}. ${alg.name} (${alg.version})
+- **Objective**: ${alg.objective || "N/A"}
+- **GC Content limit**: ${alg.gcRules || "N/A"}%
+- **Homopolymer limit**: ${alg.homopolymerRules || "N/A"}
+- **Binary Mapping**: \`${alg.binaryMapping || "N/A"}\`
+- **Error Correction**: ${alg.errorCorrection || "None"}`;
+          }).join("\n\n");
+
+          if (memories.length > 0) {
+            listMd += `\n\n**Related Research Memories:**\n` + memories.slice(0, 3).map(m => `- [${m.type}] **${m.title}**: ${m.content.slice(0, 100)}...`).join("\n");
+          }
+
+          if (simResults.length > 0) {
+            listMd += `\n\n**Historical Benchmarks & Simulations:**\n` + simResults.slice(0, 3).map(s => `- Run ${s.timestamp.replace("T", " ").substring(0,16)}: Err Rate ${s.errorRate}% (Total Errors: ${s.totalErrors})`).join("\n");
+          }
+
+          fallbackReply = `⚡ CEO DIRECTIVE: Listing registered DNA Storage Configurations!
+
+Here is the current active inventory of biological-digital encoding algorithms registered in local memory:
+
+${listMd}
+
+Completed using: [local Algorithm Engineer] — Gemini was not required for these steps`;
+        }
+        else if (lowerText.includes("encode") || lowerText.includes("decode")) {
+          let payloadText = "APEX DNA Storage payload";
+          const matchQuote = text.match(/['"](.*?)['"]/);
+          if (matchQuote && matchQuote[1]) {
+            payloadText = matchQuote[1];
+          } else {
+            const words = text.split(/\s+/);
+            const idx = words.findIndex(w => w.toLowerCase().includes("encode") || w.toLowerCase().includes("decode"));
+            if (idx !== -1 && words[idx + 1]) {
+              payloadText = words.slice(idx + 1).join(" ");
+            }
+          }
+
+          const algs = getAllAlgorithms();
+          const activeAlg = algs[0] || null;
+
+          if (lowerText.includes("encode")) {
+            const encodeRes = Encode(payloadText, activeAlg);
+            fallbackReply = `⚡ CEO DIRECTIVE: Encoding payload to DNA sequence!
+
+Using active algorithm **${activeAlg ? activeAlg.name : "Default DNA Encoder"}**:
+- **ASCII Payload**: "${payloadText}"
+- **Binary + Checksum representation**:
+  \`${encodeRes.combinedBinary}\`
+- **Encoded DNA Sequence**:
+  \`${encodeRes.dnaSequence}\`
+- **Encoding Latency**: ${encodeRes.encodingTime.toFixed(3)} ms
+
+Completed using: [local DNA Engine] — Gemini was not required for these steps`;
+          } else {
+            let dnaSeqToDecode = payloadText.replace(/[^ATCGUatcgun]/g, "").toUpperCase();
+            if (!dnaSeqToDecode || dnaSeqToDecode.length < 4) {
+              dnaSeqToDecode = "ATCGATCGATCGATCG";
+            }
+            const decodeRes = Decode(dnaSeqToDecode, activeAlg);
+            fallbackReply = `⚡ CEO DIRECTIVE: Decoding DNA sequence!
+
+Using active algorithm **${activeAlg ? activeAlg.name : "Default DNA Encoder"}**:
+- **Target DNA Sequence**: \`${dnaSeqToDecode}\`
+- **Decoded ASCII Payload**: "${decodeRes.decodedText}"
+- **Extracted Checksum**: \`${decodeRes.extractedChecksum}\`
+- **Checksum Match**: **${decodeRes.checksumVerified ? "YES (Integrity Perfect)" : "NO (Integrity Error / Stubbed Sequence)"}**
+- **Decoding Latency**: ${decodeRes.decodingTime.toFixed(3)} ms
+
+Completed using: [local DNA Engine] — Gemini was not required for these steps`;
+          }
+        }
+        else if (lowerText.includes("simulate") || lowerText.includes("noise") || lowerText.includes("mutation")) {
+          const originalSeq = dnaSeq.toUpperCase();
+          const bases = ["A", "T", "C", "G"];
+          let synthesizedSeq = "";
+          for (let k = 0; k < originalSeq.length; k++) {
+            if (Math.random() < 0.01) {
+              synthesizedSeq += bases[Math.floor(Math.random() * bases.length)];
+            } else {
+              synthesizedSeq += originalSeq[k];
+            }
+          }
+          let readSeq = "";
+          for (let k = 0; k < synthesizedSeq.length; k++) {
+            if (Math.random() < 0.02) {
+              readSeq += bases[Math.floor(Math.random() * bases.length)];
+            } else {
+              readSeq += synthesizedSeq[k];
+            }
+          }
+
+          const m = originalSeq.length, n = readSeq.length;
+          const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+          for (let k = 0; k <= m; k++) dp[k][0] = k;
+          for (let l = 0; l <= n; l++) dp[0][l] = l;
+          for (let k = 1; k <= m; k++) {
+            for (let l = 1; l <= n; l++) {
+              if (originalSeq[k - 1] === readSeq[l - 1]) {
+                dp[k][l] = dp[k - 1][l - 1];
+              } else {
+                dp[k][l] = Math.min(dp[k - 1][l - 1] + 1, dp[k - 1][l] + 1, dp[k][l - 1] + 1);
+              }
+            }
+          }
+          let x = m, y = n;
+          let subs = 0, ins = 0, dels = 0;
+          while (x > 0 || y > 0) {
+            if (x > 0 && y > 0 && originalSeq[x - 1] === readSeq[y - 1]) {
+              x--; y--;
+            } else if (x > 0 && y > 0 && dp[x][y] === dp[x - 1][y - 1] + 1) {
+              subs++; x--; y--;
+            } else if (x > 0 && (y === 0 || dp[x][y] === dp[x - 1][y] + 1)) {
+              dels++; x--;
+            } else if (y > 0 && (x === 0 || dp[x][y] === dp[x][y - 1] + 1)) {
+              ins++; y--;
+            } else {
+              if (x > 0) { dels++; x--; }
+              else { ins++; y--; }
+            }
+          }
+
+          const totalErrors = subs + ins + dels;
+          const errorRatePercentage = m > 0 ? (totalErrors / m) * 100 : 0;
+
+          fallbackReply = `⚡ CEO DIRECTIVE: Executing local physical storage noise simulation!
+
+Run details on active sequence: **${currentSeqName}** (${originalSeq.length} bp):
+- **Write synthesis rate**: 1.0%
+- **Noise injection rate**: 2.0%
+- **Read sequencing rate**: 0.0%
+- **Resulting Sequence**: \`${readSeq}\`
+
+**Traceback Error Statistics:**
+- **Substitutions (S)**: ${subs}
+- **Insertions (I)**: ${ins}
+- **Deletions (D)**: ${dels}
+- **Total Errors**: ${totalErrors}
+- **Overall Error Rate**: ${errorRatePercentage.toFixed(2)}%
+
+Completed using: [local DNA Engine, local Simulation Engine] — Gemini was not required for these steps`;
         }
         else {
           fallbackReply = `AI reasoning is temporarily unavailable (quota/offline). This specific request needs Gemini and couldn't be completed. Please retry in a moment.
