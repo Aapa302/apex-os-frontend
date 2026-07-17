@@ -7,3 +7,5 @@
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
+6:27:15 PM [vite] hmr update /src/App.jsx, /src/AlgorithmDesigner.jsx
+6:32:24 PM [vite] hmr update /src/App.jsx
