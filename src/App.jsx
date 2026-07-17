@@ -1952,6 +1952,27 @@ export default function ApexOS() {
     if (cmds.memories.length) toast(`${cmds.memories.length} item(s) saved to memory`, "info");
   }, [state.kpis, addActivity, toast, runBuild]);
 
+  // Helper to extract clean paper search terms from natural phrasing
+  const extractPaperSearchTerm = useCallback((txt) => {
+    let clean = txt.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").trim();
+    const prefixes = [
+      /^(search|find|look up|show|get|retrieve|fetch)\s+(for|about|on)?\s*/i,
+      /^(papers?|publications?|studies|study|research)\s+(for|about|on)?\s*/i,
+      /^(search\s+for\s+)?(papers?|publications?|studies|study|research)\s+(about|on)?\s*/i
+    ];
+    for (const regex of prefixes) {
+      clean = clean.replace(regex, "");
+    }
+    const suffixes = [
+      /\s+(papers?|publications?|studies|study|research)$/i
+    ];
+    for (const regex of suffixes) {
+      clean = clean.replace(regex, "");
+    }
+    clean = clean.replace(/^(on|about|for)\s+/i, "");
+    return clean.trim() || "DNA Storage";
+  }, []);
+
   // ── CEO Chat ──
   const sendCEO = useCallback(async (overrideText) => {
     const text = (overrideText || ceoInput).trim();
@@ -1992,20 +2013,63 @@ export default function ApexOS() {
       const lowerText = text.toLowerCase();
       const normalizedText = text.toLowerCase().replace(/-/g, " ");
 
+      // Define precise, robust matchers for TOOL-CAPABLE requests
+      const isPaperSearch = (
+        lowerText.includes("pubmed") ||
+        lowerText.includes("search-pubmed") ||
+        lowerText.includes("literature") ||
+        (
+          (lowerText.includes("paper") || lowerText.includes("papers") || lowerText.includes("publication") || lowerText.includes("publications") || lowerText.includes("study") || lowerText.includes("studies") || lowerText.includes("research")) &&
+          (lowerText.includes("search") || lowerText.includes("find") || lowerText.includes("look up") || lowerText.includes("fetch") || lowerText.includes("retrieve") || lowerText.includes("get")) &&
+          !lowerText.includes("market fit") &&
+          !lowerText.includes("strategy") &&
+          !lowerText.includes("go-to-market")
+        )
+      );
+
+      const isEncodeDecode = (
+        (lowerText.includes("encode") || lowerText.includes("decode")) &&
+        (lowerText.includes("dna") || lowerText.includes("sequence") || lowerText.includes("payload") || lowerText.includes("text") || lowerText.includes("binary") || lowerText.includes("hello world") || text.match(/['"](.*?)['"]/))
+      );
+
+      const isSimulation = (
+        (lowerText.includes("simulate") || lowerText.includes("simulation") || lowerText.includes("mutation") || lowerText.includes("noise") || lowerText.includes("mutate")) &&
+        (lowerText.includes("dna") || lowerText.includes("sequence") || lowerText.includes("payload") || lowerText.includes("model") || lowerText.includes("run") || lowerText.includes("this"))
+      );
+
+      const isStorageComparison = (
+        (lowerText.includes("compare") || lowerText.includes("comparison")) &&
+        (normalizedText.includes("storage") || normalizedText.includes("architecture") || normalizedText.includes("architectures") || normalizedText.includes("architect"))
+      );
+
+      const isGeneSearch = (
+        lowerText.includes("ncbi search") ||
+        lowerText.includes("biological search") ||
+        lowerText.includes("search-ncbi") ||
+        lowerText.includes("search ncbi") ||
+        (lowerText.includes("search") && (lowerText.includes("gene") || lowerText.includes("protein") || lowerText.includes("sequence") || lowerText.includes("nucleotide"))) ||
+        (lowerText.includes("find") && (lowerText.includes("gene") || lowerText.includes("protein") || lowerText.includes("sequence") || lowerText.includes("nucleotide"))) ||
+        (lowerText.startsWith("search ") && !lowerText.includes("algorithm") && !lowerText.includes("dna") && !lowerText.includes("pubmed") && !lowerText.includes("literature") && !lowerText.includes("entire company") && !lowerText.includes("paper") && !lowerText.includes("studies"))
+      );
+
+      const isShowAlgorithms = (
+        (lowerText.includes("show") || lowerText.includes("list") || lowerText.includes("display") || lowerText.includes("get") || lowerText.includes("view")) &&
+        (lowerText.includes("algorithm") || lowerText.includes("algorithms") || lowerText.includes("design") || lowerText.includes("designs") || lowerText.includes("models"))
+      );
+
+      const isRunEntireCompany = (
+        normalizedText.includes("run entire company") ||
+        normalizedText.includes("run-entire-company") ||
+        normalizedText.includes("autonomous company") ||
+        normalizedText.includes("autonomous mode")
+      );
+
       // Check if it is a specific local/offline-only tool command that must bypass Gemini completely
       const isLocalOnlyCommand = (
         (lowerText.includes("create") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) ||
         (lowerText.includes("optimize") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) ||
-        (lowerText.includes("compare") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) ||
-        (
-          lowerText.includes("ncbi search") ||
-          lowerText.includes("biological search") ||
-          lowerText.includes("search-ncbi") ||
-          lowerText.includes("search ncbi") ||
-          (lowerText.includes("search") && lowerText.includes("gene")) ||
-          (lowerText.includes("find") && lowerText.includes("gene")) ||
-          (lowerText.startsWith("search ") && !lowerText.includes("algorithm") && !lowerText.includes("dna") && !lowerText.includes("pubmed") && !lowerText.includes("literature") && !lowerText.includes("entire company"))
-        ) ||
+        isStorageComparison ||
+        isGeneSearch ||
         (
           lowerText.includes("ncbi fetch") ||
           lowerText.includes("ncbi download") ||
@@ -2017,15 +2081,11 @@ export default function ApexOS() {
           lowerText.startsWith("fetch ")
         ) ||
         (lowerText.includes("ncbi test") || lowerText.includes("ncbi execute") || lowerText.includes("ncbi analyze")) ||
-        (lowerText.includes("pubmed") || lowerText.includes("search-pubmed") || lowerText.includes("literature")) ||
-        (
-          (lowerText.includes("show") || lowerText.includes("list") || lowerText.includes("display") || lowerText.includes("get")) &&
-          (lowerText.includes("algorithm") || lowerText.includes("algorithms") || lowerText.includes("design") || lowerText.includes("designs") || lowerText.includes("models"))
-        ) ||
-        (lowerText.includes("encode") || lowerText.includes("decode")) ||
-        (lowerText.includes("simulate") || lowerText.includes("noise") || lowerText.includes("mutation")) ||
-        (normalizedText.includes("architecture") || normalizedText.includes("storage architect")) ||
-        (normalizedText.includes("run entire company") || normalizedText.includes("run-entire-company") || normalizedText.includes("autonomous company") || normalizedText.includes("autonomous mode"))
+        isPaperSearch ||
+        isShowAlgorithms ||
+        isEncodeDecode ||
+        isSimulation ||
+        isRunEntireCompany
       );
 
       if (isLocalOnlyCommand) {
@@ -2500,13 +2560,8 @@ Completed using: [local DNA Engine, NCBI API] — Gemini was not required for th
 Completed using: [NCBI API] — Gemini was not required for these steps`;
           }
         }
-        else if (lowerText.includes("pubmed") || lowerText.includes("search-pubmed") || lowerText.includes("literature")) {
-          let term = "DNA Storage";
-          const idx = lowerText.indexOf("pubmed");
-          if (idx !== -1) {
-            const remainder = text.slice(idx + 6).trim();
-            if (remainder) term = remainder;
-          }
+        else if (isPaperSearch) {
+          const term = extractPaperSearchTerm(text);
 
           try {
             const pubMedRes = await fetch(`${PROXY_BASE_URL}/api/ncbi/search-pubmed`, {
@@ -2518,7 +2573,7 @@ Completed using: [NCBI API] — Gemini was not required for these steps`;
 
             fallbackReply = `⚡ CEO DIRECTIVE: PubMed biological literature retrieval!
 
-Because Gemini is offline/busy, we performed a direct search against official NCBI PubMed database:
+Because Gemini is offline/busy, we performed a direct search against official NCBI PubMed database for term: **"${term}"**
 
 ${articles.map(art => `- **${art.title}** (${art.author}, ${art.journal}) — PMID: ${art.id}`).join("\n")}
 
@@ -2529,7 +2584,7 @@ Completed using: [PubMed API] — Gemini was not required for these steps`;
 Completed using: [PubMed API] — Gemini was not required for these steps`;
           }
         }
-        else if ((lowerText.includes("show") || lowerText.includes("list") || lowerText.includes("display") || lowerText.includes("get")) && (lowerText.includes("algorithm") || lowerText.includes("algorithms") || lowerText.includes("design") || lowerText.includes("designs") || lowerText.includes("models"))) {
+        else if (isShowAlgorithms) {
           const algs = getAllAlgorithms();
           const memories = JSON.parse(localStorage.getItem("apex_os_v4_research_memories") || "[]");
           const simResults = JSON.parse(localStorage.getItem("apex_os_simulation_results") || "[]");
@@ -2561,17 +2616,29 @@ ${listMd}
 
 Completed using: [local Algorithm Engineer] — Gemini was not required for these steps`;
         }
-        else if (lowerText.includes("encode") || lowerText.includes("decode")) {
+        else if (isEncodeDecode) {
           let payloadText = "APEX DNA Storage payload";
           const matchQuote = text.match(/['"](.*?)['"]/);
           if (matchQuote && matchQuote[1]) {
             payloadText = matchQuote[1];
           } else {
-            const words = text.split(/\s+/);
-            const idx = words.findIndex(w => w.toLowerCase().includes("encode") || w.toLowerCase().includes("decode"));
-            if (idx !== -1 && words[idx + 1]) {
-              payloadText = words.slice(idx + 1).join(" ");
+            let cleanPayload = text;
+            const encodeMatch = text.match(/encode\s+(.+?)(?:\s+into\s+dna|\s+to\s+dna|$)/i);
+            const decodeMatch = text.match(/decode\s+(.+?)(?:\s+from\s+dna|\s+to\s+text|$)/i);
+            if (lowerText.includes("encode") && encodeMatch) {
+              payloadText = encodeMatch[1].trim();
+            } else if (lowerText.includes("decode") && decodeMatch) {
+              payloadText = decodeMatch[1].trim();
+            } else {
+              const words = text.split(/\s+/);
+              const idx = words.findIndex(w => w.toLowerCase().includes("encode") || w.toLowerCase().includes("decode"));
+              if (idx !== -1 && words[idx + 1]) {
+                payloadText = words.slice(idx + 1).join(" ");
+              }
             }
+          }
+          if (!matchQuote) {
+            payloadText = payloadText.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").trim();
           }
 
           const algs = getAllAlgorithms();
@@ -2608,7 +2675,40 @@ Using active algorithm **${activeAlg ? activeAlg.name : "Default DNA Encoder"}**
 Completed using: [local DNA Engine] — Gemini was not required for these steps`;
           }
         }
-        else if (lowerText.includes("simulate") || lowerText.includes("noise") || lowerText.includes("mutation")) {
+        else if (isSimulation) {
+          let dnaSeq = "";
+          let currentSeqName = "Standard Payload Segment";
+
+          // Scan state.ceoChats backward to find the most recently discussed or generated DNA sequence
+          // matching pure A/T/C/G (case-insensitive) of 10+ characters or backticked strings
+          for (let i = state.ceoChats.length - 1; i >= 0; i--) {
+            const chatMsg = state.ceoChats[i];
+            const contentStr = chatMsg.content || "";
+            // Find backticked strings or pure ATCG sequences of 10+ chars
+            const backtickMatch = contentStr.match(/`([ATCGUatcgu]{10,})`/);
+            if (backtickMatch) {
+              dnaSeq = backtickMatch[1];
+              currentSeqName = "Recent Chat Sequence";
+              break;
+            }
+            const pureATCGMatch = contentStr.match(/\b([ATCGUatcgu]{10,})\b/);
+            if (pureATCGMatch) {
+              dnaSeq = pureATCGMatch[1];
+              currentSeqName = "Recent Chat Sequence";
+              break;
+            }
+          }
+
+          // Fallback to active algorithm benchmark sequence if none found in chat
+          if (!dnaSeq) {
+            const algs = getAllAlgorithms();
+            const activeAlg = algs[0] || null;
+            const testPayload = "APEX-OS Digital-Biological Archival Core Benchmark Segment";
+            const encodeRes = Encode(testPayload, activeAlg);
+            dnaSeq = encodeRes.dnaSequence || "ATCGATCGATCGATCGATCGATCGATCGATCG";
+            currentSeqName = activeAlg ? `Benchmark of ${activeAlg.name}` : "Default Platform Benchmark";
+          }
+
           const originalSeq = dnaSeq.toUpperCase();
           const bases = ["A", "T", "C", "G"];
           let synthesizedSeq = "";
@@ -2678,7 +2778,7 @@ Run details on active sequence: **${currentSeqName}** (${originalSeq.length} bp)
 
 Completed using: [local DNA Engine, local Simulation Engine] — Gemini was not required for these steps`;
         }
-        else if (normalizedText.includes("architecture") || normalizedText.includes("storage architect")) {
+        else if (isStorageComparison || normalizedText.includes("architecture") || normalizedText.includes("storage architect")) {
           const algs = getAllAlgorithms();
           if (algs.length === 0) {
             fallbackReply = `⚡ CEO DIRECTIVE: No registered models found to execute comparative storage architecture analysis!`;
