@@ -2121,26 +2121,90 @@ Completed using: [local DNA Engine] — Gemini was not required for these steps`
 Completed using: [local DNA Engine] — Gemini was not required for these steps`;
           }
         }
-        else if (lowerText.includes("ncbi search") || lowerText.includes("biological search") || (lowerText.includes("search") && lowerText.includes("gene"))) {
+        else if (
+          lowerText.includes("ncbi search") ||
+          lowerText.includes("biological search") ||
+          lowerText.includes("search-ncbi") ||
+          lowerText.includes("search ncbi") ||
+          (lowerText.includes("search") && lowerText.includes("gene")) ||
+          (lowerText.includes("find") && lowerText.includes("gene")) ||
+          (lowerText.startsWith("search ") && !lowerText.includes("algorithm") && !lowerText.includes("dna") && !lowerText.includes("pubmed") && !lowerText.includes("literature") && !lowerText.includes("entire company"))
+        ) {
           let db = "nucleotide";
           if (lowerText.includes("gene")) db = "gene";
           else if (lowerText.includes("protein")) db = "protein";
 
-          let term = "human insulin";
-          const searchKeywords = ["ncbi search", "biological search", "search gene", "search protein", "search nucleotide"];
-          for (const kw of searchKeywords) {
-            const idx = lowerText.indexOf(kw);
-            if (idx !== -1) {
-              const remainder = text.slice(idx + kw.length).trim();
-              if (remainder) {
-                term = remainder;
-                break;
+          let term = "";
+          if (normalizedText === "search ncbi" || normalizedText === "search-ncbi") {
+            term = "BRCA1";
+          } else {
+            const searchNcbiMatch = text.match(/search[- ]ncbi\s+(.+)/i);
+            if (searchNcbiMatch) {
+              term = searchNcbiMatch[1].trim();
+            } else {
+              const dbSearchMatch = text.match(/(?:search|find)\s+(?:gene|protein|nucleotide)\s+(.+)/i);
+              if (dbSearchMatch) {
+                term = dbSearchMatch[1].trim();
+              } else if (lowerText.startsWith("search ")) {
+                term = text.slice(7).trim();
+              } else {
+                const searchKeywords = ["ncbi search", "biological search", "search gene", "search protein", "search nucleotide", "find gene"];
+                for (const kw of searchKeywords) {
+                  const idx = lowerText.indexOf(kw);
+                  if (idx !== -1) {
+                    const remainder = text.slice(idx + kw.length).trim();
+                    if (remainder) {
+                      term = remainder;
+                      break;
+                    }
+                  }
+                }
               }
             }
           }
 
+          if (!term) {
+            term = "BRCA1";
+          }
+
           try {
-            const ids = await searchNCBIDatabase(db, term, 5);
+            let ids = [];
+            let usedBackend = false;
+            let backendError = null;
+
+            try {
+              const backendRes = await fetch(`${PROXY_BASE_URL}/api/ncbi/search-gene`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: term, db })
+              });
+              if (backendRes.ok) {
+                const data = await backendRes.json();
+                if (data.error) {
+                  throw new Error(data.error.message || "Backend returned error object");
+                }
+                if (Array.isArray(data)) {
+                  ids = data;
+                } else if (data.ids && Array.isArray(data.ids)) {
+                  ids = data.ids;
+                } else if (data.idList && Array.isArray(data.idList)) {
+                  ids = data.idList;
+                } else if (data.result && Array.isArray(data.result)) {
+                  ids = data.result;
+                }
+                usedBackend = true;
+              } else {
+                throw new Error(`HTTP ${backendRes.status}`);
+              }
+            } catch (err) {
+              backendError = err.message;
+              console.warn("Backend NCBI search failed, trying local direct:", err);
+            }
+
+            if (ids.length === 0) {
+              ids = await searchNCBIDatabase(db, term, 5);
+            }
+
             let metaDetail = null;
             if (ids.length > 0) {
               metaDetail = await FetchMetadata(ids[0], db);
@@ -2161,18 +2225,242 @@ Completed using: [local DNA Engine] — Gemini was not required for these steps`
 
             fallbackReply = `⚡ CEO DIRECTIVE: Retrieve genomic data from NCBI!
 
-Successfully searched NCBI database without Gemini:
+Successfully searched NCBI database without Gemini (using ${usedBackend ? "Backend API" : "Direct E-utilities"}):
 - **Target Database**: ${db}
 - **Query Term**: ${term}
-- **Accession IDs Found**: ${ids.join(", ") || "None"}
+- **Accession/Gene IDs Found**: ${ids.join(", ") || "None"}
 - **Top Match Organism**: ${metaDetail ? metaDetail.organism : "N/A"}
 - **Top Match Definition**: ${metaDetail ? metaDetail.title : "N/A"}
+
+${backendError ? `*(Note: Backend API returned: "${backendError}". Gracefully fell back to direct NCBI E-utilities.)*` : ""}
 
 Dr. Mei Lin has logged these accession records to our Research Lab.
 
 Completed using: [NCBI API, local DNA Engine] — Gemini was not required for these steps`;
           } catch (err) {
             fallbackReply = `⚡ CEO DIRECTIVE: NCBI query failed! Error: ${err.message}.
+
+Completed using: [NCBI API] — Gemini was not required for these steps`;
+          }
+        }
+        else if (
+          lowerText.includes("ncbi fetch") ||
+          lowerText.includes("ncbi download") ||
+          lowerText.includes("ncbi import") ||
+          lowerText.includes("import sequence") ||
+          lowerText.includes("download fasta") ||
+          lowerText.startsWith("import ") ||
+          lowerText.startsWith("download ") ||
+          lowerText.startsWith("fetch ")
+        ) {
+          let accessionId = "";
+          const words = text.split(/[\s,;:\(\)\[\]]+/);
+          for (const w of words) {
+            const trimmed = w.trim();
+            if (/^[A-Z]{1,2}_?\d{5,8}(\.\d)?$/.test(trimmed) || /^\d{6,10}$/.test(trimmed)) {
+              accessionId = trimmed;
+              break;
+            }
+          }
+
+          let extractedTerm = "";
+          if (!accessionId) {
+            if (lowerText.startsWith("import ")) {
+              extractedTerm = text.slice(7).trim();
+            } else if (lowerText.startsWith("download ")) {
+              extractedTerm = text.slice(9).trim();
+            } else if (lowerText.startsWith("fetch ")) {
+              extractedTerm = text.slice(6).trim();
+            } else {
+              const keywords = ["ncbi fetch", "ncbi download", "ncbi import", "import sequence", "download fasta"];
+              for (const kw of keywords) {
+                const idx = lowerText.indexOf(kw);
+                if (idx !== -1) {
+                  extractedTerm = text.slice(idx + kw.length).trim();
+                  break;
+                }
+              }
+            }
+          }
+
+          try {
+            if (!accessionId && extractedTerm) {
+              let searchIds = [];
+              try {
+                const searchRes = await fetch(`${PROXY_BASE_URL}/api/ncbi/search-gene`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ query: extractedTerm, db: "nucleotide" })
+                });
+                if (searchRes.ok) {
+                  const data = await searchRes.json();
+                  if (Array.isArray(data)) searchIds = data;
+                  else if (data.ids) searchIds = data.ids;
+                }
+              } catch (e) {
+                console.warn("Backend search during import failed:", e);
+              }
+
+              if (searchIds.length === 0) {
+                searchIds = await searchNCBIDatabase("nucleotide", extractedTerm, 1);
+              }
+
+              if (searchIds && searchIds.length > 0) {
+                accessionId = searchIds[0];
+              } else {
+                throw new Error(`Could not locate accession record for term "${extractedTerm}"`);
+              }
+            }
+
+            if (!accessionId) {
+              accessionId = "NM_001101";
+            }
+
+            let fasta = "";
+            let meta = null;
+            let usedBackend = false;
+            let backendError = null;
+
+            try {
+              const backendRes = await fetch(`${PROXY_BASE_URL}/api/ncbi/fetch-fasta`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accessionId })
+              });
+              if (backendRes.ok) {
+                const data = await backendRes.json();
+                if (data.error) {
+                  throw new Error(data.error.message || "Backend returned error object");
+                }
+                if (data.fasta) {
+                  fasta = data.fasta;
+                  meta = data.metadata || null;
+                  usedBackend = true;
+                }
+              } else {
+                throw new Error(`HTTP ${backendRes.status}`);
+              }
+            } catch (err) {
+              backendError = err.message;
+              console.warn("Backend NCBI fetch fasta failed, trying local direct:", err);
+            }
+
+            if (!fasta) {
+              fasta = await FetchFASTA(accessionId);
+              meta = await FetchMetadata(accessionId, "nucleotide");
+            }
+
+            let existingSets = [];
+            try {
+              const saved = localStorage.getItem("apex_os_datasets");
+              if (saved) existingSets = JSON.parse(saved);
+            } catch(e){}
+
+            const cleanSequence = fasta.split("\n").slice(1).join("").replace(/[^ATCGUatcgun]/g, "").toUpperCase();
+
+            const newDataset = {
+              id: `ncbi_${accessionId}_${Date.now()}`,
+              name: `NCBI: ${meta?.title || accessionId}`,
+              size: `${(cleanSequence.length / 1024).toFixed(2)} KB`,
+              type: "Genomic Sequence",
+              source: `NCBI Nucleotide (${accessionId})`,
+              content: cleanSequence,
+              addedAt: new Date().toLocaleDateString()
+            };
+
+            existingSets.unshift(newDataset);
+            localStorage.setItem("apex_os_datasets", JSON.stringify(existingSets));
+
+            const count = parseInt(localStorage.getItem("apex_os_ncbi_imported_count") || "0") + 1;
+            localStorage.setItem("apex_os_ncbi_imported_count", count.toString());
+
+            dispatch({
+              type: "ADD_TASK",
+              payload: {
+                id: `task_${Date.now()}`,
+                title: `Import Sequence ${accessionId}`,
+                desc: `Downloaded FASTA record from NCBI, formatted into a digital storage payload and cached locally.`,
+                assignee: "analyst",
+                status: "done",
+                priority: "high",
+                createdAt: new Date().toISOString()
+              }
+            });
+
+            fallbackReply = `⚡ CEO DIRECTIVE: Import FASTA sequence from NCBI!
+
+Successfully imported and cataloged genomic sequence without Gemini (using ${usedBackend ? "Backend API" : "Direct E-utilities"}):
+- **Accession ID**: ${accessionId}
+- **Organism Origin**: ${meta?.organism || "Unknown Organism"}
+- **Genomic Definition**: ${meta?.title || "Unknown Sequence"}
+- **DNA Sequence Length**: ${cleanSequence.length} bases
+- **Dataset Registered**: "NCBI: ${meta?.title || accessionId}"
+
+${backendError ? `*(Note: Backend API returned: "${backendError}". Gracefully fell back to direct NCBI E-utilities.)*` : ""}
+
+Our Performance Analyst (Alex Rivers) has converted this FASTA sequence to a digital storage payload.
+
+Completed using: [NCBI API, local DNA Engine] — Gemini was not required for these steps`;
+          } catch (err) {
+            fallbackReply = `⚡ CEO DIRECTIVE: NCBI download/import failed! Error: ${err.message}.
+
+Completed using: [NCBI API] — Gemini was not required for these steps`;
+          }
+        }
+        else if (lowerText.includes("ncbi test") || lowerText.includes("ncbi execute") || lowerText.includes("ncbi analyze")) {
+          let accessionId = "NM_001101";
+          const words = text.split(/[\s,;:\(\)\[\]]+/);
+          for (const w of words) {
+            const trimmed = w.trim();
+            if (/^[A-Z]{1,2}_?\d{5,8}(\.\d)?$/.test(trimmed) || /^\d{6,10}$/.test(trimmed)) {
+              accessionId = trimmed;
+              break;
+            }
+          }
+
+          try {
+            const fasta = await FetchFASTA(accessionId);
+            const meta = await FetchMetadata(accessionId, "nucleotide");
+            const cleanSequence = fasta.split("\n").slice(1).join("").replace(/[^ATCGUatcgun]/g, "").toUpperCase();
+
+            const algs = getAllAlgorithms();
+            if (algs.length === 0) {
+              throw new Error("No algorithms registered in Algorithm Designer. Create one first.");
+            }
+
+            const targetAlg = algs[0];
+            const report = executeAndBenchmarkAlgorithm(targetAlg.id, cleanSequence.slice(0, 1000));
+
+            const count = parseInt(localStorage.getItem("apex_os_ncbi_executed_count") || "0") + 1;
+            localStorage.setItem("apex_os_ncbi_executed_count", count.toString());
+
+            dispatch({
+              type: "ADD_TASK",
+              payload: {
+                id: `task_${Date.now()}`,
+                title: `Execute Algorithm on NCBI Sequence`,
+                desc: `Tested storage encoding for sequence ${accessionId} using ${targetAlg.name}. Match rate: ${report.similarity * 100}%.`,
+                assignee: "cto",
+                status: "done",
+                priority: "high",
+                createdAt: new Date().toISOString()
+              }
+            });
+
+            fallbackReply = `⚡ CEO DIRECTIVE: Executing storage pipeline on biological sequence!
+
+Successfully tested storage encoding without Gemini:
+- **Sequence Accession**: ${accessionId} (${meta.title})
+- **Algorithm Used**: ${targetAlg.name}
+- **Encoding Time**: ${report.encodingTime.toFixed(3)} ms
+- **Decoding Time**: ${report.decodingTime.toFixed(3)} ms
+- **Validation Match**: ${report.validationResult} (Similarity: ${(report.similarity * 100).toFixed(1)}%)
+- **Checksum Result**: ${report.checksumResult}
+- **DNA String Output**: ${report.dnaSequence.slice(0, 80)}...
+
+Completed using: [local DNA Engine, NCBI API] — Gemini was not required for these steps`;
+          } catch (err) {
+            fallbackReply = `⚡ CEO DIRECTIVE: NCBI sequence execution failed! Error: ${err.message}.
 
 Completed using: [NCBI API] — Gemini was not required for these steps`;
           }
