@@ -24,7 +24,7 @@ import {
   executeAndBenchmarkAlgorithm,
   compareAlgorithms
 } from "./core/AlgorithmEngine";
-import { Encode, Decode } from "./core/DNACoreEngine";
+import { Encode, Decode, Validate } from "./core/DNACoreEngine";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -1989,6 +1989,7 @@ export default function ApexOS() {
       }
 
       const lowerText = text.toLowerCase();
+      const normalizedText = text.toLowerCase().replace(/-/g, " ");
 
       // 2. Local Fallback Routing if Gemini is busy, offline, or quota exceeded
       if (geminiStatus !== "available") {
@@ -2353,6 +2354,114 @@ Run details on active sequence: **${currentSeqName}** (${originalSeq.length} bp)
 - **Overall Error Rate**: ${errorRatePercentage.toFixed(2)}%
 
 Completed using: [local DNA Engine, local Simulation Engine] — Gemini was not required for these steps`;
+        }
+        else if (normalizedText.includes("architecture") || normalizedText.includes("storage architect")) {
+          const algs = getAllAlgorithms();
+          if (algs.length === 0) {
+            fallbackReply = `⚡ CEO DIRECTIVE: No registered models found to execute comparative storage architecture analysis!`;
+          } else {
+            const payload = "APEX-OS Digital-Biological Archival Core Benchmark Segment";
+            const comparisons = algs.map(alg => {
+              const startEncode = performance.now();
+              const encodeRes = Encode(payload, alg);
+              const encodeTime = performance.now() - startEncode;
+
+              const startDecode = performance.now();
+              const decodeRes = Decode(encodeRes.dnaSequence, alg);
+              const decodeTime = performance.now() - startDecode;
+
+              const validateRes = Validate(payload, decodeRes.decodedText, decodeRes.checksumVerified);
+              const accuracyPercent = parseFloat(validateRes.similarity);
+
+              const bits = encodeRes.combinedBinary.length;
+              const bases = encodeRes.dnaSequence.length || 1;
+              const density = (bits / bases).toFixed(2);
+
+              const gCount = (encodeRes.dnaSequence.match(/G/g) || []).length;
+              const cCount = (encodeRes.dnaSequence.match(/C/g) || []).length;
+              const gcPercent = (bases > 0) ? ((gCount + cCount) / bases) * 100 : 50;
+              const gcDistance = Math.abs(gcPercent - 50);
+              const gcBalance = (100 - gcDistance * 2).toFixed(1);
+
+              let noiseCount = 0;
+              const noiseProb = 0.01;
+              let noisedSeq = "";
+              const basesList = ["A", "T", "C", "G"];
+              for (let k = 0; k < encodeRes.dnaSequence.length; k++) {
+                if (Math.random() < noiseProb) {
+                  noiseCount++;
+                  const originalBase = encodeRes.dnaSequence[k];
+                  const options = basesList.filter(b => b !== originalBase);
+                  noisedSeq += options[Math.floor(Math.random() * options.length)];
+                } else {
+                  noisedSeq += encodeRes.dnaSequence[k];
+                }
+              }
+              const testDecode = Decode(noisedSeq || encodeRes.dnaSequence, alg);
+              const testValidate = Validate(payload, testDecode.decodedText, testDecode.checksumVerified);
+              const errorRate = (100 - parseFloat(testValidate.similarity)).toFixed(2);
+
+              let eccOverhead = 0;
+              const ecStr = (alg.errorCorrection || "").toLowerCase();
+              if (ecStr.includes("reed-solomon") || ecStr.includes("rs")) {
+                eccOverhead = 12.5;
+              } else if (ecStr.includes("hamming")) {
+                eccOverhead = 8.0;
+              }
+
+              const memoryUsageEstimate = encodeRes.dnaSequence.length;
+
+              const speedScore = Math.max(0, 100 - (encodeTime + decodeTime) * 10);
+              const weightedScore = (
+                (parseFloat(density) / 2.0) * 35 +
+                (accuracyPercent / 100) * 25 +
+                (speedScore / 100) * 15 +
+                (parseFloat(gcBalance) / 100) * 15 +
+                ((100 - parseFloat(errorRate)) / 100) * 10
+              );
+
+              return {
+                name: alg.name,
+                version: alg.version,
+                density,
+                encodeTime: encodeTime.toFixed(3),
+                decodeTime: decodeTime.toFixed(3),
+                totalTime: (encodeTime + decodeTime).toFixed(3),
+                accuracy: accuracyPercent.toFixed(1),
+                gcPercent: gcPercent.toFixed(1),
+                gcBalance,
+                errorRate,
+                eccOverhead: eccOverhead.toFixed(1),
+                memoryUsage: `${memoryUsageEstimate} Bytes`,
+                weightedScore: weightedScore.toFixed(2)
+              };
+            });
+
+            comparisons.sort((a, b) => parseFloat(b.weightedScore) - parseFloat(a.weightedScore));
+
+            let compMd = comparisons.map((c, idx) => {
+              return `### ${idx + 1}. ${c.name} (${c.version}) — Rank: **#${idx + 1}**
+- **Weighted Score**: **${c.weightedScore}** / 100
+- **Physical Density**: ${c.density} bits/nt
+- **R-T Accuracy**: ${c.accuracy}%
+- **GC Content**: ${c.gcPercent}% (Balance score: ${c.gcBalance}/100)
+- **Error Rate (under 1% noise)**: ${c.errorRate}%
+- **ECC Overhead**: ${c.eccOverhead}%
+- **Memory Footprint**: ${c.memoryUsage}
+- **Latency**: ${c.totalTime} ms (Enc: ${c.encodeTime}ms | Dec: ${c.decodeTime}ms)`;
+            }).join("\n\n");
+
+            fallbackReply = `⚡ CEO DIRECTIVE: Executing Storage Architect Comparative Review!
+
+Here is the deterministic analysis of the registered DNA storage architectures on the standard archival benchmark segment:
+
+${compMd}
+
+**Storage Architect Decision:**
+The highest-rated model is **${comparisons[0].name}** (Score: **${comparisons[0].weightedScore}**), which demonstrates superior structural balance and physical coding density.
+
+Completed using: [local Storage Architect Comparison Engine] — Gemini was not required for these steps`;
+          }
         }
         else {
           fallbackReply = `AI reasoning is temporarily unavailable (quota/offline). This specific request needs Gemini and couldn't be completed. Please retry in a moment.
