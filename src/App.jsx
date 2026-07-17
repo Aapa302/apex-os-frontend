@@ -1976,7 +1976,7 @@ export default function ApexOS() {
     setCeoLoading(true); setCeoStream("");
 
     try {
-      // 1. Fetch status of Gemini from backend first
+      // 1. Fetch status of Gemini from backend for informational logging/telemetry
       let geminiStatus = "offline";
       try {
         const statusRes = await fetch(`${PROXY_BASE_URL}/api/gemini/status`);
@@ -1987,15 +1987,50 @@ export default function ApexOS() {
       } catch (e) {
         console.warn("[CEO Status Check] Unreachable:", e);
       }
+      localStorage.setItem("apex_os_gemini_status", geminiStatus);
 
       const lowerText = text.toLowerCase();
       const normalizedText = text.toLowerCase().replace(/-/g, " ");
 
-      // 2. Local Fallback Routing if Gemini is busy, offline, or quota exceeded
-      if (geminiStatus !== "available") {
+      // Check if it is a specific local/offline-only tool command that must bypass Gemini completely
+      const isLocalOnlyCommand = (
+        (lowerText.includes("create") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) ||
+        (lowerText.includes("optimize") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) ||
+        (lowerText.includes("compare") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) ||
+        (
+          lowerText.includes("ncbi search") ||
+          lowerText.includes("biological search") ||
+          lowerText.includes("search-ncbi") ||
+          lowerText.includes("search ncbi") ||
+          (lowerText.includes("search") && lowerText.includes("gene")) ||
+          (lowerText.includes("find") && lowerText.includes("gene")) ||
+          (lowerText.startsWith("search ") && !lowerText.includes("algorithm") && !lowerText.includes("dna") && !lowerText.includes("pubmed") && !lowerText.includes("literature") && !lowerText.includes("entire company"))
+        ) ||
+        (
+          lowerText.includes("ncbi fetch") ||
+          lowerText.includes("ncbi download") ||
+          lowerText.includes("ncbi import") ||
+          lowerText.includes("import sequence") ||
+          lowerText.includes("download fasta") ||
+          lowerText.startsWith("import ") ||
+          lowerText.startsWith("download ") ||
+          lowerText.startsWith("fetch ")
+        ) ||
+        (lowerText.includes("ncbi test") || lowerText.includes("ncbi execute") || lowerText.includes("ncbi analyze")) ||
+        (lowerText.includes("pubmed") || lowerText.includes("search-pubmed") || lowerText.includes("literature")) ||
+        (
+          (lowerText.includes("show") || lowerText.includes("list") || lowerText.includes("display") || lowerText.includes("get")) &&
+          (lowerText.includes("algorithm") || lowerText.includes("algorithms") || lowerText.includes("design") || lowerText.includes("designs") || lowerText.includes("models"))
+        ) ||
+        (lowerText.includes("encode") || lowerText.includes("decode")) ||
+        (lowerText.includes("simulate") || lowerText.includes("noise") || lowerText.includes("mutation")) ||
+        (normalizedText.includes("architecture") || normalizedText.includes("storage architect")) ||
+        (normalizedText.includes("run entire company") || normalizedText.includes("run-entire-company") || normalizedText.includes("autonomous company") || normalizedText.includes("autonomous mode"))
+      );
+
+      if (isLocalOnlyCommand) {
         let fallbackReply = "";
         localStorage.setItem("apex_os_recent_execution_mode", "Local");
-        localStorage.setItem("apex_os_gemini_status", geminiStatus);
 
         if (lowerText.includes("create") && (lowerText.includes("algorithm") || lowerText.includes("dna"))) {
           const algs = getAllAlgorithms();
@@ -3262,8 +3297,12 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
       addActivity(`CEO responded to: "${text.slice(0, 50)}"`, "💬");
       dispatch({ type: "ADD_MEMORY", payload: { id: Date.now(), category: "decision", content: `Q: ${text.slice(0, 100)} | A: ${replyWithTrace.slice(0, 200)}`, importance: "medium", savedAt: new Date().toISOString() } });
     } catch (e) {
-      dispatch({ type: "UPDATE_CEO_LAST", payload: { content: `⚠️ Error: ${e.message}. Please try again.`, streaming: false } });
-      toast("API error. Please retry.", "error");
+      console.warn("Gemini call failed, displaying unavailable fallback:", e);
+      const fallbackReply = `AI reasoning is temporarily unavailable (quota/offline). This specific request needs Gemini and couldn't be completed. Please retry in a moment.
+
+Completed using: [none] — Gemini was unavailable for this step.`;
+      dispatch({ type: "UPDATE_CEO_LAST", payload: { content: fallbackReply, streaming: false } });
+      toast("AI reasoning is temporarily unavailable.", "error");
     }
     setCeoLoading(false);
   }, [ceoInput, ceoLoading, attachedFile, state.ceoChats, state.memory, state.company, processCEOCommands, addActivity, toast]);
