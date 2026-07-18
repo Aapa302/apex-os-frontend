@@ -677,14 +677,41 @@ export default function FormulaAlgorithmLibrary() {
 
   // Current selected formula object
   const selectedFormula = useMemo(() => {
-    return formulas.find(f => f.id === selectedFormulaId) || formulas[0];
+    const found = formulas.find(f => f.id === selectedFormulaId) || formulas[0];
+    if (found) {
+      const hasVars = found.variables && found.variables.length > 0 && !(found.variables.length === 1 && found.variables[0].name === "x" && !found.expression.includes("x"));
+      if (!hasVars) {
+        const detected = [];
+        let rightHandSide = found.expression || "";
+        if (rightHandSide.includes("=")) {
+          rightHandSide = rightHandSide.split("=")[1] || rightHandSide;
+        }
+        const matches = rightHandSide.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+        const unique = Array.from(new Set(matches));
+        const reserved = new Set([
+          "exp", "sin", "cos", "tan", "log", "log2", "sqrt", "pow", "abs", "min", "max",
+          "round", "ceil", "floor", "pi", "phi", "math", "Math", "sum", "sum_exp", "f", "H", "GC_pct",
+          "Error_Rate", "Density", "Velocity", "Overhead"
+        ]);
+        unique.forEach(v => {
+          if (!reserved.has(v) && isNaN(v)) {
+            detected.push({ name: v, label: `Parameter ${v}`, defaultValue: "1.0" });
+          }
+        });
+        if (detected.length > 0) {
+          return { ...found, variables: detected };
+        }
+      }
+    }
+    return found;
   }, [formulas, selectedFormulaId]);
 
   // Reset calculator when formula changes
   useEffect(() => {
     if (selectedFormula) {
       const initialVals = {};
-      selectedFormula.variables.forEach(v => {
+      const variablesList = selectedFormula.variables || [];
+      variablesList.forEach(v => {
         initialVals[v.name] = v.defaultValue || "";
       });
       setCalculatorInputs(initialVals);
@@ -828,6 +855,28 @@ export default function FormulaAlgorithmLibrary() {
       setIsEditingFormulaId(null);
       alert("Formula updated successfully!");
     } else {
+      // Auto detect variables if none explicitly configured on create
+      const finalVars = customVars.length > 0 ? customVars : (() => {
+        const detected = [];
+        let rightHandSide = customExpression;
+        if (rightHandSide.includes("=")) {
+          rightHandSide = rightHandSide.split("=")[1] || rightHandSide;
+        }
+        const matches = rightHandSide.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+        const unique = Array.from(new Set(matches));
+        const reserved = new Set([
+          "exp", "sin", "cos", "tan", "log", "log2", "sqrt", "pow", "abs", "min", "max",
+          "round", "ceil", "floor", "pi", "phi", "math", "Math", "sum", "sum_exp", "f", "H", "GC_pct",
+          "Error_Rate", "Density", "Velocity", "Overhead"
+        ]);
+        unique.forEach(v => {
+          if (!reserved.has(v) && isNaN(v)) {
+            detected.push({ name: v, label: `Parameter ${v}`, defaultValue: "1.0" });
+          }
+        });
+        return detected.length > 0 ? detected : [{ name: "x", label: "Generic Parameter", defaultValue: "1.0" }];
+      })();
+
       // Create new
       const newFormula = {
         id: `custom_${Date.now()}`,
@@ -835,9 +884,9 @@ export default function FormulaAlgorithmLibrary() {
         category: customCategory,
         expression: customExpression,
         description: customDesc,
-        variables: customVars.length > 0 ? customVars : [{ name: "x", label: "Generic Parameter", defaultValue: "1.0" }],
+        variables: finalVars,
         compute: computeFn,
-        codeSnippet: customCode || `# Custom Python implementation\ndef ${customName.toLowerCase().replace(/\s+/g, "_")}(${customVars.map(v => v.name).join(", ") || "x"}):\n    # TODO: Add logic here\n    pass`,
+        codeSnippet: customCode || `# Custom Python implementation\ndef ${customName.toLowerCase().replace(/\s+/g, "_")}(${finalVars.map(v => v.name).join(", ") || "x"}):\n    # TODO: Add logic here\n    pass`,
         tags: customTags.split(",").map(t => t.trim()).filter(Boolean),
         history: [{ version: "v1.0.0", date: new Date().toISOString().split("T")[0], changes: "Initial custom creation." }]
       };
