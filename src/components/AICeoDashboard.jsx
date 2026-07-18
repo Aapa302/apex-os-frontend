@@ -126,6 +126,8 @@ export default function AICeoDashboard() {
     yellow: "#f5a623"
   };
 
+  const registeredStaffCount = globalCEOCore.employeeRegistry.list().length || 11;
+
   return (
     <div style={{
       background: T.bg,
@@ -215,7 +217,7 @@ export default function AICeoDashboard() {
         {/* Employee Count */}
         <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: "14px", padding: "16px" }}>
           <div style={{ fontSize: "0.72rem", color: T.text2, marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Registered AI Staff</div>
-          <div style={{ fontSize: "1.5rem", fontWeight: 900, color: T.cyan }}>6 Agents</div>
+          <div style={{ fontSize: "1.5rem", fontWeight: 900, color: T.cyan }}>{registeredStaffCount} Agents</div>
           <div style={{ fontSize: "0.68rem", color: T.text3, marginTop: "6px" }}>Tracked under EmployeeRegistry</div>
         </div>
 
