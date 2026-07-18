@@ -160,6 +160,40 @@ export default function DatasetManager({ T = DEFAULT_T }) {
   const [importResearchArea, setImportResearchArea] = useState("");
   const [importSource, setImportSource] = useState("");
   const [importLicense, setImportLicense] = useState("CC0");
+  const [importRawSequence, setImportRawSequence] = useState("");
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target.result;
+      let name = file.name.replace(/\.[^/.]+$/, "");
+      let seq = "";
+      let isFasta = false;
+
+      if (text.trim().startsWith(">")) {
+        isFasta = true;
+        const lines = text.split("\n");
+        const header = lines[0].substring(1).trim();
+        if (header) name = header;
+        seq = lines.slice(1).join("").replace(/[^ATCGUatcgun\s]/gi, "").toUpperCase().trim();
+      } else {
+        seq = text.replace(/[^ATCGUatcgun\s]/gi, "").toUpperCase().trim();
+      }
+
+      setImportName(name);
+      setImportType(isFasta ? "FASTA" : "TXT");
+      setImportCategory("Genomics");
+      setImportRawSequence(seq);
+      setImportSize(`${(text.length / 1024).toFixed(1)} KB`);
+      setImportRecords(seq.length.toLocaleString());
+      setImportDescription(`Imported from local file: ${file.name}`);
+      triggerToast(`Parsed file "${file.name}" with ${seq.length} bases!`);
+    };
+    reader.readAsText(file);
+  };
 
   // NCBI Search Form State
   const [ncbiDb, setNcbiDb] = useState("nucleotide");
@@ -296,6 +330,18 @@ export default function DatasetManager({ T = DEFAULT_T }) {
       return;
     }
 
+    const finalRawSeq = importRawSequence || "ATCGCTAAGCTAGCTAGCTA";
+    const previewRows = [];
+    const maxPreview = Math.min(finalRawSeq.length, 50);
+    for (let i = 0; i < maxPreview; i++) {
+      previewRows.push({
+        Position: i + 1,
+        Base: finalRawSeq[i],
+        Quality: "Q60",
+        State: "PASS"
+      });
+    }
+
     const newDs = {
       id: `ds_${Date.now()}`,
       name: importName,
@@ -308,21 +354,17 @@ export default function DatasetManager({ T = DEFAULT_T }) {
       version: "v1.0",
       lastUpdated: new Date().toISOString().split("T")[0],
       description: importDescription,
-      researchArea: importResearchArea,
-      source: importSource,
+      researchArea: importResearchArea || "Local Dataset Alignment",
+      source: importSource || "Local File Upload",
       license: importLicense,
       createdDate: new Date().toISOString().split("T")[0],
       tags: [importCategory, importType],
-      rawSequence: "ATCGCTAAGCTAGCTAGCTA", // Fallback raw sequence for custom uploads
+      rawSequence: finalRawSeq,
       versions: [
         { version: "v1.0", date: new Date().toISOString().split("T")[0], author: importOwner, notes: "Initial uploaded dataset." }
       ],
-      columns: ["Id", "Sample_Value", "Telemetry_Rating", "Verify_State"],
-      rows: [
-        { Id: "1", Sample_Value: "Peptide align A", Telemetry_Rating: "Q55", Verify_State: "PASS" },
-        { Id: "2", Sample_Value: "Peptide align B", Telemetry_Rating: "Q62", Verify_State: "PASS" },
-        { Id: "3", Sample_Value: "High-throughput read", Telemetry_Rating: "Q30", Verify_State: "FAIL" }
-      ],
+      columns: ["Position", "Base", "Quality", "State"],
+      rows: previewRows,
       attachments: [],
       timeline: [
         { id: `tl_${Date.now()}`, event: "Created", date: new Date().toISOString().split("T")[0], author: importOwner, desc: "Dataset profile uploaded & initialized." }
@@ -743,6 +785,17 @@ export default function DatasetManager({ T = DEFAULT_T }) {
             }}>
               <h2 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", fontWeight: 800 }}>Dataset Upload Form (LocalStorage)</h2>
               <form onSubmit={handleImportSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "600px" }}>
+                <div style={{ background: T.surf2, padding: "14px", borderRadius: "10px", border: `1px dashed ${T.border2}`, display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <label style={{ display: "block", fontSize: "0.75rem", color: T.accent, fontWeight: "bold" }}>📁 Upload Biological Sequence File (.fasta, .fa, .txt)</label>
+                  <input
+                    type="file"
+                    accept=".fasta,.fa,.txt"
+                    onChange={handleFileUpload}
+                    style={{ fontSize: "0.8rem", color: T.text2, cursor: "pointer" }}
+                  />
+                  <div style={{ fontSize: "0.68rem", color: T.text3 }}>Uploading a file will auto-populate and parse name, records, size, and type automatically.</div>
+                </div>
+
                 <div>
                   <label style={{ display: "block", fontSize: "0.72rem", color: T.text2, marginBottom: "6px", fontWeight: "bold" }}>Dataset Name *</label>
                   <input

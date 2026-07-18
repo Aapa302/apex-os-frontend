@@ -3,12 +3,7 @@
 > vite
 
 
-  VITE v5.4.21  ready in 279 ms
+  VITE v5.4.21  ready in 289 ms
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
-6:27:15 PM [vite] hmr update /src/App.jsx, /src/AlgorithmDesigner.jsx
-6:32:24 PM [vite] hmr update /src/App.jsx
-8:43:08 AM [vite] hmr update /src/App.jsx, /src/AlgorithmDesigner.jsx, /src/components/DatasetManager.jsx
-8:54:58 AM [vite] hmr update /src/App.jsx, /src/AlgorithmDesigner.jsx
-8:55:35 AM [vite] hmr update /src/App.jsx, /src/AlgorithmDesigner.jsx
