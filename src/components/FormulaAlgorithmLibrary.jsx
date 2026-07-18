@@ -2,6 +2,152 @@ import React, { useState, useEffect, useMemo } from "react";
 
 // Pre-populated professional scientific, mathematical and engineering formulas
 const INITIAL_FORMULAS = [
+  // --- DNA Storage Specific Formulas ---
+  {
+    id: "dna_gc_content",
+    name: "GC Content Compliance Ratio",
+    category: "Biology",
+    expression: "GC_pct = ((G + C) / L) * 100",
+    description: "Calculates the Guanine-Cytosine content percentage within a DNA strand of length L, used to ensure biochemical synthesis compliance.",
+    variables: [
+      { name: "G", label: "Guanine base count", defaultValue: "15" },
+      { name: "C", label: "Cytosine base count", defaultValue: "15" },
+      { name: "L", label: "Total DNA sequence length (bp)", defaultValue: "60" }
+    ],
+    compute: (vals) => {
+      const g = parseFloat(vals["G"]) || 0;
+      const c = parseFloat(vals["C"]) || 0;
+      const l = parseFloat(vals["L"]) || 1;
+      if (l <= 0) return "Invalid Length";
+      return (((g + c) / l) * 100).toFixed(2) + " %";
+    },
+    codeSnippet: "def gc_content(sequence):\n    g = sequence.upper().count('G')\n    c = sequence.upper().count('C')\n    return ((g + c) / len(sequence)) * 100",
+    tags: ["DNA Storage", "Biochemistry", "Compliance"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-15", changes: "DNA storage specific formula." }
+    ]
+  },
+  {
+    id: "dna_coding_density",
+    name: "DNA Physical Coding Density",
+    category: "Engineering",
+    expression: "Density = Bits / Nucleotides",
+    description: "Measures the physical digital-biological storage efficiency in user bits per nucleotide (nt) based on algorithm mappings.",
+    variables: [
+      { name: "Bits", label: "Input payload size in bits", defaultValue: "256" },
+      { name: "Nucleotides", label: "Encoded DNA bases count", defaultValue: "128" }
+    ],
+    compute: (vals) => {
+      const bits = parseFloat(vals["Bits"]) || 0;
+      const nt = parseFloat(vals["Nucleotides"]) || 1;
+      if (nt <= 0) return "Invalid Bases Count";
+      return (bits / nt).toFixed(2) + " bits/nt";
+    },
+    codeSnippet: "def coding_density(bits_count, base_count):\n    return bits_count / base_count",
+    tags: ["DNA Storage", "Density", "Compression"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-15", changes: "DNA storage specific density equation." }
+    ]
+  },
+  {
+    id: "dna_shannon_entropy",
+    name: "Shannon Entropy of DNA",
+    category: "AI",
+    expression: "H(DNA) = - Σ P(b_i) * log2(P(b_i))",
+    description: "Quantifies the mathematical uncertainty, randomness, and optimal information limit of the A, T, C, G nucleotide distribution in encoded payloads.",
+    variables: [
+      { name: "p_a", label: "Probability of base A", defaultValue: "0.25" },
+      { name: "p_t", label: "Probability of base T", defaultValue: "0.25" },
+      { name: "p_c", label: "Probability of base C", defaultValue: "0.25" },
+      { name: "p_g", label: "Probability of base G", defaultValue: "0.25" }
+    ],
+    compute: (vals) => {
+      const pa = parseFloat(vals["p_a"]) || 0;
+      const pt = parseFloat(vals["p_t"]) || 0;
+      const pc = parseFloat(vals["p_c"]) || 0;
+      const pg = parseFloat(vals["p_g"]) || 0;
+      const sum = pa + pt + pc + pg;
+      if (Math.abs(sum - 1.0) > 0.05) return "Invalid: Probabilities must sum to 1.0";
+      const term = (p) => p > 0 ? -p * Math.log2(p) : 0;
+      const entropy = term(pa) + term(pt) + term(pc) + term(pg);
+      return entropy.toFixed(4) + " bits/base (Max theoretical: 2.0)";
+    },
+    codeSnippet: "import math\n\ndef dna_shannon_entropy(probabilities):\n    # probabilities is a list [pA, pT, pC, pG]\n    return -sum(p * math.log2(p) for p in probabilities if p > 0)",
+    tags: ["DNA Storage", "Information Theory", "Entropy"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-15", changes: "Entropy assessment." }
+    ]
+  },
+  {
+    id: "dna_throughput",
+    name: "Throughput / Coding Velocity",
+    category: "Engineering",
+    expression: "Velocity = Bases / Latency",
+    description: "Calculates the encoding/decoding system throughput velocity in DNA bases compiled per millisecond.",
+    variables: [
+      { name: "Bases", label: "Processed DNA bases", defaultValue: "1000" },
+      { name: "Latency", label: "Calculation runtime in ms", defaultValue: "0.15" }
+    ],
+    compute: (vals) => {
+      const b = parseFloat(vals["Bases"]) || 0;
+      const l = parseFloat(vals["Latency"]) || 1;
+      if (l <= 0) return "Invalid Latency";
+      return (b / l).toFixed(2) + " bases/ms";
+    },
+    codeSnippet: "def coding_velocity(bases, latency_ms):\n    return bases / latency_ms",
+    tags: ["DNA Storage", "Speed", "Benchmark"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-15", changes: "Performance velocity equation." }
+    ]
+  },
+  {
+    id: "dna_levenshtein_rate",
+    name: "Levenshtein Mutation Error Rate",
+    category: "Mathematics",
+    expression: "Error_Rate = (Subs + Ins + Dels) / L * 100",
+    description: "Calculates the dynamic traceback alignment mutation error percentage using substitutions, insertions, and deletions.",
+    variables: [
+      { name: "Subs", label: "Substitutions count", defaultValue: "2" },
+      { name: "Ins", label: "Insertions count", defaultValue: "1" },
+      { name: "Dels", label: "Deletions count", defaultValue: "0" },
+      { name: "L", label: "Original strand length", defaultValue: "100" }
+    ],
+    compute: (vals) => {
+      const s = parseFloat(vals["Subs"]) || 0;
+      const i = parseFloat(vals["Ins"]) || 0;
+      const d = parseFloat(vals["Dels"]) || 0;
+      const l = parseFloat(vals["L"]) || 1;
+      if (l <= 0) return "Invalid Length";
+      return (((s + i + d) / l) * 100).toFixed(2) + " %";
+    },
+    codeSnippet: "def levenshtein_error_rate(subs, ins, dels, length):\n    return ((subs + ins + dels) / length) * 100",
+    tags: ["DNA Storage", "Mutations", "Traceback"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-15", changes: "Mutation metric analysis." }
+    ]
+  },
+  {
+    id: "dna_ecc_overhead",
+    name: "Reed-Solomon ECC Overhead",
+    category: "Mathematics",
+    expression: "Overhead = (2 * T_sym) / L * 100",
+    description: "Calculates the redundancy/overhead percentage required for Reed-Solomon Error Correction Code to correct up to T symbol errors.",
+    variables: [
+      { name: "T_sym", label: "Correctable symbols limit (T)", defaultValue: "16" },
+      { name: "L", label: "Total block packet length in symbols", defaultValue: "255" }
+    ],
+    compute: (vals) => {
+      const t = parseFloat(vals["T_sym"]) || 0;
+      const l = parseFloat(vals["L"]) || 1;
+      if (l <= 0) return "Invalid Block Length";
+      return (((2 * t) / l) * 100).toFixed(2) + " %";
+    },
+    codeSnippet: "def ecc_overhead(t_symbols, block_len):\n    return ((2 * t_symbols) / block_len) * 100",
+    tags: ["DNA Storage", "ECC", "Redundancy"],
+    history: [
+      { version: "v1.0.0", date: "2026-07-15", changes: "ECC ratio calculations." }
+    ]
+  },
   // --- AI ---
   {
     id: "ai_softmax",
@@ -226,14 +372,66 @@ export default function FormulaAlgorithmLibrary() {
   const [formulas, setFormulas] = useState(() => {
     // Verified localStorage persistence key: 'apex_os_v4_formulas'
     const cached = localStorage.getItem("apex_os_v4_formulas");
+    let loaded = INITIAL_FORMULAS;
     if (cached) {
       try {
-        return JSON.parse(cached);
-      } catch (e) {
-        return INITIAL_FORMULAS;
-      }
+        loaded = JSON.parse(cached);
+      } catch (e) {}
     }
-    return INITIAL_FORMULAS;
+
+    // Dynamic loading of formulas defined across all registered algorithms in AlgorithmDesigner.jsx
+    try {
+      const savedAlgs = localStorage.getItem("apex_os_algorithms");
+      if (savedAlgs) {
+        const algs = JSON.parse(savedAlgs);
+        algs.forEach(alg => {
+          if (Array.isArray(alg.formulas)) {
+            alg.formulas.forEach(form => {
+              const exists = loaded.some(f => f.id === form.id);
+              if (!exists) {
+                // Map the parsed variables to initial formula array variables
+                const vars = (form.variables || "").split("\n").filter(Boolean).map(vLine => {
+                  const parts = vLine.split("=");
+                  const name = parts[0]?.trim() || "x";
+                  const label = parts[1]?.trim() || name;
+                  return { name, label, defaultValue: "1.0" };
+                });
+
+                loaded.push({
+                  id: form.id,
+                  name: `${form.name} [Linked]`,
+                  category: "Custom",
+                  expression: form.expression,
+                  description: form.description + ` (Linked from active Algorithm Designer: ${alg.name})`,
+                  variables: vars.length > 0 ? vars : [{ name: "x", label: "Parameter", defaultValue: "1.0" }],
+                  compute: (vals) => {
+                    try {
+                      let expr = form.expression;
+                      Object.keys(vals).forEach(k => {
+                        const val = parseFloat(vals[k]) || 0;
+                        expr = expr.replace(new RegExp(`\\b${k}\\b`, "g"), val);
+                      });
+                      const cleanExpr = expr.replace(/[^a-zA-Z0-9+\-*/().\s]/g, "");
+                      const evaluated = new Function(`return (${cleanExpr})`)();
+                      return isNaN(evaluated) ? "Evaluation Error" : evaluated.toFixed(4);
+                    } catch (err) {
+                      return "Evaluation Error";
+                    }
+                  },
+                  codeSnippet: `# Python Implementation\ndef compute_linked():\n    pass`,
+                  tags: ["Linked", "Algorithm Designer"],
+                  history: [{ version: "v1.0.0", date: new Date().toISOString().split("T")[0], changes: "Dynamically synced from active Algorithm Designer." }]
+                });
+              }
+            });
+          }
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to dynamically sync formulas from AlgorithmDesigner:", err);
+    }
+
+    return loaded;
   });
 
   const [favorites, setFavorites] = useState(() => {
