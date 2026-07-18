@@ -687,8 +687,44 @@ function appReducer(state, action) {
     case "UPDATE_CEO_LAST": next = { ...state, ceoChats: state.ceoChats.map((m, i) => i === state.ceoChats.length - 1 ? { ...m, ...action.payload } : m) }; break;
     case "ADD_EMP_MSG": next = { ...state, empChats: { ...state.empChats, [action.empId]: [...(state.empChats[action.empId] || []), action.payload] } }; break;
     case "UPDATE_EMP_LAST": next = { ...state, empChats: { ...state.empChats, [action.empId]: (state.empChats[action.empId] || []).map((m, i, arr) => i === arr.length - 1 ? { ...m, ...action.payload } : m) } }; break;
-    case "ADD_TASK": next = { ...state, tasks: [...state.tasks, action.payload] }; break;
-    case "UPDATE_TASK": next = { ...state, tasks: state.tasks.map(t => t.id === action.id ? { ...t, ...action.payload } : t) }; break;
+    case "SET_TASKS": {
+      const normalized = (action.payload || []).map(t => ({
+        ...t,
+        id: t.id || t._id,
+        status: t.status || t.column || "todo",
+        desc: t.desc || t.description || ""
+      }));
+      next = { ...state, tasks: normalized };
+      break;
+    }
+    case "ADD_TASK": {
+      const t = action.payload;
+      const normalized = {
+        ...t,
+        id: t.id || t._id,
+        status: t.status || t.column || "todo",
+        desc: t.desc || t.description || ""
+      };
+      next = { ...state, tasks: [...state.tasks, normalized] };
+      break;
+    }
+    case "UPDATE_TASK": {
+      next = {
+        ...state,
+        tasks: state.tasks.map(t => {
+          if (t.id === action.id) {
+            const merged = { ...t, ...action.payload };
+            return {
+              ...merged,
+              status: action.payload.status || action.payload.column || merged.status || merged.column || "todo",
+              desc: action.payload.desc || action.payload.description || merged.desc || merged.description || ""
+            };
+          }
+          return t;
+        })
+      };
+      break;
+    }
     case "DELETE_TASK": next = { ...state, tasks: state.tasks.filter(t => t.id !== action.id) }; break;
     case "ADD_MEMORY": {
       const updatedMem = [action.payload, ...state.memory].slice(0, 100);
@@ -1718,6 +1754,8 @@ export default function ApexOS() {
   const [view, setView] = useState("dashboard");
   const [proxyStatus, setProxyStatus] = useState("checking");
   const [proxyDetails, setProxyDetails] = useState("");
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [tasksError, setTasksError] = useState(null);
   const [ncbiApiKeySet, setNcbiApiKeySet] = useState(!!import.meta.env?.VITE_NCBI_API_KEY);
   const [activeEmp, setActiveEmp] = useState("cto");
   const [ceoInput, setCeoInput] = useState("");
@@ -1743,7 +1781,7 @@ export default function ApexOS() {
   const [buildStage, setBuildStage] = useState("");
   const [buildProgress, setBuildProgress] = useState(0);
   const [showNewTask, setShowNewTask] = useState(false);
-  const [newTask, setNewTask] = useState({ title: "", desc: "", assignee: "cto", priority: "medium", due: "" });
+  const [newTask, setNewTask] = useState({ title: "", desc: "", assignee: "cto", priority: "medium", due: "", phase: "" });
   const [memFilter, setMemFilter] = useState("all");
   const [kpiEdit, setKpiEdit] = useState(null);
 
@@ -1841,6 +1879,127 @@ export default function ApexOS() {
       if (intervalId) clearInterval(intervalId);
     };
   }, [state.proxyUrl]);
+
+  // ── Fetch Tasks Callback ──
+  const fetchTasks = useCallback(async () => {
+    setTasksLoading(true);
+    setTasksError(null);
+    try {
+      const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+
+      const res = await fetch(`${base}/tasks`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`Failed to load tasks from backend (${res.status} ${res.statusText})`);
+      }
+      const data = await res.json();
+      dispatch({ type: "SET_TASKS", payload: data });
+    } catch (err) {
+      console.error("Error loading tasks:", err);
+      setTasksError(err.name === "AbortError" || err.message?.includes("aborted")
+        ? "Connection Timeout: The backend took too long to respond. It may be sleeping or down."
+        : err.message || "Failed to fetch tasks from backend");
+    } finally {
+      setTasksLoading(false);
+    }
+  }, [state.proxyUrl]);
+
+  // ── Load Tasks on Mount/Proxy Change ──
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  // ── Create Task Handler ──
+  const handleCreateTask = async () => {
+    if (!newTask.title.trim()) {
+      toast("Task title is required", "error");
+      return;
+    }
+    try {
+      const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
+      const payload = {
+        title: newTask.title,
+        description: newTask.desc || "",
+        desc: newTask.desc || "",
+        assignee: newTask.assignee,
+        priority: newTask.priority,
+        phase: newTask.phase || "Discovery & Research",
+        column: "todo",
+        status: "todo",
+        due: newTask.due || "",
+        createdAt: new Date().toISOString(),
+        source: "manual"
+      };
+
+      const res = await fetch(`${base}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to create task on backend: ${res.statusText}`);
+      }
+
+      const created = await res.json();
+      const taskWithId = {
+        ...payload,
+        ...created,
+        id: created.id || created._id || `t_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      };
+
+      dispatch({ type: "ADD_TASK", payload: taskWithId });
+      addActivity(`Task created: "${taskWithId.title}"`, "📋");
+      setNewTask({ title: "", desc: "", assignee: "cto", priority: "medium", due: "", phase: "" });
+      setShowNewTask(false);
+      toast("Task created successfully", "success");
+    } catch (err) {
+      console.error("Error creating task:", err);
+      toast(`Failed to create task: ${err.message}`, "error");
+    }
+  };
+
+  // ── Move Task Handler ──
+  const handleMoveTask = async (taskId, newStatus) => {
+    try {
+      const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
+      const res = await fetch(`${base}/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ column: newStatus, status: newStatus })
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to update task status: ${res.statusText}`);
+      }
+      dispatch({ type: "UPDATE_TASK", id: taskId, payload: { status: newStatus, column: newStatus } });
+      toast("Task moved successfully", "success");
+    } catch (err) {
+      console.error("Error moving task:", err);
+      toast(`Failed to move task: ${err.message}`, "error");
+    }
+  };
+
+  // ── Delete Task Handler ──
+  const handleDeleteTask = async (taskId) => {
+    try {
+      const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
+      const res = await fetch(`${base}/tasks/${taskId}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to delete task: ${res.statusText}`);
+      }
+      dispatch({ type: "DELETE_TASK", id: taskId });
+      addActivity(`Task deleted`, "📋");
+      toast("Task deleted successfully", "success");
+    } catch (err) {
+      console.error("Error deleting task:", err);
+      toast(`Failed to delete task: ${err.message}`, "error");
+    }
+  };
 
   // ── Scroll to bottom ──
   useEffect(() => { ceoChatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [state.ceoChats, ceoStream]);
@@ -4129,41 +4288,69 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                 <button onClick={() => setShowNewTask(true)} style={{ padding: "8px 16px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 9, color: "white", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}>+ New Task</button>
               </div>
 
-              <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, overflow: "hidden" }}>
-                {COLS.map(col => (
-                  <div key={col.id}
-                    onDragOver={e => { e.preventDefault(); setDragOverCol(col.id); }}
-                    onDragLeave={() => setDragOverCol(null)}
-                    onDrop={e => { e.preventDefault(); if (dragTask) dispatch({ type: "UPDATE_TASK", id: dragTask.id, payload: { status: col.id } }); setDragTask(null); setDragOverCol(null); }}
-                    style={{ display: "flex", flexDirection: "column", background: dragOverCol === col.id ? `${col.color}0c` : T.surf, border: `1px solid ${dragOverCol === col.id ? col.color + "50" : T.border2}`, borderRadius: 14, overflow: "hidden", transition: "background 0.15s" }}>
-                    <div style={{ padding: "12px 14px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: col.color }} />
-                      <span style={{ fontWeight: 700, fontSize: "0.8rem", color: T.text1 }}>{col.label}</span>
-                      <span style={{ marginLeft: "auto", fontSize: "0.7rem", color: T.text3 }}>{(tasksByCol[col.id] || []).length}</span>
-                    </div>
-                    <div style={{ flex: 1, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                      {(tasksByCol[col.id] || []).map(t => {
-                        const e = EMP_REGISTRY[t.assignee];
-                        const pColor = t.priority === "high" ? T.red : t.priority === "medium" ? T.yellow : T.text3;
-                        return (
-                          <div key={t.id} draggable onDragStart={() => setDragTask(t)}
-                            style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 10, padding: 12, cursor: "grab" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, marginBottom: 6 }}>
-                              <div style={{ fontSize: "0.78rem", fontWeight: 600, color: T.text1, lineHeight: 1.4 }}>{t.title}</div>
-                              <button onClick={() => dispatch({ type: "DELETE_TASK", id: t.id })} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", fontSize: "0.72rem", flexShrink: 0 }}>✕</button>
+              {tasksLoading ? (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                  <div className="spinner" style={{ width: 30, height: 30, border: `3px solid ${T.border2}`, borderTopColor: T.accent, borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                  <div style={{ color: T.text2, fontSize: "0.85rem" }}>Loading tasks from backend...</div>
+                </div>
+              ) : tasksError ? (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 20 }}>
+                  <div style={{ fontSize: "2rem" }}>⚠️</div>
+                  <div style={{ color: T.red, fontSize: "0.85rem", fontWeight: 600, textAlign: "center", maxWidth: 400 }}>{tasksError}</div>
+                  <button onClick={fetchTasks} style={{ padding: "8px 20px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 9, color: T.text1, fontSize: "0.78rem", cursor: "pointer", fontWeight: 700 }}>Retry Connection</button>
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, overflow: "hidden" }}>
+                  {COLS.map(col => (
+                    <div key={col.id}
+                      onDragOver={e => { e.preventDefault(); setDragOverCol(col.id); }}
+                      onDragLeave={() => setDragOverCol(null)}
+                      onDrop={e => { e.preventDefault(); if (dragTask) handleMoveTask(dragTask.id, col.id); setDragTask(null); setDragOverCol(null); }}
+                      style={{ display: "flex", flexDirection: "column", background: dragOverCol === col.id ? `${col.color}0c` : T.surf, border: `1px solid ${dragOverCol === col.id ? col.color + "50" : T.border2}`, borderRadius: 14, overflow: "hidden", transition: "background 0.15s" }}>
+                      <div style={{ padding: "12px 14px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: col.color }} />
+                        <span style={{ fontWeight: 700, fontSize: "0.8rem", color: T.text1 }}>{col.label}</span>
+                        <span style={{ marginLeft: "auto", fontSize: "0.7rem", color: T.text3 }}>{(tasksByCol[col.id] || []).length}</span>
+                      </div>
+                      <div style={{ flex: 1, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                        {(tasksByCol[col.id] || []).map(t => {
+                          const e = EMP_REGISTRY[t.assignee];
+                          const pColor = t.priority === "high" ? T.red : t.priority === "medium" ? T.yellow : T.text3;
+                          return (
+                            <div key={t.id} draggable onDragStart={() => setDragTask(t)}
+                              style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 10, padding: 12, cursor: "grab" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, marginBottom: 6 }}>
+                                <div style={{ fontSize: "0.78rem", fontWeight: 600, color: T.text1, lineHeight: 1.4 }}>{t.title}</div>
+                                <button onClick={() => handleDeleteTask(t.id)} style={{ background: "none", border: "none", color: T.text3, cursor: "pointer", fontSize: "0.72rem", flexShrink: 0 }}>✕</button>
+                              </div>
+                              {t.desc && <div style={{ fontSize: "0.7rem", color: T.text2, marginBottom: 8, lineHeight: 1.5 }}>{t.desc.slice(0, 90)}</div>}
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ background: `${e?.color || T.accent}20`, color: e?.color || T.accent, borderRadius: 6, padding: "2px 7px", fontSize: "0.63rem", display: "flex", alignItems: "center", gap: 3 }}>{e?.icon} {e?.name || t.assignee}</span>
+                                <span style={{ background: `${pColor}18`, color: pColor, borderRadius: 6, padding: "2px 7px", fontSize: "0.6rem", textTransform: "uppercase" }}>{t.priority}</span>
+
+                                <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+                                  {col.id !== "todo" && (
+                                    <button onClick={() => {
+                                      const colIndex = COLS.findIndex(c => c.id === col.id);
+                                      handleMoveTask(t.id, COLS[colIndex - 1].id);
+                                    }} style={{ background: T.surf, border: `1px solid ${T.border2}`, color: T.text2, borderRadius: 4, padding: "2px 6px", fontSize: "0.65rem", cursor: "pointer", display: "flex", alignItems: "center" }} title="Move Left">◀</button>
+                                  )}
+                                  {col.id !== "done" && (
+                                    <button onClick={() => {
+                                      const colIndex = COLS.findIndex(c => c.id === col.id);
+                                      handleMoveTask(t.id, COLS[colIndex + 1].id);
+                                    }} style={{ background: T.surf, border: `1px solid ${T.border2}`, color: T.text2, borderRadius: 4, padding: "2px 6px", fontSize: "0.65rem", cursor: "pointer", display: "flex", alignItems: "center" }} title="Move Right">▶</button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            {t.desc && <div style={{ fontSize: "0.7rem", color: T.text2, marginBottom: 8, lineHeight: 1.5 }}>{t.desc.slice(0, 90)}</div>}
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ background: `${e?.color || T.accent}20`, color: e?.color || T.accent, borderRadius: 6, padding: "2px 7px", fontSize: "0.63rem", display: "flex", alignItems: "center", gap: 3 }}>{e?.icon} {e?.name || t.assignee}</span>
-                              <span style={{ background: `${pColor}18`, color: pColor, borderRadius: 6, padding: "2px 7px", fontSize: "0.6rem", textTransform: "uppercase", marginLeft: "auto" }}>{t.priority}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -4502,20 +4689,20 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                   </select>
                 </div>
               </div>
-              <div>
-                <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Due Date</label>
-                <input type="date" value={newTask.due} onChange={e => setNewTask(p => ({ ...p, due: e.target.value }))} style={inputStyle} />
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Phase</label>
+                  <input value={newTask.phase || ""} onChange={e => setNewTask(p => ({ ...p, phase: e.target.value }))} style={inputStyle} placeholder="e.g. Build & Execute" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ color: T.text2, fontSize: "0.72rem", textTransform: "uppercase", display: "block", marginBottom: 5 }}>Due Date</label>
+                  <input type="date" value={newTask.due} onChange={e => setNewTask(p => ({ ...p, due: e.target.value }))} style={inputStyle} />
+                </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button onClick={() => setShowNewTask(false)} style={{ flex: 1, padding: "10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 9, color: T.text2, cursor: "pointer", fontSize: "0.82rem" }}>Cancel</button>
-              <button onClick={() => {
-                if (!newTask.title.trim()) { toast("Task title is required", "error"); return; }
-                dispatch({ type: "ADD_TASK", payload: { id: `t_${Date.now()}_${Math.random().toString(36).slice(2)}`, ...newTask, status: "todo", createdAt: new Date().toISOString(), source: "manual" } });
-                addActivity(`Task created: "${newTask.title}"`, "📋");
-                setNewTask({ title: "", desc: "", assignee: "cto", priority: "medium", due: "" });
-                setShowNewTask(false);
-              }} style={{ flex: 1, padding: "10px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 9, color: "white", fontWeight: 700, cursor: "pointer", fontSize: "0.82rem" }}>Create Task</button>
+              <button onClick={handleCreateTask} style={{ flex: 1, padding: "10px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 9, color: "white", fontWeight: 700, cursor: "pointer", fontSize: "0.82rem" }}>Create Task</button>
             </div>
           </div>
         </div>
