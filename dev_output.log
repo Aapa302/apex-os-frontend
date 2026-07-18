@@ -7,3 +7,5 @@
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
+12:35:07 PM [vite] hmr update /src/components/FormulaAlgorithmLibrary.jsx
+12:35:37 PM [vite] hmr update /src/components/FormulaAlgorithmLibrary.jsx
