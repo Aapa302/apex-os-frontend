@@ -80,7 +80,10 @@ export default function AIScientistWorkspace() {
     // Verified localStorage persistence key: 'apex_os_v4_hypotheses'
     const cached = localStorage.getItem("apex_os_v4_hypotheses");
     if (cached) {
-      try { return JSON.parse(cached); } catch (e) { return INITIAL_HYPOTHESES; }
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) { return INITIAL_HYPOTHESES; }
     }
     return INITIAL_HYPOTHESES;
   });
@@ -88,7 +91,10 @@ export default function AIScientistWorkspace() {
   const [experiments, setExperiments] = useState(() => {
     const cached = localStorage.getItem("apex_os_v4_experiments");
     if (cached) {
-      try { return JSON.parse(cached); } catch (e) { return INITIAL_EXPERIMENTS; }
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) { return INITIAL_EXPERIMENTS; }
     }
     return INITIAL_EXPERIMENTS;
   });
@@ -96,7 +102,10 @@ export default function AIScientistWorkspace() {
   const [notes, setNotes] = useState(() => {
     const cached = localStorage.getItem("apex_os_v4_notes");
     if (cached) {
-      try { return JSON.parse(cached); } catch (e) { return INITIAL_NOTES; }
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) { return INITIAL_NOTES; }
     }
     return INITIAL_NOTES;
   });
@@ -554,6 +563,7 @@ export default function AIScientistWorkspace() {
                   max="100"
                   value={newHypConfidence}
                   onChange={e => setNewHypConfidence(e.target.value)}
+                  onWheel={(evt) => evt.target.blur()}
                   style={{ flex: 1, accentColor: T.accent }}
                 />
               </div>
@@ -653,6 +663,7 @@ export default function AIScientistWorkspace() {
                           max="100"
                           value={e.progress}
                           onChange={(evt) => handleUpdateExperimentProgress(e.id, evt.target.value)}
+                          onWheel={(evt) => evt.target.blur()}
                           style={{ flex: 1, accentColor: T.accent }}
                         />
                       </div>
