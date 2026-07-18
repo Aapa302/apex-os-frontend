@@ -149,10 +149,19 @@ export async function FetchMetadata(accessionId, db = "nucleotide") {
       throw new Error("NCBI_METADATA_ERROR: Could not retrieve metadata record from summary.");
     }
 
+    let organismStr = "Unknown Organism";
+    if (meta.organism) {
+      if (typeof meta.organism === "string") {
+        organismStr = meta.organism;
+      } else if (typeof meta.organism === "object") {
+        organismStr = meta.organism.scientificname || meta.organism.commonname || "Unknown Organism";
+      }
+    }
+
     return {
       id: accessionId,
       title: meta.title || "Unknown sequence",
-      organism: meta.organism || "Unknown Organism",
+      organism: organismStr,
       extra: meta
     };
   } catch (err) {
