@@ -4245,7 +4245,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
 
           {/* ═══ AI COMMAND CENTER ═══ */}
           {view === "ai_command_center" && (
-            <AICommandCenter />
+            <AICommandCenter tasks={state.tasks} proxyUrl={PROXY_BASE_URL} />
           )}
 
           {/* ═══ AI CEO DASHBOARD ═══ */}

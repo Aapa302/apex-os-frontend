@@ -1,81 +1,34 @@
 import React, { useState, useMemo, useEffect } from "react";
 
-// Demo and sample data for the AI Command Center
-const INITIAL_EMPLOYEES = [
-  {
-    id: "researcher",
-    name: "Dr. Mei Lin",
-    title: "Research Engineer",
-    icon: "🔬",
-    color: "#06b6d4",
-    status: "Active",
-    task: "Analyzing sequence matrices for gene structural folding dynamics",
-    progress: 84,
-    lastActivity: "10 mins ago"
-  },
-  {
-    id: "engineer",
-    name: "Sarah Kim",
-    title: "Software Engineer",
-    icon: "⚙️",
-    color: "#22d3a5",
-    status: "Active",
-    task: "Optimizing database clusters and building responsive React layouts",
-    progress: 68,
-    lastActivity: "2 mins ago"
-  },
-  {
-    id: "tester",
-    name: "Alex Thorne",
-    title: "Tester",
-    icon: "🧪",
-    color: "#ef4444",
-    status: "Idle",
-    task: "E2E playwright coverage reviews & regression validation checks",
-    progress: 100,
-    lastActivity: "1 hour ago"
-  },
-  {
-    id: "writer",
-    name: "John Doe",
-    title: "Documentation Writer",
-    icon: "📝",
-    color: "#a78bfa",
-    status: "Active",
-    task: "Drafting technical guidelines & complete API reference books",
-    progress: 42,
-    lastActivity: "15 mins ago"
-  },
-  {
-    id: "analyst",
-    name: "Ryan Thompson",
-    title: "Data Analyst",
-    icon: "📈",
-    color: "#0ea5e9",
-    status: "Active",
-    task: "Modeling monthly revenue predictions & team velocity reports",
-    progress: 91,
-    lastActivity: "4 mins ago"
-  },
-  {
-    id: "security",
-    name: "Marcus Cole",
-    title: "Security Analyst",
-    icon: "🛡️",
-    color: "#f5a623",
-    status: "Active",
-    task: "Auditing authentication pipelines & proxy gateway security rules",
-    progress: 55,
-    lastActivity: "30 mins ago"
-  }
+// Real 11 AI Team employees
+const REAL_EMPLOYEES_LIST = [
+  { id: "cto",       name: "Alex Chen",   title: "Chief Technology Officer", icon: "💻", color: "#6366f1" },
+  { id: "engineer",  name: "Sarah Kim",   title: "Sr. Software Engineer",    icon: "⚙️", color: "#22d3a5" },
+  { id: "pm",        name: "Marcus J.",   title: "Product Manager",          icon: "📋", color: "#f5a623" },
+  { id: "marketing", name: "Priya S.",    title: "Marketing Manager",        icon: "📣", color: "#e040fb" },
+  { id: "hr",        name: "David Park",  title: "HR Manager",               icon: "👥", color: "#14b8a6" },
+  { id: "finance",   name: "Emma W.",     title: "Finance Manager",          icon: "💰", color: "#84cc16" },
+  { id: "sales",     name: "James R.",    title: "Sales Manager",            icon: "🎯", color: "#f97316" },
+  { id: "support",   name: "Aisha P.",    title: "Customer Support Lead",    icon: "💬", color: "#a78bfa" },
+  { id: "designer",  name: "Lena M.",     title: "UI/UX Designer",           icon: "🎨", color: "#f43f5e" },
+  { id: "analyst",   name: "Ryan T.",     title: "Data Analyst",             icon: "📊", color: "#0ea5e9" },
+  { id: "researcher",name: "Dr. Mei Lin", title: "Research Engineer",        icon: "🔬", color: "#06b6d4" },
 ];
+
+const INITIAL_EMPLOYEES = REAL_EMPLOYEES_LIST.map(emp => ({
+  ...emp,
+  status: "Idle",
+  task: "No recent activity",
+  progress: 0,
+  lastActivity: "No recent activity"
+}));
 
 const INITIAL_QUEUE = [
   { id: "TASK-4801", priority: "Critical", assignee: "Dr. Mei Lin", status: "Running", progress: 84, eta: "4m" },
   { id: "TASK-4802", priority: "High", assignee: "Sarah Kim", status: "Running", progress: 68, eta: "12m" },
-  { id: "TASK-4803", priority: "High", assignee: "Ryan Thompson", status: "Running", progress: 91, eta: "3m" },
-  { id: "TASK-4804", priority: "Medium", assignee: "Marcus Cole", status: "Running", progress: 55, eta: "19m" },
-  { id: "TASK-4805", priority: "Low", assignee: "John Doe", status: "Running", progress: 42, eta: "45m" },
+  { id: "TASK-4803", priority: "High", assignee: "Ryan T.", status: "Running", progress: 91, eta: "3m" },
+  { id: "TASK-4804", priority: "Medium", assignee: "Marcus J.", status: "Running", progress: 55, eta: "19m" },
+  { id: "TASK-4805", priority: "Low", assignee: "Alex Chen", status: "Running", progress: 42, eta: "45m" },
   { id: "TASK-4806", priority: "Critical", assignee: "Sarah Kim", status: "Queued", progress: 0, eta: "Pending" }
 ];
 
@@ -87,7 +40,7 @@ const INITIAL_TIMELINE = [
   { id: 5, type: "warning", event: "High CPU threshold detected (82.4% occupancy rate).", time: "11:55:40", status: "warning" }
 ];
 
-export default function AICommandCenter() {
+export default function AICommandCenter({ tasks = [], proxyUrl = "https://apex-os-nztm.onrender.com" }) {
   const [isLightMode, setIsLightMode] = useState(false);
   const [isAutoMode, setIsAutoMode] = useState(true);
   const [notifSound, setNotifSound] = useState(true);
@@ -103,40 +56,85 @@ export default function AICommandCenter() {
   const [pubMedStatus, setPubMedStatus] = useState("checking...");
   const [recentExecutionMode, setRecentExecutionMode] = useState("Local");
 
+  // Sync workload monitor to real tasks if they exist, otherwise show honest Idle state
+  useEffect(() => {
+    setEmployees(prev => prev.map(emp => {
+      const activeTask = (tasks || []).find(t => t.assignee === emp.id && t.status !== "done");
+      if (activeTask) {
+        return {
+          ...emp,
+          status: "Active",
+          task: activeTask.title,
+          progress: activeTask.progress || 0,
+          lastActivity: "Just now"
+        };
+      }
+      // If we just added a local task block via command center, preserve its status
+      if (emp.status === "Active" && emp.task && emp.task.startsWith("Executing tasks assigned under TASK-")) {
+        return emp;
+      }
+      return {
+        ...emp,
+        status: "Idle",
+        task: "No recent activity",
+        progress: 0,
+        lastActivity: "No recent activity"
+      };
+    }));
+  }, [tasks]);
+
   useEffect(() => {
     let active = true;
     const checkStatuses = async () => {
-      // 1. Fetch Gemini status
-      try {
-        const res = await fetch("https://apex-os-nztm.onrender.com/api/gemini/status");
-        if (res.ok && active) {
-          const data = await res.json();
-          setGeminiStatus(data.status || "offline");
-        } else if (active) {
-          setGeminiStatus("offline");
-        }
-      } catch (e) {
-        if (active) setGeminiStatus("offline");
-      }
+      const base = (proxyUrl || "https://apex-os-nztm.onrender.com").replace(/\/+$/, "");
 
-      // 2. Fetch NCBI/PubMed status via /health or raw API connectivity check
-      try {
-        const res = await fetch("https://apex-os-nztm.onrender.com/health");
-        if (res.ok && active) {
-          const data = await res.json();
-          const connected = data.ncbiApiKeySet ? "ONLINE (Key Set)" : "ONLINE (Public Mode)";
-          setNcbiStatus(connected);
-          setPubMedStatus(connected);
-        } else if (active) {
-          setNcbiStatus("ONLINE (Public Mode)");
-          setPubMedStatus("ONLINE (Public Mode)");
+      // 1. Fetch Gemini status with 10s timeout in parallel
+      const checkGemini = async () => {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const res = await fetch(`${base}/api/gemini/status`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (res.ok && active) {
+            const data = await res.json();
+            setGeminiStatus(data.status || "offline");
+          } else if (active) {
+            setGeminiStatus("offline");
+          }
+        } catch (e) {
+          if (active) setGeminiStatus("offline");
         }
-      } catch (e) {
-        if (active) {
-          setNcbiStatus("ONLINE (Public Mode)");
-          setPubMedStatus("ONLINE (Public Mode)");
+      };
+
+      // 2. Fetch NCBI/PubMed status via /health with 10s timeout in parallel
+      const checkHealth = async () => {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const res = await fetch(`${base}/health`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (res.ok && active) {
+            const data = await res.json();
+            const connected = data.ncbiApiKeySet ? "ONLINE (Key Set)" : "ONLINE (Public Mode)";
+            setNcbiStatus(connected);
+            setPubMedStatus(connected);
+          } else if (active) {
+            setNcbiStatus("ONLINE (Public Mode)");
+            setPubMedStatus("ONLINE (Public Mode)");
+          }
+        } catch (e) {
+          if (active) {
+            setNcbiStatus("ONLINE (Public Mode)");
+            setPubMedStatus("ONLINE (Public Mode)");
+          }
         }
-      }
+      };
+
+      // Run parallel checks
+      checkGemini();
+      checkHealth();
 
       // 3. Load recent execution mode
       if (active) {
@@ -152,7 +150,7 @@ export default function AICommandCenter() {
       active = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [proxyUrl]);
 
   // New item creation fields
   const [newTaskAssignee, setNewTaskAssignee] = useState("Sarah Kim");
