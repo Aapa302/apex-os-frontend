@@ -1973,10 +1973,12 @@ export default function ApexOS() {
       // 1. Fetch status of Gemini from backend for informational logging/telemetry
       let geminiStatus = "offline";
       try {
-        const statusRes = await fetch(`${PROXY_BASE_URL}/api/gemini/status`);
+        const statusRes = await fetch(`${PROXY_BASE_URL}/health`);
         if (statusRes.ok) {
           const data = await statusRes.json();
-          geminiStatus = data.status || "offline";
+          if (data && data.status === "ok" && data.apiKeySet) {
+            geminiStatus = "available";
+          }
         }
       } catch (e) {
         console.warn("[CEO Status Check] Unreachable:", e);

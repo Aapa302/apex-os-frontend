@@ -93,12 +93,16 @@ export default function AICommandCenter({ tasks = [], proxyUrl = "https://apex-o
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000);
-          const res = await fetch(`${base}/api/gemini/status`, { signal: controller.signal });
+          const res = await fetch(`${base}/health`, { signal: controller.signal });
           clearTimeout(timeoutId);
 
           if (res.ok && active) {
             const data = await res.json();
-            setGeminiStatus(data.status || "offline");
+            if (data && data.status === "ok" && data.apiKeySet) {
+              setGeminiStatus("available");
+            } else {
+              setGeminiStatus("offline");
+            }
           } else if (active) {
             setGeminiStatus("offline");
           }
