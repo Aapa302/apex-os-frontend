@@ -114,6 +114,89 @@ export default function AIScientistWorkspace() {
   const [selectedTab, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
+  // DNA Encoder States
+  const [encoderMode, setEncoderMode] = useState("encode"); // 'encode' or 'decode'
+  const [inputText, setInputText] = useState("");
+  const [inputDna, setInputDna] = useState("");
+  const [encoderLoading, setEncoderLoading] = useState(false);
+  const [encoderError, setEncoderError] = useState(null);
+  const [encoderResult, setEncoderResult] = useState("");
+
+  const PROXY_URL = (() => {
+    try {
+      const stateStr = localStorage.getItem("apex_os_v4_state");
+      if (stateStr) {
+        const parsed = JSON.parse(stateStr);
+        if (parsed.proxyUrl) return parsed.proxyUrl.replace(/\/+$/, '');
+      }
+    } catch (e) {}
+    return "https://apex-os-nztm.onrender.com";
+  })();
+
+  const handleDnaEncode = async (e) => {
+    e.preventDefault();
+    if (!inputText.trim()) {
+      alert("Please enter some text to encode!");
+      return;
+    }
+    setEncoderLoading(true);
+    setEncoderError(null);
+    setEncoderResult("");
+    try {
+      const res = await fetch(`${PROXY_URL}/dna-encode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: inputText })
+      });
+      if (!res.ok) {
+        throw new Error(`Encoding failed (${res.status} ${res.statusText})`);
+      }
+      const data = await res.json();
+      if (data.success) {
+        setEncoderResult(data.dna);
+      } else {
+        throw new Error(data.error || "Unknown error during encoding");
+      }
+    } catch (err) {
+      console.error(err);
+      setEncoderError(err.message || "Failed to communicate with DNA Encoder backend");
+    } finally {
+      setEncoderLoading(false);
+    }
+  };
+
+  const handleDnaDecode = async (e) => {
+    e.preventDefault();
+    if (!inputDna.trim()) {
+      alert("Please enter a DNA sequence to decode!");
+      return;
+    }
+    setEncoderLoading(true);
+    setEncoderError(null);
+    setEncoderResult("");
+    try {
+      const res = await fetch(`${PROXY_URL}/dna-decode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dna: inputDna.trim().toUpperCase() })
+      });
+      if (!res.ok) {
+        throw new Error(`Decoding failed (${res.status} ${res.statusText})`);
+      }
+      const data = await res.json();
+      if (data.success) {
+        setEncoderResult(data.text);
+      } else {
+        throw new Error(data.error || "Unknown error during decoding");
+      }
+    } catch (err) {
+      console.error(err);
+      setEncoderError(err.message || "Failed to communicate with DNA Decoder backend");
+    } finally {
+      setEncoderLoading(false);
+    }
+  };
+
   // Hypothesis creation form state
   const [newHypStatement, setNewHypStatement] = useState("");
   const [newHypCategory, setNewHypCategory] = useState("Genomics");
@@ -742,6 +825,170 @@ export default function AIScientistWorkspace() {
 
         {/* RIGHT COLUMN: Notes & Literature Tracker */}
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          {/* DNA Encoder Component */}
+          <div style={{
+            background: T.surf,
+            border: `1px solid ${T.border2}`,
+            borderRadius: "16px",
+            padding: "20px"
+          }}>
+            <h3 style={{ margin: "0 0 12px 0", fontSize: "1rem", fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
+              🧬 DNA Encoder & Decoder
+            </h3>
+
+            {/* Mode Switcher Toggle */}
+            <div style={{ display: "flex", background: T.surf2, borderRadius: "8px", padding: "4px", marginBottom: "16px" }}>
+              <button
+                onClick={() => { setEncoderMode("encode"); setEncoderResult(""); setEncoderError(null); }}
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  borderRadius: "6px",
+                  border: "none",
+                  background: encoderMode === "encode" ? T.accent : "transparent",
+                  color: encoderMode === "encode" ? "#ffffff" : T.text2,
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                Text to DNA
+              </button>
+              <button
+                onClick={() => { setEncoderMode("decode"); setEncoderResult(""); setEncoderError(null); }}
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  borderRadius: "6px",
+                  border: "none",
+                  background: encoderMode === "decode" ? T.accent : "transparent",
+                  color: encoderMode === "decode" ? "#ffffff" : T.text2,
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                DNA to Text
+              </button>
+            </div>
+
+            {encoderMode === "encode" ? (
+              <form onSubmit={handleDnaEncode} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", color: T.text2, fontSize: "0.75rem", fontWeight: 700, marginBottom: "5px" }}>Text / String to Encode</label>
+                  <input
+                    type="text"
+                    value={inputText}
+                    onChange={e => setInputText(e.target.value)}
+                    placeholder="e.g. APEX-1"
+                    style={{
+                      width: "100%",
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: "8px",
+                      padding: "10px 14px",
+                      color: T.text1,
+                      fontSize: "0.85rem",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={encoderLoading}
+                  style={{
+                    padding: "10px 18px",
+                    background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                    border: "none",
+                    borderRadius: "8px",
+                    color: "white",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    cursor: encoderLoading ? "default" : "pointer",
+                    opacity: encoderLoading ? 0.7 : 1
+                  }}
+                >
+                  {encoderLoading ? "Encoding..." : "Encode ➔"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleDnaDecode} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", color: T.text2, fontSize: "0.75rem", fontWeight: 700, marginBottom: "5px" }}>DNA Sequence to Decode</label>
+                  <input
+                    type="text"
+                    value={inputDna}
+                    onChange={e => setInputDna(e.target.value)}
+                    placeholder="e.g. CAACCCGAACACCCGCGAAGTCATAC"
+                    style={{
+                      width: "100%",
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: "8px",
+                      padding: "10px 14px",
+                      color: T.text1,
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      textTransform: "uppercase"
+                    }}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={encoderLoading}
+                  style={{
+                    padding: "10px 18px",
+                    background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                    border: "none",
+                    borderRadius: "8px",
+                    color: "white",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    cursor: encoderLoading ? "default" : "pointer",
+                    opacity: encoderLoading ? 0.7 : 1
+                  }}
+                >
+                  {encoderLoading ? "Decoding..." : "Decode ➔"}
+                </button>
+              </form>
+            )}
+
+            {/* Loading / Spinner State */}
+            {encoderLoading && (
+              <div style={{ marginTop: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ width: 14, height: 14, border: `2px solid ${T.border2}`, borderTopColor: T.accent, borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                <span style={{ fontSize: "0.8rem", color: T.text2 }}>Contacting DNA engine backend...</span>
+              </div>
+            )}
+
+            {/* Error Message UI */}
+            {encoderError && (
+              <div style={{ marginTop: "16px", padding: "10px 14px", background: `${T.red}12`, border: `1px solid ${T.red}30`, borderRadius: "8px", color: T.red, fontSize: "0.8rem" }}>
+                ⚠️ <strong>Error:</strong> {encoderError}
+              </div>
+            )}
+
+            {/* Result Display UI */}
+            {encoderResult && (
+              <div style={{ marginTop: "16px", padding: "14px", background: `${T.green}10`, border: `1px solid ${T.green}30`, borderRadius: "8px" }}>
+                <span style={{ display: "block", color: T.green, fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", marginBottom: "4px" }}>
+                  {encoderMode === "encode" ? "Encoded DNA Output" : "Decoded Text Output"}
+                </span>
+                <div style={{
+                  fontSize: "0.9rem",
+                  fontWeight: 700,
+                  color: T.text1,
+                  wordBreak: "break-all",
+                  fontFamily: encoderMode === "encode" ? "monospace" : "inherit"
+                }}>
+                  {encoderResult}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Research notes */}
           <div style={{
             background: T.surf,
