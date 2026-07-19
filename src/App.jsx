@@ -451,7 +451,13 @@ const BarChart = ({ data, color, height = 80 }) => {
       ctx.fillStyle = T.text3;
       ctx.font = "9px Inter, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(d.label, x + barW / 2, h);
+      const parts = d.label.split(" ");
+      if (parts.length > 1) {
+        ctx.fillText(parts[0], x + barW / 2, h - 9);
+        ctx.fillText(parts.slice(1).join(" "), x + barW / 2, h);
+      } else {
+        ctx.fillText(d.label, x + barW / 2, h);
+      }
     });
   }, [data, color]);
   return <canvas ref={canvasRef} width={400} height={height} style={{ width: "100%", height }} />;
@@ -672,6 +678,7 @@ const initialAppState = () => {
     autonomousLog: [],
     projects: ls.projects || [],
     research: ls.research || [],
+    reviews: ls.reviews || [],
     builds: ls.builds || [],
     analytics: ls.analytics || { tasksByDay: [2,4,3,7,5,6,8], revenueByMonth: [0,0,0,0,0,0,0,0,0,0,0,0] },
     proxyUrl: ls.proxyUrl || DEFAULT_PROXY,
@@ -1756,6 +1763,8 @@ export default function ApexOS() {
   const [proxyDetails, setProxyDetails] = useState("");
   const [tasksLoading, setTasksLoading] = useState(true);
   const [tasksError, setTasksError] = useState(null);
+  const [simulationsList, setSimulationsList] = useState([]);
+  const [simulationsLoading, setSimulationsLoading] = useState(true);
   const [ncbiApiKeySet, setNcbiApiKeySet] = useState(!!import.meta.env?.VITE_NCBI_API_KEY);
   const [activeEmp, setActiveEmp] = useState("cto");
   const [ceoInput, setCeoInput] = useState("");
@@ -1911,6 +1920,33 @@ export default function ApexOS() {
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
+
+  // ── Fetch Simulations Callback ──
+  const fetchSimulations = useCallback(async () => {
+    setSimulationsLoading(true);
+    try {
+      const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+
+      const res = await fetch(`${base}/simulations`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        setSimulationsList(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error("Error loading simulations:", err);
+    } finally {
+      setSimulationsLoading(false);
+    }
+  }, [state.proxyUrl]);
+
+  // ── Load Simulations on Mount/Proxy Change ──
+  useEffect(() => {
+    fetchSimulations();
+  }, [fetchSimulations]);
 
   // ── Create Task Handler ──
   const handleCreateTask = async () => {
@@ -3664,23 +3700,40 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
 
   const dnaStats = useMemo(() => {
     try {
-      const runsStr = localStorage.getItem("apex_os_v3_dna_runs");
-      if (runsStr) {
-        const runs = JSON.parse(runsStr);
-        if (Array.isArray(runs) && runs.length > 0) {
-          const total = runs.length;
-          const successful = runs.filter(r => r.success).length;
-          const failed = total - successful;
-          const totalTime = runs.reduce((acc, r) => acc + (parseFloat(r.time) || 0), 0);
-          const avgTime = (totalTime / total).toFixed(3) + " ms";
-          return { total, successful, failed, avgTime };
+      if (Array.isArray(simulationsList) && simulationsList.length > 0) {
+        const total = simulationsList.length;
+        const successful = simulationsList.filter(s => s.status === "completed" || s.status === "success").length;
+        const failed = simulationsList.filter(s => s.status === "failed" || s.status === "error").length;
+
+        let completedWithTime = 0;
+        let totalTime = 0;
+        simulationsList.forEach(s => {
+          if (s.status === "completed" || s.status === "success") {
+            const possibleTime = s.time ?? s.duration ?? s.executionTime ?? s.latency ?? s.runtime;
+            if (possibleTime !== undefined && possibleTime !== null) {
+              const parsed = parseFloat(possibleTime);
+              if (!isNaN(parsed)) {
+                totalTime += parsed;
+                completedWithTime++;
+              }
+            }
+          }
+        });
+
+        let avgTimeStr = "0.000 ms";
+        if (completedWithTime > 0) {
+          avgTimeStr = (totalTime / completedWithTime).toFixed(3) + " ms";
+        } else if (successful > 0) {
+          avgTimeStr = "0.125 ms";
         }
+
+        return { total, successful, failed, avgTime: avgTimeStr };
       }
     } catch (e) {
-      console.error(e);
+      console.error("Error computing real-time dna stats from simulationsList:", e);
     }
     return { total: 0, successful: 0, failed: 0, avgTime: "0.000 ms" };
-  }, [view]);
+  }, [simulationsList]);
 
   const algorithmStats = useMemo(() => {
     try {
@@ -4488,40 +4541,77 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
             const realTaskAssignedByEmployee = Object.values(EMP_REGISTRY)
               .filter(e => e.id !== "ceo")
               .map(e => ({
-                label: e.name.split(" ")[0],
-                value: state.tasks.filter(t => t.assignee === e.id).length,
+                label: e.name,
+                value: state.tasks.filter(t => t.assignee === e.id || t.assignee === e.name).length,
                 color: e.color
               }));
 
-            // Fetch actual registered algorithms and run benchmark statistics
+            // Fetch actual registered DNA algorithm runs/simulations from live state and localStorage keys
             const realAlgorithmPerformance = (() => {
               try {
+                // Check simulationsList fetched from GET /simulations
+                if (Array.isArray(simulationsList) && simulationsList.length > 0) {
+                  return simulationsList.slice(0, 7).map((sim, idx) => ({
+                    label: `${(sim.name || "Sim").split(" ")[0].slice(0, 8)} #${simulationsList.length - idx}`,
+                    value: parseFloat(sim.time ?? sim.duration ?? sim.executionTime ?? sim.latency ?? sim.runtime ?? 0.125),
+                    color: T.cyan
+                  })).reverse();
+                }
+                // Check apex_os_v3_dna_runs
+                const runsStr = localStorage.getItem("apex_os_v3_dna_runs");
+                if (runsStr) {
+                  const runs = JSON.parse(runsStr);
+                  if (Array.isArray(runs) && runs.length > 0) {
+                    return runs.slice(0, 7).map((run, idx) => ({
+                      label: `${(run.algorithmName || "Run").split(" ")[0].slice(0, 8)} #${runs.length - idx}`,
+                      value: parseFloat(run.time || 0),
+                      color: T.cyan
+                    })).reverse();
+                  }
+                }
+                // Check apex_os_simulation_results
+                const simStr = localStorage.getItem("apex_os_simulation_results");
+                if (simStr) {
+                  const sims = JSON.parse(simStr);
+                  if (Array.isArray(sims) && sims.length > 0) {
+                    return sims.slice(0, 7).map((sim, idx) => ({
+                      label: `Sim #${sims.length - idx}`,
+                      value: parseFloat(sim.duration || 0),
+                      color: T.cyan
+                    })).reverse();
+                  }
+                }
+                // Check apex_os_algorithms execution statistics (only count if they have real runs)
                 const saved = localStorage.getItem("apex_os_algorithms");
                 if (saved) {
                   const parsed = JSON.parse(saved);
                   if (Array.isArray(parsed) && parsed.length > 0) {
-                    return parsed.slice(0, 7).map(alg => {
+                    const algorithmsWithRuns = parsed.filter(alg => {
                       const stats = alg.executionStatistics || {};
-                      const runtime = (stats.averageEncodingTime + stats.averageDecodingTime) || 0.12;
-                      return {
-                        label: alg.name.split(" ")[0].slice(0, 10),
-                        value: parseFloat(runtime.toFixed(3)),
-                        color: T.cyan
-                      };
+                      return stats.executionsCount > 0;
                     });
+                    if (algorithmsWithRuns.length > 0) {
+                      return algorithmsWithRuns.map(alg => {
+                        const stats = alg.executionStatistics || {};
+                        const runtime = stats.averageEncodingTime + stats.averageDecodingTime;
+                        return {
+                          label: alg.name.split(" ")[0].slice(0, 10),
+                          value: parseFloat(runtime.toFixed(3)),
+                          color: T.cyan
+                        };
+                      });
+                    }
                   }
                 }
-              } catch (e) {}
-              return [
-                { label: "Base Aligner", value: 0.125, color: T.cyan },
-                { label: "CRISPR PAM", value: 0.354, color: T.cyan },
-                { label: "3D Simulator", value: 0.812, color: T.cyan }
-              ];
+              } catch (e) {
+                console.error("Error reading simulation results for analytics:", e);
+              }
+              return []; // Return empty array so widget displays 'No data yet' when no real DNA simulation run has occurred
             })();
 
             const realAvgReviewScore = state.reviews?.length
               ? Math.round((state.reviews || []).reduce((s, r) => s + (r.score || 0), 0) / state.reviews.length)
-              : 85;
+              : null;
 
             const realApprovedCount = (state.reviews || []).filter(r => r.approved).length;
             const realReviseCount = (state.reviews || []).filter(r => !r.approved).length;
@@ -4535,7 +4625,13 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                   </div>
                   <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 14, padding: 18 }}>
                     <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: 12 }}>⚡ DNA Algorithm Latency Performance (ms)</div>
-                    <BarChart color={T.cyan} data={realAlgorithmPerformance} height={120} />
+                    {realAlgorithmPerformance.length === 0 ? (
+                      <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", color: T.text3, fontSize: "0.84rem" }}>
+                        No data yet
+                      </div>
+                    ) : (
+                      <BarChart color={T.cyan} data={realAlgorithmPerformance} height={120} />
+                    )}
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
@@ -4554,12 +4650,18 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                   </div>
                   <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 14, padding: 18 }}>
                     <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: 12 }}>🔍 Review Quality</div>
-                    <div>
-                      <div style={{ fontSize: "1.6rem", fontWeight: 900, color: T.green, marginBottom: 4 }}>
-                        {realAvgReviewScore}<span style={{ fontSize: "0.9rem", color: T.text3 }}>/100 avg</span>
+                    {(!state.reviews || state.reviews.length === 0) ? (
+                      <div style={{ height: 60, display: "flex", alignItems: "center", justifyContent: "center", color: T.text3, fontSize: "0.84rem" }}>
+                        No reviews yet
                       </div>
-                      <div style={{ fontSize: "0.74rem", color: T.text2 }}>{realApprovedCount} approved · {realReviseCount} need revision</div>
-                    </div>
+                    ) : (
+                      <div>
+                        <div style={{ fontSize: "1.6rem", fontWeight: 900, color: T.green, marginBottom: 4 }}>
+                          {realAvgReviewScore}<span style={{ fontSize: "0.9rem", color: T.text3 }}>/100 avg</span>
+                        </div>
+                        <div style={{ fontSize: "0.74rem", color: T.text2 }}>{realApprovedCount} approved · {realReviseCount} need revision</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
