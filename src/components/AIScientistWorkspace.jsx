@@ -122,6 +122,12 @@ export default function AIScientistWorkspace() {
   const [encoderError, setEncoderError] = useState(null);
   const [encoderResult, setEncoderResult] = useState("");
 
+  // Synthesizer States
+  const [seqName, setSeqName] = useState("");
+  const [fastaLoading, setFastaLoading] = useState(false);
+  const [fastaError, setFastaError] = useState(null);
+  const [fastaResult, setFastaResult] = useState("");
+
   const PROXY_URL = (() => {
     try {
       const stateStr = localStorage.getItem("apex_os_v4_state");
@@ -142,6 +148,8 @@ export default function AIScientistWorkspace() {
     setEncoderLoading(true);
     setEncoderError(null);
     setEncoderResult("");
+    setFastaResult("");
+    setFastaError(null);
     try {
       const res = await fetch(`${PROXY_URL}/dna-encode`, {
         method: "POST",
@@ -174,6 +182,8 @@ export default function AIScientistWorkspace() {
     setEncoderLoading(true);
     setEncoderError(null);
     setEncoderResult("");
+    setFastaResult("");
+    setFastaError(null);
     try {
       const res = await fetch(`${PROXY_URL}/dna-decode`, {
         method: "POST",
@@ -195,6 +205,51 @@ export default function AIScientistWorkspace() {
     } finally {
       setEncoderLoading(false);
     }
+  };
+
+  const handleSynthesize = async (dnaSequence) => {
+    if (!dnaSequence || !dnaSequence.trim()) {
+      alert("No DNA sequence found to synthesize!");
+      return;
+    }
+    setFastaLoading(true);
+    setFastaError(null);
+    setFastaResult("");
+    try {
+      const payload = { dna: dnaSequence.trim().toUpperCase() };
+      if (seqName.trim()) {
+        payload.name = seqName.trim();
+      }
+      const res = await fetch(`${PROXY_URL}/dna-synthesize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        throw new Error(`Synthesizing failed (${res.status} ${res.statusText})`);
+      }
+      const fastaText = await res.text();
+      setFastaResult(fastaText);
+    } catch (err) {
+      console.error(err);
+      setFastaError(err.message || "Failed to communicate with DNA Synthesizer backend");
+    } finally {
+      setFastaLoading(false);
+    }
+  };
+
+  const handleDownloadFasta = () => {
+    if (!fastaResult) return;
+    const blob = new Blob([fastaResult], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const filename = seqName.trim() ? `${seqName.trim().replace(/[^a-zA-Z0-9_-]/g, "_")}.fasta` : "sequence.fasta";
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Hypothesis creation form state
@@ -985,6 +1040,101 @@ export default function AIScientistWorkspace() {
                 }}>
                   {encoderResult}
                 </div>
+
+                {/* Synthesis Input & Action (Only if we have DNA to synthesize) */}
+                {((encoderMode === "encode" && encoderResult) || (encoderMode === "decode" && inputDna.trim())) && (
+                  <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: `1px solid ${T.border2}` }}>
+                    <label style={{ display: "block", color: T.text2, fontSize: "0.72rem", fontWeight: 700, marginBottom: "4px" }}>
+                      Sequence Name (optional)
+                    </label>
+                    <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+                      <input
+                        type="text"
+                        value={seqName}
+                        onChange={e => setSeqName(e.target.value)}
+                        placeholder="e.g. APEX-1"
+                        style={{
+                          flex: 1,
+                          background: T.surf2,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: "6px",
+                          padding: "6px 10px",
+                          color: T.text1,
+                          fontSize: "0.8rem",
+                          outline: "none"
+                        }}
+                      />
+                      <button
+                        onClick={() => handleSynthesize(encoderMode === "encode" ? encoderResult : inputDna)}
+                        disabled={fastaLoading}
+                        style={{
+                          background: T.accent,
+                          color: "white",
+                          border: "none",
+                          borderRadius: "6px",
+                          padding: "6px 12px",
+                          fontSize: "0.78rem",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          opacity: fastaLoading ? 0.7 : 1
+                        }}
+                      >
+                        {fastaLoading ? "Synthesizing..." : "Synthesize (FASTA)"}
+                      </button>
+                    </div>
+
+                    {/* Fasta Load / Error states */}
+                    {fastaLoading && (
+                      <div style={{ fontSize: "0.74rem", color: T.text2, display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                        <div style={{ width: 10, height: 10, border: `2px solid ${T.border2}`, borderTopColor: T.accent, borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                        Generating FASTA file...
+                      </div>
+                    )}
+                    {fastaError && (
+                      <div style={{ fontSize: "0.74rem", color: T.red, marginTop: "4px" }}>
+                        ⚠️ Error: {fastaError}
+                      </div>
+                    )}
+
+                    {/* FASTA output display box */}
+                    {fastaResult && (
+                      <div style={{ marginTop: "12px" }}>
+                        <span style={{ display: "block", color: T.cyan, fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", marginBottom: "4px" }}>
+                          FASTA Output
+                        </span>
+                        <pre style={{
+                          background: T.surf2,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: "6px",
+                          padding: "10px",
+                          color: T.text1,
+                          fontSize: "0.8rem",
+                          fontFamily: "monospace",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-all",
+                          margin: "0 0 10px 0"
+                        }}>
+                          {fastaResult}
+                        </pre>
+                        <button
+                          onClick={handleDownloadFasta}
+                          style={{
+                            background: T.green,
+                            color: "white",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "6px 12px",
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          📥 Download .fasta
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
