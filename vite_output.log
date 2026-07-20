@@ -1,9 +1,12 @@
 
 > apex-os-frontend@1.0.0 dev
-> vite --port 3000
+> vite
 
 
-  VITE v5.4.21  ready in 270 ms
+  VITE v5.4.21  ready in 274 ms
 
-  ➜  Local:   http://localhost:3000/
+  ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
+1:54:04 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
+1:56:40 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
+1:56:51 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
