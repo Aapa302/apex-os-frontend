@@ -7,3 +7,5 @@
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
+7:59:11 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
+7:59:51 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx

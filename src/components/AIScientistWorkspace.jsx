@@ -410,7 +410,27 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
 
   while (index < dnaWithChecksums.length) {
     const remainingLength = dnaWithChecksums.length - index;
-    const isTriplicated = history.includes(blockNum);
+    let isTriplicated = history.includes(blockNum);
+
+    if (isTriplicated) {
+      // Verify if the block is actually triplicated in the input sequence
+      const testBlock = dnaWithChecksums.slice(index, Math.min(index + 300, dnaWithChecksums.length - 4));
+      if (testBlock.length >= 3) {
+        let matchingTriplets = 0;
+        let totalTriplets = 0;
+        for (let j = 0; j + 2 < testBlock.length; j += 3) {
+          totalTriplets++;
+          if (testBlock[j] === testBlock[j + 1] && testBlock[j + 1] === testBlock[j + 2]) {
+            matchingTriplets++;
+          }
+        }
+        if (totalTriplets > 0 && (matchingTriplets / totalTriplets) < 0.7) {
+          isTriplicated = false;
+        }
+      } else {
+        isTriplicated = false;
+      }
+    }
 
     let blockLen = isTriplicated ? 300 : 100;
     let chunkLen = blockLen + 4;
@@ -466,8 +486,7 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
 
         cleanDna += correctedBlock;
       } else {
-        // Standard mismatch - add to mismatch history for future runs!
-        addMismatchToHistory(blockNum);
+        // Do not add mismatch to history during read-only search operations!
 
         corruptions.push({
           blockNum,
@@ -556,7 +575,27 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
 
   while (index < dnaWithChecksums.length) {
     const remainingLength = dnaWithChecksums.length - index;
-    const isTriplicated = history.includes(blockNum);
+    let isTriplicated = history.includes(blockNum);
+
+    if (isTriplicated) {
+      // Verify if the block is actually triplicated in the input sequence
+      const testBlock = dnaWithChecksums.slice(index, Math.min(index + 300, dnaWithChecksums.length - 4));
+      if (testBlock.length >= 3) {
+        let matchingTriplets = 0;
+        let totalTriplets = 0;
+        for (let j = 0; j + 2 < testBlock.length; j += 3) {
+          totalTriplets++;
+          if (testBlock[j] === testBlock[j + 1] && testBlock[j + 1] === testBlock[j + 2]) {
+            matchingTriplets++;
+          }
+        }
+        if (totalTriplets > 0 && (matchingTriplets / totalTriplets) < 0.7) {
+          isTriplicated = false;
+        }
+      } else {
+        isTriplicated = false;
+      }
+    }
 
     let blockLen = isTriplicated ? 300 : 100;
     let chunkLen = blockLen + 4;
