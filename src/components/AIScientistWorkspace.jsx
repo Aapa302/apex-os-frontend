@@ -404,6 +404,12 @@ export default function AIScientistWorkspace() {
   const [fastaError, setFastaError] = useState(null);
   const [fastaResult, setFastaResult] = useState("");
 
+  // DNA-Native Search States
+  const [nativeSearchQuery, setNativeSearchQuery] = useState("");
+  const [nativeSearchResults, setNativeSearchResults] = useState([]);
+  const [nativeSearchExecuted, setNativeSearchExecuted] = useState(false);
+  const [nativeSearchError, setNativeSearchError] = useState("");
+
   const PROXY_URL = (() => {
     try {
       const stateStr = localStorage.getItem("apex_os_v4_state");
@@ -844,6 +850,97 @@ export default function AIScientistWorkspace() {
       setFastaError(err.message || "Failed to communicate with DNA Synthesizer backend");
     } finally {
       setFastaLoading(false);
+    }
+  };
+
+  const handleNativeSearch = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setNativeSearchError("");
+    setNativeSearchResults([]);
+    setNativeSearchExecuted(true);
+
+    if (!nativeSearchQuery.trim()) {
+      setNativeSearchError("Please enter a text query to search!");
+      return;
+    }
+
+    if (!fileDnaResult) {
+      setNativeSearchError("No active DNA stream found. Please encode a file first.");
+      return;
+    }
+
+    const indexData = uploadedIndex || generatedIndex;
+
+    try {
+      // Convert query text to UTF-8 binary
+      const textToBin = (text) => {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(text);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += bytes[i].toString(2).padStart(8, "0");
+        }
+        return binary;
+      };
+
+      const binary = textToBin(nativeSearchQuery);
+
+      // Map binary to DNA bases (00=A, 01=C, 10=G, 11=T)
+      let queryDna = "";
+      for (let i = 0; i < binary.length; i += 2) {
+        const bits = binary.slice(i, i + 2).padEnd(2, "0");
+        if (bits === "00") queryDna += "A";
+        else if (bits === "01") queryDna += "C";
+        else if (bits === "10") queryDna += "G";
+        else if (bits === "11") queryDna += "T";
+      }
+
+      // De-noise the query DNA
+      const deNoisedQueryDna = deNoiseDna(queryDna);
+
+      const targetDna = fileDnaResult.toUpperCase();
+      const patternsToTry = [];
+      if (deNoisedQueryDna) {
+        patternsToTry.push({ pattern: deNoisedQueryDna, type: "De-noised" });
+      }
+      if (queryDna && queryDna !== deNoisedQueryDna) {
+        patternsToTry.push({ pattern: queryDna, type: "Raw DNA" });
+      }
+
+      const allMatches = [];
+
+      patternsToTry.forEach(({ pattern, type }) => {
+        let pos = targetDna.indexOf(pattern);
+        while (pos !== -1) {
+          const matchLength = pattern.length;
+
+          let matchingChunks = [];
+          if (indexData) {
+            matchingChunks = indexData.filter(chunk => {
+              const chunkStart = chunk.DNA_position.start;
+              const chunkEnd = chunk.DNA_position.end;
+              return (pos < chunkEnd && (pos + matchLength) > chunkStart);
+            });
+          }
+
+          const alreadyFound = allMatches.some(m => m.index === pos && m.matchedDna === pattern);
+          if (!alreadyFound) {
+            allMatches.push({
+              index: pos,
+              matchedDna: pattern,
+              type,
+              chunks: matchingChunks
+            });
+          }
+
+          pos = targetDna.indexOf(pattern, pos + 1);
+        }
+      });
+
+      setNativeSearchResults(allMatches);
+    } catch (err) {
+      console.error("Native search error:", err);
+      setNativeSearchError("Search error: " + (err.message || "Unknown error occurred"));
     }
   };
 
@@ -1825,6 +1922,117 @@ export default function AIScientistWorkspace() {
                         </div>
                       );
                     })()}
+
+                    {/* DNA-Native Search Panel */}
+                    <div style={{
+                      marginTop: "16px",
+                      padding: "14px",
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: "10px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontSize: "1.1rem" }}>🔎</span>
+                        <span style={{ fontWeight: 800, fontSize: "0.85rem", color: T.cyan }}>
+                          DNA-Native Search Engine
+                        </span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: "0.76rem", color: T.text2 }}>
+                        Search for exact text patterns directly within the raw encoded DNA stream without decoding the full sequence.
+                      </p>
+
+                      <form onSubmit={handleNativeSearch} style={{ display: "flex", gap: "8px" }}>
+                        <input
+                          type="text"
+                          value={nativeSearchQuery}
+                          onChange={e => setNativeSearchQuery(e.target.value)}
+                          placeholder="Enter text query (e.g. metadata pattern)..."
+                          style={{
+                            flex: 1,
+                            background: T.surf,
+                            border: `1px solid ${T.border2}`,
+                            borderRadius: "6px",
+                            padding: "6px 12px",
+                            color: T.text1,
+                            fontSize: "0.8rem",
+                            outline: "none"
+                          }}
+                        />
+                        <button
+                          type="submit"
+                          style={{
+                            background: T.accent,
+                            color: "white",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "6px 14px",
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          Search DNA
+                        </button>
+                      </form>
+
+                      {nativeSearchExecuted && (
+                        <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {nativeSearchError ? (
+                            <div style={{ color: T.red, fontSize: "0.78rem" }}>
+                              ⚠️ {nativeSearchError}
+                            </div>
+                          ) : nativeSearchResults.length === 0 ? (
+                            <div style={{ color: T.yellow, fontSize: "0.78rem", fontStyle: "italic" }}>
+                              No direct DNA matches found for pattern in stream.
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                              <div style={{ fontSize: "0.76rem", color: T.green, fontWeight: 700 }}>
+                                ✅ Found {nativeSearchResults.length} match(es) in DNA stream!
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "150px", overflowY: "auto", paddingRight: "4px" }}>
+                                {nativeSearchResults.map((match, mIdx) => (
+                                  <div key={mIdx} style={{
+                                    background: T.surf,
+                                    border: `1px solid ${T.border}`,
+                                    borderRadius: "6px",
+                                    padding: "8px",
+                                    fontSize: "0.76rem",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "4px"
+                                  }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                                      <span style={{ color: T.accent }}>Match #{mIdx + 1} ({match.type})</span>
+                                      <span style={{ color: T.text3 }}>DNA Index: {match.index}</span>
+                                    </div>
+                                    <div style={{ fontFamily: "monospace", fontSize: "0.72rem", wordBreak: "break-all", background: T.surf2, padding: "4px", borderRadius: "4px" }}>
+                                      Matched DNA: {match.matchedDna}
+                                    </div>
+                                    {match.chunks && match.chunks.length > 0 ? (
+                                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "2px" }}>
+                                        {match.chunks.map(chk => (
+                                          <div key={chk.chunk_id} style={{ fontSize: "0.72rem", color: T.text2 }}>
+                                            📍 <strong>Chunk ID:</strong> {chk.chunk_id} | <strong>File Byte Range:</strong> {chk.byte_start} - {chk.byte_end} bytes
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div style={{ fontSize: "0.7rem", color: T.text3, fontStyle: "italic" }}>
+                                        No overlapping index mapping found. (Ensure index.json is uploaded)
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     <div style={{ borderTop: `1px solid ${T.border2}`, paddingTop: "12px", marginTop: "4px" }}>
                       {/* Optional Index File Uploader for Index-Assisted Decoding */}
