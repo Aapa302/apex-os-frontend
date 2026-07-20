@@ -220,6 +220,8 @@ export default function AIScientistWorkspace() {
   const [copied, setCopied] = useState(false);
   const [decodeLoading, setDecodeLoading] = useState(false);
   const [decodeError, setDecodeError] = useState(null);
+  const [generatedIndex, setGeneratedIndex] = useState(null);
+  const [uploadedIndex, setUploadedIndex] = useState(null);
 
   // Synthesizer States
   const [seqName, setSeqName] = useState("");
@@ -327,6 +329,7 @@ export default function AIScientistWorkspace() {
     setFileDnaResult("");
     setFileMetadata(null);
     setChecksumCorruptions([]);
+    setGeneratedIndex(null);
 
     try {
       const formData = new FormData();
@@ -334,7 +337,7 @@ export default function AIScientistWorkspace() {
 
       const res = await fetch(`${PROXY_URL}/dna-encode-file`, {
         method: "POST",
-        body: formData
+        body: formData,
       });
 
       if (!res.ok) {
@@ -346,20 +349,43 @@ export default function AIScientistWorkspace() {
           if (parsed.error) errMsg = parsed.error;
         } catch (e) {}
 
-        if (status === 413 || (status >= 400 && status < 500 && status !== 404 && status !== 405)) {
-          throw new Error(errMsg);
-        } else {
-          console.warn("Backend not ready or returned 404. Switching to local offline encoding fallback...");
+        if (status === 404 || status === 405 || status >= 500) {
+          console.warn("Backend route not found or server error. Switching to local offline encoding...");
           runLocalFileEncode();
           return;
+        } else {
+          throw new Error(errMsg);
         }
       }
 
       const data = await res.json();
-      if (data.success || data.dna) {
-        const dnaSeq = data.dna;
-        const dnaWithChecksums = encodeSequenceWithChecksums(dnaSeq);
+      if (data.success) {
+        const rawDna = data.dna;
+        const dnaWithChecksums = encodeSequenceWithChecksums(rawDna);
+
+        // Partition and create custom chunk mapping for indexing
+        const indexRecords = [];
+        const chunkSize = 500;
+        let dnaOffset = 0;
+        let chunkId = 1;
+
+        for (let i = 0; i < dnaWithChecksums.length; i += chunkSize) {
+          const chunkText = dnaWithChecksums.slice(i, i + chunkSize);
+          indexRecords.push({
+            chunk_id: chunkId,
+            byte_start: i,
+            byte_end: Math.min(i + chunkSize, dnaWithChecksums.length),
+            DNA_position: {
+              start: dnaOffset,
+              end: dnaOffset + chunkText.length
+            }
+          });
+          dnaOffset += chunkText.length;
+          chunkId++;
+        }
+
         setFileDnaResult(dnaWithChecksums);
+        setGeneratedIndex(indexRecords);
         setFileMetadata({
           name: selectedFile.name,
           size: selectedFile.size,
@@ -368,12 +394,12 @@ export default function AIScientistWorkspace() {
         });
         setEncoderLoading(false);
       } else {
-        throw new Error(data.error || "Unknown error from encoding backend");
+        throw new Error(data.error || "Unknown error during file encoding");
       }
     } catch (err) {
       console.error("API error during file encoding:", err);
       if (err instanceof TypeError || err.message.includes("failed to fetch") || err.message.includes("404") || err.message.includes("405")) {
-        console.warn("Network error or unavailable route. Switching to local offline encoding fallback...");
+        console.warn("Network error or unavailable route. Switching to local offline encoding...");
         runLocalFileEncode();
       } else {
         setEncoderError(err.message || "Failed to communicate with DNA Encoder backend");
@@ -387,19 +413,50 @@ export default function AIScientistWorkspace() {
     reader.onload = (evt) => {
       try {
         const dataUrl = evt.target.result;
-        const result = Encode(dataUrl);
-        if (result && result.dnaSequence) {
-          const dnaWithChecksums = encodeSequenceWithChecksums(result.dnaSequence);
-          setFileDnaResult(dnaWithChecksums);
-          setFileMetadata({
-            name: selectedFile.name,
-            size: selectedFile.size,
-            length: dnaWithChecksums.length,
-            source: "Local Engine (Offline Fallback)"
+
+        // Split base64 data into 500-char chunks for robust, indexed bio-assembly
+        const chunkSize = 500;
+        let compiledDna = "";
+        const indexRecords = [];
+        let dnaOffset = 0;
+        let chunkId = 1;
+
+        for (let i = 0; i < dataUrl.length; i += chunkSize) {
+          const chunkText = dataUrl.slice(i, i + chunkSize);
+          const byteStart = i;
+          const byteEnd = Math.min(i + chunkSize, dataUrl.length);
+
+          // Encode chunk text to raw DNA
+          const encRes = Encode(chunkText);
+          const rawDna = encRes.dnaSequence;
+
+          // Apply XOR parity checksums on this raw chunk DNA block
+          const chunkDnaWithParity = encodeSequenceWithChecksums(rawDna);
+
+          compiledDna += chunkDnaWithParity;
+
+          indexRecords.push({
+            chunk_id: chunkId,
+            byte_start: byteStart,
+            byte_end: byteEnd,
+            DNA_position: {
+              start: dnaOffset,
+              end: dnaOffset + chunkDnaWithParity.length
+            }
           });
-        } else {
-          throw new Error("Local encoding engine did not produce a sequence.");
+
+          dnaOffset += chunkDnaWithParity.length;
+          chunkId++;
         }
+
+        setFileDnaResult(compiledDna);
+        setGeneratedIndex(indexRecords);
+        setFileMetadata({
+          name: selectedFile.name,
+          size: selectedFile.size,
+          length: compiledDna.length,
+          source: "Local Engine with Indexing"
+        });
       } catch (innerErr) {
         console.error("Local encoding fallback failed:", innerErr);
         setEncoderError("Local fallback error: " + (innerErr.message || "Could not encode file locally"));
@@ -424,6 +481,12 @@ export default function AIScientistWorkspace() {
     setDecodeLoading(true);
     setDecodeError(null);
     setChecksumCorruptions([]);
+
+    if (uploadedIndex) {
+      console.warn("Index file is loaded. Running direct position-based local decoder...");
+      runLocalFileDecode(null);
+      return;
+    }
 
     const { cleanDna, corruptions } = decodeSequenceAndVerifyChecksums(fileDnaResult.trim().toUpperCase());
     if (corruptions.length > 0) {
@@ -479,9 +542,52 @@ export default function AIScientistWorkspace() {
 
   const runLocalFileDecode = (cleanDna) => {
     try {
-      const result = Decode(cleanDna);
-      if (result && result.decodedText) {
-        const dataUrl = result.decodedText;
+      let dataUrl = "";
+
+      if (uploadedIndex) {
+        console.log("Running index-assisted decoding...");
+        const chunkTexts = [];
+        const allCorruptions = [];
+
+        for (const chunk of uploadedIndex) {
+          const { start, end } = chunk.DNA_position;
+          const chunkDnaWithParity = fileDnaResult.slice(start, end);
+
+          // Verify and strip checksums for this specific chunk
+          const { cleanDna: cleanChunkDna, corruptions } = decodeSequenceAndVerifyChecksums(chunkDnaWithParity);
+          if (corruptions.length > 0) {
+            corruptions.forEach(c => {
+              allCorruptions.push({
+                ...c,
+                blockNum: `Chunk ${chunk.chunk_id} - ${c.blockNum}`
+              });
+            });
+          }
+
+          const decRes = Decode(cleanChunkDna);
+          if (decRes && decRes.decodedText) {
+            chunkTexts.push(decRes.decodedText);
+          } else {
+            throw new Error(`Failed to decode indexed DNA chunk ID: ${chunk.chunk_id}`);
+          }
+        }
+
+        if (allCorruptions.length > 0) {
+          setChecksumCorruptions(allCorruptions);
+        }
+
+        dataUrl = chunkTexts.join("");
+      } else {
+        // Standard non-indexed local decoding
+        const result = Decode(cleanDna);
+        if (result && result.decodedText) {
+          dataUrl = result.decodedText;
+        } else {
+          throw new Error("Local decoding engine returned empty payload.");
+        }
+      }
+
+      if (dataUrl) {
         if (!dataUrl.startsWith("data:")) {
           throw new Error("Decoded content is not a valid Data URL structure.");
         }
@@ -505,7 +611,7 @@ export default function AIScientistWorkspace() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
       } else {
-        throw new Error("Local decoding engine returned empty payload.");
+        throw new Error("Failed to reconstruct text stream.");
       }
     } catch (innerErr) {
       console.error("Local decoding fallback failed:", innerErr);
@@ -1431,7 +1537,7 @@ export default function AIScientistWorkspace() {
                       </pre>
                     </div>
 
-                    <div style={{ display: "flex", gap: "10px" }}>
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                       <button
                         type="button"
                         onClick={() => {
@@ -1455,6 +1561,38 @@ export default function AIScientistWorkspace() {
                       >
                         {copied ? "✅ Copied!" : "📋 Copy Full Sequence"}
                       </button>
+
+                      {generatedIndex && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const blob = new Blob([JSON.stringify(generatedIndex, null, 2)], { type: "application/json" });
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement("a");
+                            link.href = url;
+                            link.download = "index.json";
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            URL.revokeObjectURL(url);
+                          }}
+                          style={{
+                            background: T.accent2,
+                            color: "white",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "6px 12px",
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px"
+                          }}
+                        >
+                          📥 Download Index File (index.json)
+                        </button>
+                      )}
                     </div>
 
                     {fileMetadata && (
@@ -1476,6 +1614,52 @@ export default function AIScientistWorkspace() {
                     )}
 
                     <div style={{ borderTop: `1px solid ${T.border2}`, paddingTop: "12px", marginTop: "4px" }}>
+                      {/* Optional Index File Uploader for Index-Assisted Decoding */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "14px" }}>
+                        <label style={{ display: "block", color: T.text2, fontSize: "0.72rem", fontWeight: 700 }}>
+                          Upload Index File (optional .json for fast direct position-based decoding)
+                        </label>
+                        <input
+                          type="file"
+                          accept=".json"
+                          onChange={e => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (evt) => {
+                                try {
+                                  const parsed = JSON.parse(evt.target.result);
+                                  if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].DNA_position) {
+                                    setUploadedIndex(parsed);
+                                    alert("Index file uploaded successfully! Ready for index-assisted decoding.");
+                                  } else {
+                                    throw new Error("Invalid index format. Must be an array of chunk records.");
+                                  }
+                                } catch (err) {
+                                  alert("Failed to parse index file: " + err.message);
+                                }
+                              };
+                              reader.readAsText(file);
+                            }
+                          }}
+                          style={{
+                            width: "100%",
+                            background: T.surf2,
+                            border: `1px solid ${T.border2}`,
+                            borderRadius: "6px",
+                            padding: "6px 10px",
+                            color: T.text2,
+                            fontSize: "0.76rem",
+                            outline: "none"
+                          }}
+                        />
+                        {uploadedIndex && (
+                          <span style={{ fontSize: "0.72rem", color: T.green, fontWeight: 700 }}>
+                            ⚡ Index Assisted Engine Loaded: {uploadedIndex.length} chunks mapped.
+                          </span>
+                        )}
+                      </div>
+
                       <button
                         type="button"
                         onClick={handleFileDecode}
