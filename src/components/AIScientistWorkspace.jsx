@@ -565,6 +565,7 @@ export const encodeSequenceWithChecksums = (dna) => {
 
 export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
   if (!dnaWithChecksums) return { cleanDna: "", corruptions: [], autoCorrected: [] };
+  console.log("[DEBUG-DECODE] raw input DNA length:", dnaWithChecksums.length);
   const history = getMismatchHistory();
   const corruptions = [];
   const autoCorrected = [];
@@ -676,7 +677,9 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
   }
 
   // Re-noise (reconstruct original homopolymers)
+  console.log("[DEBUG-DECODE] checksum-stripped length:", cleanDna.length);
   const fullyRestoredDna = reNoiseDna(cleanDna);
+  console.log("[DEBUG-DECODE] homopolymer-reversed length:", fullyRestoredDna.length);
 
   return { cleanDna: fullyRestoredDna, corruptions, autoCorrected };
 };
@@ -992,6 +995,7 @@ export default function AIScientistWorkspace() {
     if (apiSuccess && decodedText !== null) {
       try {
         const finalPayload = await decryptBiometricPayload(decodedText, setBiometricModal);
+        console.log("[DEBUG-DECODE] final decoded string:", finalPayload);
         setEncoderResult(finalPayload);
       } catch (bioErr) {
         setEncoderError(bioErr.message);
