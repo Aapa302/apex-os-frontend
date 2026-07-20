@@ -103,21 +103,78 @@ const compute4BaseChecksum = (block) => {
   return parity.map(valToBase).join('');
 };
 
+// Mismatch history helpers for Triplication Redundancy
+const getMismatchHistory = () => {
+  try {
+    const data = localStorage.getItem("apex_os_checksum_mismatches");
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+const addMismatchToHistory = (blockNum) => {
+  try {
+    const history = getMismatchHistory();
+    if (!history.includes(blockNum)) {
+      history.push(blockNum);
+      localStorage.setItem("apex_os_checksum_mismatches", JSON.stringify(history));
+    }
+  } catch (e) {}
+};
+
+const getMajorityBase = (triplet) => {
+  if (!triplet) return 'A';
+  const counts = { 'A': 0, 'T': 0, 'C': 0, 'G': 0 };
+  for (let i = 0; i < triplet.length; i++) {
+    const base = triplet[i].toUpperCase();
+    if (counts[base] !== undefined) {
+      counts[base]++;
+    } else {
+      counts[base] = 1;
+    }
+  }
+  let maxBase = 'A';
+  let maxCount = -1;
+  for (const base of ['A', 'T', 'C', 'G']) {
+    if ((counts[base] || 0) > maxCount) {
+      maxCount = counts[base] || 0;
+      maxBase = base;
+    }
+  }
+  return maxBase;
+};
+
 export const encodeSequenceWithChecksums = (dna) => {
   if (!dna) return "";
+  const history = getMismatchHistory();
   let output = "";
+  let blockNum = 1;
   for (let i = 0; i < dna.length; i += 100) {
     const block = dna.slice(i, i + 100);
-    const chk = compute4BaseChecksum(block);
-    output += block + chk;
+    const isTriplicated = history.includes(blockNum);
+
+    if (isTriplicated) {
+      let triplicated = "";
+      for (let j = 0; j < block.length; j++) {
+        triplicated += block[j] + block[j] + block[j];
+      }
+      const chk = compute4BaseChecksum(triplicated);
+      output += triplicated + chk;
+    } else {
+      const chk = compute4BaseChecksum(block);
+      output += block + chk;
+    }
+    blockNum++;
   }
   return output;
 };
 
 export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
-  if (!dnaWithChecksums) return { cleanDna: "", corruptions: [] };
-  const cleanBlocks = [];
+  if (!dnaWithChecksums) return { cleanDna: "", corruptions: [], autoCorrected: [] };
+  const history = getMismatchHistory();
   const corruptions = [];
+  const autoCorrected = [];
   let cleanDna = "";
 
   let index = 0;
@@ -125,15 +182,25 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
 
   while (index < dnaWithChecksums.length) {
     const remainingLength = dnaWithChecksums.length - index;
-    let blockLen = 100;
-    let chunkLen = 104;
+    const isTriplicated = history.includes(blockNum);
 
-    if (remainingLength < 104) {
+    let blockLen = isTriplicated ? 300 : 100;
+    let chunkLen = blockLen + 4;
+
+    if (remainingLength < chunkLen) {
       if (remainingLength <= 4) {
         // Trailing bases without parity
         const tr = dnaWithChecksums.slice(index);
-        cleanBlocks.push(tr);
-        cleanDna += tr;
+        if (isTriplicated) {
+          let resolved = "";
+          for (let j = 0; j < tr.length; j += 3) {
+            const triplet = tr.slice(j, j + 3);
+            resolved += getMajorityBase(triplet);
+          }
+          cleanDna += resolved;
+        } else {
+          cleanDna += tr;
+        }
         break;
       }
       blockLen = remainingLength - 4;
@@ -145,24 +212,57 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
     const computedChecksum = compute4BaseChecksum(block);
 
     if (expectedChecksum !== computedChecksum) {
-      corruptions.push({
-        blockNum,
-        start: index,
-        end: index + blockLen,
-        expected: expectedChecksum,
-        computed: computedChecksum,
-        blockContent: block
-      });
-    }
+      if (isTriplicated) {
+        // Run majority vote auto-correction
+        let correctedBlock = "";
+        const origSize = Math.floor(blockLen / 3);
+        for (let j = 0; j < origSize; j++) {
+          const triplet = block.slice(j * 3, j * 3 + 3);
+          correctedBlock += getMajorityBase(triplet);
+        }
 
-    cleanBlocks.push(block);
-    cleanDna += block;
+        autoCorrected.push({
+          blockNum,
+          start: index,
+          end: index + blockLen,
+          originalContent: block,
+          correctedContent: correctedBlock
+        });
+
+        cleanDna += correctedBlock;
+      } else {
+        // Standard mismatch - add to mismatch history for future runs!
+        addMismatchToHistory(blockNum);
+
+        corruptions.push({
+          blockNum,
+          start: index,
+          end: index + blockLen,
+          expected: expectedChecksum,
+          computed: computedChecksum,
+          blockContent: block
+        });
+
+        cleanDna += block;
+      }
+    } else {
+      if (isTriplicated) {
+        let untriplicated = "";
+        const origSize = Math.floor(blockLen / 3);
+        for (let j = 0; j < origSize; j++) {
+          untriplicated += block[j * 3];
+        }
+        cleanDna += untriplicated;
+      } else {
+        cleanDna += block;
+      }
+    }
 
     index += chunkLen;
     blockNum++;
   }
 
-  return { cleanDna, corruptions };
+  return { cleanDna, corruptions, autoCorrected };
 };
 
 export default function AIScientistWorkspace() {
@@ -212,6 +312,7 @@ export default function AIScientistWorkspace() {
   const [encoderError, setEncoderError] = useState(null);
   const [encoderResult, setEncoderResult] = useState("");
   const [checksumCorruptions, setChecksumCorruptions] = useState([]);
+  const [autoCorrectedBlocks, setAutoCorrectedBlocks] = useState([]);
 
   // File to DNA States
   const [selectedFile, setSelectedFile] = useState(null);
@@ -288,10 +389,14 @@ export default function AIScientistWorkspace() {
     setFastaResult("");
     setFastaError(null);
     setChecksumCorruptions([]);
+    setAutoCorrectedBlocks([]);
 
-    const { cleanDna, corruptions } = decodeSequenceAndVerifyChecksums(inputDna.trim().toUpperCase());
+    const { cleanDna, corruptions, autoCorrected } = decodeSequenceAndVerifyChecksums(inputDna.trim().toUpperCase());
     if (corruptions.length > 0) {
       setChecksumCorruptions(corruptions);
+    }
+    if (autoCorrected.length > 0) {
+      setAutoCorrectedBlocks(autoCorrected);
     }
 
     try {
@@ -481,6 +586,7 @@ export default function AIScientistWorkspace() {
     setDecodeLoading(true);
     setDecodeError(null);
     setChecksumCorruptions([]);
+    setAutoCorrectedBlocks([]);
 
     if (uploadedIndex) {
       console.warn("Index file is loaded. Running direct position-based local decoder...");
@@ -488,9 +594,12 @@ export default function AIScientistWorkspace() {
       return;
     }
 
-    const { cleanDna, corruptions } = decodeSequenceAndVerifyChecksums(fileDnaResult.trim().toUpperCase());
+    const { cleanDna, corruptions, autoCorrected } = decodeSequenceAndVerifyChecksums(fileDnaResult.trim().toUpperCase());
     if (corruptions.length > 0) {
       setChecksumCorruptions(corruptions);
+    }
+    if (autoCorrected.length > 0) {
+      setAutoCorrectedBlocks(autoCorrected);
     }
 
     try {
@@ -548,18 +657,27 @@ export default function AIScientistWorkspace() {
         console.log("Running index-assisted decoding...");
         const chunkTexts = [];
         const allCorruptions = [];
+        const allCorrected = [];
 
         for (const chunk of uploadedIndex) {
           const { start, end } = chunk.DNA_position;
           const chunkDnaWithParity = fileDnaResult.slice(start, end);
 
           // Verify and strip checksums for this specific chunk
-          const { cleanDna: cleanChunkDna, corruptions } = decodeSequenceAndVerifyChecksums(chunkDnaWithParity);
+          const { cleanDna: cleanChunkDna, corruptions, autoCorrected } = decodeSequenceAndVerifyChecksums(chunkDnaWithParity);
           if (corruptions.length > 0) {
             corruptions.forEach(c => {
               allCorruptions.push({
                 ...c,
                 blockNum: `Chunk ${chunk.chunk_id} - ${c.blockNum}`
+              });
+            });
+          }
+          if (autoCorrected.length > 0) {
+            autoCorrected.forEach(ac => {
+              allCorrected.push({
+                ...ac,
+                blockNum: `Chunk ${chunk.chunk_id} - ${ac.blockNum}`
               });
             });
           }
@@ -574,6 +692,9 @@ export default function AIScientistWorkspace() {
 
         if (allCorruptions.length > 0) {
           setChecksumCorruptions(allCorruptions);
+        }
+        if (allCorrected.length > 0) {
+          setAutoCorrectedBlocks(allCorrected);
         }
 
         dataUrl = chunkTexts.join("");
@@ -1694,6 +1815,43 @@ export default function AIScientistWorkspace() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Auto-Corrected Triplication Redundancy Success Board */}
+            {autoCorrectedBlocks.length > 0 && (
+              <div style={{
+                marginTop: "16px",
+                padding: "14px",
+                background: `${T.green}15`,
+                border: `1px solid ${T.green}`,
+                borderRadius: "10px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.green, fontWeight: 800, fontSize: "0.85rem" }}>
+                  <span>🛡️ Error Correction Restored</span>
+                  <span style={{ fontSize: "0.7rem", background: T.green, color: "#fff", padding: "1px 6px", borderRadius: "10px", textTransform: "uppercase" }}>
+                    Secured
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {autoCorrectedBlocks.map((ac) => (
+                    <div key={ac.blockNum} style={{
+                      background: T.surf2,
+                      border: `1px solid ${T.green}30`,
+                      borderRadius: "6px",
+                      padding: "8px 12px",
+                      fontSize: "0.76rem"
+                    }}>
+                      <span style={{ fontWeight: 800, color: T.green }}>Auto-corrected block #{ac.blockNum}</span>
+                      <p style={{ margin: "4px 0 0 0", fontSize: "0.74rem", color: T.text2 }}>
+                        Reconstructed original sequence using 3x majority-vote lookup.
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
