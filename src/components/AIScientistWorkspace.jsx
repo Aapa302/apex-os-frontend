@@ -1371,6 +1371,26 @@ export default function AIScientistWorkspace() {
     }
   };
 
+  const encodeQueryToDna = (queryText) => {
+    if (!queryText) return "";
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(queryText);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += bytes[i].toString(2).padStart(8, "0");
+    }
+
+    let queryDna = "";
+    for (let i = 0; i < binary.length; i += 2) {
+      const bits = binary.slice(i, i + 2).padEnd(2, "0");
+      if (bits === "00") queryDna += "A";
+      else if (bits === "01") queryDna += "C";
+      else if (bits === "10") queryDna += "G";
+      else if (bits === "11") queryDna += "T";
+    }
+    return queryDna;
+  };
+
   const handleNativeSearch = (e) => {
     if (e && e.preventDefault) e.preventDefault();
     setNativeSearchError("");
@@ -1390,29 +1410,7 @@ export default function AIScientistWorkspace() {
     const indexData = uploadedIndex || generatedIndex;
 
     try {
-      // Convert query text to UTF-8 binary
-      const textToBin = (text) => {
-        const encoder = new TextEncoder();
-        const bytes = encoder.encode(text);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) {
-          binary += bytes[i].toString(2).padStart(8, "0");
-        }
-        return binary;
-      };
-
-      const binary = textToBin(nativeSearchQuery.trim());
-
-      // Map binary to DNA bases (00=A, 01=C, 10=G, 11=T) - simpler, standard 2-bit mapping
-      let queryDna = "";
-      for (let i = 0; i < binary.length; i += 2) {
-        const bits = binary.slice(i, i + 2).padEnd(2, "0");
-        if (bits === "00") queryDna += "A";
-        else if (bits === "01") queryDna += "C";
-        else if (bits === "10") queryDna += "G";
-        else if (bits === "11") queryDna += "T";
-      }
-
+      const queryDna = encodeQueryToDna(nativeSearchQuery.trim());
       const pattern = queryDna.toUpperCase();
       const targetDna = fileDnaResult.toUpperCase();
 
@@ -1420,9 +1418,10 @@ export default function AIScientistWorkspace() {
       const { cleanDna: restoredTargetDna, mapping: finalMapping } = decodeSequenceAndVerifyChecksumsWithMapping(targetDna);
 
       // Console debug logging as requested by the prompt
-      console.log("[DEBUG] DNA-Native Search Debugging:");
-      console.log("[DEBUG] Query text:", nativeSearchQuery.trim());
-      console.log("[DEBUG] Generated DNA pattern for query (simple 2-bit mapping):", pattern);
+      console.log("[DEBUG-SEARCH] input string:", nativeSearchQuery.trim());
+      console.log("[DEBUG-SEARCH] input string length (characters):", nativeSearchQuery.trim().length);
+      console.log("[DEBUG-SEARCH] generated DNA pattern length (bases):", pattern.length);
+      console.log("[DEBUG-SEARCH] generated DNA pattern:", pattern);
       console.log("[DEBUG] First 200 bases of raw target DNA (with parity/denoise):", targetDna.slice(0, 200));
       console.log("[DEBUG] First 200 bases of restored target DNA (standard 2-bit, checksums-stripped):", restoredTargetDna.slice(0, 200));
 
@@ -1488,12 +1487,7 @@ export default function AIScientistWorkspace() {
     }
 
     try {
-      // Convert query text to DNA sequence using the same Encode function used during encoding
-      const enc = Encode(searchDnaQuery.trim());
-      // The Encode function prepends a 32-bit checksum.
-      // In 2-bit mapping (which is standard), 32 bits translates to exactly the first 16 bases.
-      // Slicing them off leaves the exact DNA mapped pattern of the text query.
-      const queryDna = enc.dnaSequence.slice(16);
+      const queryDna = encodeQueryToDna(searchDnaQuery.trim());
 
       if (!queryDna) {
         setSearchDnaError("Could not convert query text to a valid DNA sequence.");
@@ -1508,9 +1502,10 @@ export default function AIScientistWorkspace() {
       const pattern = queryDna.toUpperCase();
 
       // Console debug logging:
-      console.log("[DEBUG] Search DNA Tab Debugging:");
-      console.log("[DEBUG] Query text:", searchDnaQuery.trim());
-      console.log("[DEBUG] Generated DNA pattern for query (simple 2-bit mapping):", pattern);
+      console.log("[DEBUG-SEARCH] input string:", searchDnaQuery.trim());
+      console.log("[DEBUG-SEARCH] input string length (characters):", searchDnaQuery.trim().length);
+      console.log("[DEBUG-SEARCH] generated DNA pattern length (bases):", pattern.length);
+      console.log("[DEBUG-SEARCH] generated DNA pattern:", pattern);
       console.log("[DEBUG] First 200 bases of raw target DNA:", targetStr.slice(0, 200));
       console.log("[DEBUG] First 200 bases of restored target DNA:", restoredTargetDna.slice(0, 200));
 
