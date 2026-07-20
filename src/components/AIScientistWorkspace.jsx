@@ -602,31 +602,26 @@ export default function AIScientistWorkspace() {
   })();
 
   const fetchHealthLogs = async () => {
+    setHealthError(null);
     try {
       const res = await fetch(`${PROXY_URL}/dna-health-check/logs`);
       if (!res.ok) {
         throw new Error(`Failed to fetch health logs: ${res.status} ${res.statusText}`);
       }
       const data = await res.json();
-      if (data.success && Array.isArray(data.logs)) {
-        setHealthLogs(data.logs);
-      } else if (Array.isArray(data)) {
-        setHealthLogs(data);
+      let logsArray = [];
+      if (Array.isArray(data)) {
+        logsArray = data;
+      } else if (data && data.success && Array.isArray(data.logs)) {
+        logsArray = data.logs;
       } else {
         throw new Error("Invalid log list format");
       }
+      const sorted = [...logsArray].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      setHealthLogs(sorted);
     } catch (err) {
-      console.warn("Failed to fetch health logs from backend, initializing with cached/mock logs locally...", err);
-      const cachedLogs = localStorage.getItem("apex_os_v4_health_check_logs");
-      if (cachedLogs) {
-        try {
-          setHealthLogs(JSON.parse(cachedLogs));
-        } catch (e) {
-          initializeMockLogs();
-        }
-      } else {
-        initializeMockLogs();
-      }
+      console.error("Failed to fetch health logs from backend:", err);
+      setHealthError("Health check failed, try again");
     }
   };
 
@@ -665,45 +660,12 @@ export default function AIScientistWorkspace() {
         throw new Error(`Health check run failed: ${res.status} ${res.statusText}`);
       }
       const data = await res.json();
-      let newLog;
-      if (data.success) {
-        newLog = {
-          timestamp: data.timestamp || new Date().toISOString(),
-          blocksScanned: data.blocksScanned ?? 24,
-          blocksFixed: data.blocksFixed ?? 0,
-          status: data.status || "Check completed.",
-          source: "Render Backend Server"
-        };
-      } else {
-        throw new Error(data.error || "Backend reported failure");
-      }
 
-      setHealthLogs(prev => {
-        const updated = [newLog, ...prev];
-        localStorage.setItem("apex_os_v4_health_check_logs", JSON.stringify(updated));
-        return updated;
-      });
+      setHealthLogs(prev => [data, ...prev]);
     } catch (err) {
-      console.warn("Backend /dna-health-check failed. Using local auto-repair fallback...", err);
-      const scanned = 24;
-      const fixed = Math.random() > 0.5 ? 1 : 0;
-      const localLog = {
-        timestamp: new Date().toISOString(),
-        blocksScanned: scanned,
-        blocksFixed: fixed,
-        status: fixed > 0
-          ? `Auto-repaired ${fixed} mutated block(s) using Triplication Redundancy majority-vote.`
-          : "Archive integrity verified. 100% blocks healthy.",
-        source: "Local Fallback"
-      };
-
-      setHealthLogs(prev => {
-        const updated = [localLog, ...prev];
-        localStorage.setItem("apex_os_v4_health_check_logs", JSON.stringify(updated));
-        return updated;
-      });
+      console.error("Failed to execute health check:", err);
       if (!isBackground) {
-        setHealthError(`Render backend connection failed. Executed offline local repair instead.`);
+        setHealthError("Health check failed, try again");
       }
     } finally {
       if (!isBackground) {
@@ -3143,22 +3105,21 @@ export default function AIScientistWorkspace() {
                           gap: "4px"
                         }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
-                            <span style={{ color: log.blocksFixed > 0 ? T.yellow : T.green }}>
-                              {log.blocksFixed > 0 ? "⚠️ Repair Completed" : "✅ Archive Healthy"}
+                            <span style={{ color: (log.corrupted_found > 0 || log.blocksFixed > 0) ? T.yellow : T.green }}>
+                              {(log.corrupted_found > 0 || log.blocksFixed > 0) ? "⚠️ Repair Required" : "✅ Archive Healthy"}
                             </span>
                             <span style={{ color: T.text3, fontSize: "0.7rem" }}>
-                              {new Date(log.timestamp).toLocaleString()}
+                              {log.timestamp ? new Date(log.timestamp).toLocaleString() : "N/A"}
                             </span>
                           </div>
                           <div style={{ color: T.text2, fontSize: "0.72rem" }}>
-                            <strong>Blocks Scanned:</strong> {log.blocksScanned} | <strong>Blocks Fixed:</strong> {log.blocksFixed}
+                            <strong>Scanned Count:</strong> {log.scanned_count ?? log.blocksScanned ?? 0} | <strong>Corrupted Found:</strong> {log.corrupted_found ?? 0} | <strong>Fixed Count:</strong> {log.fixed_count ?? log.blocksFixed ?? 0}
                           </div>
-                          <div style={{ color: T.text3, fontSize: "0.72rem", fontStyle: "italic" }}>
-                            {log.status}
-                          </div>
-                          <div style={{ fontSize: "0.62rem", alignSelf: "flex-end", color: log.source === "Render Backend Server" ? T.cyan : T.text3 }}>
-                            Source: {log.source}
-                          </div>
+                          {log.status && (
+                            <div style={{ color: T.text3, fontSize: "0.72rem", fontStyle: "italic" }}>
+                              {log.status}
+                            </div>
+                          )}
                         </div>
                       ))
                     )}
