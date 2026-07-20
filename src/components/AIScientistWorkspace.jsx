@@ -76,6 +76,95 @@ const INITIAL_NOTES = [
   }
 ];
 
+// XOR-based 4-base parity checksum protocol helpers
+const baseToVal = (b) => {
+  const base = b.toUpperCase();
+  if (base === 'A') return 0;
+  if (base === 'T') return 1;
+  if (base === 'C') return 2;
+  if (base === 'G') return 3;
+  return 0;
+};
+
+const valToBase = (v) => {
+  if (v === 0) return 'A';
+  if (v === 1) return 'T';
+  if (v === 2) return 'C';
+  if (v === 3) return 'G';
+  return 'A';
+};
+
+const compute4BaseChecksum = (block) => {
+  const parity = [0, 0, 0, 0];
+  for (let i = 0; i < block.length; i++) {
+    const idx = i % 4;
+    parity[idx] = parity[idx] ^ baseToVal(block[i]);
+  }
+  return parity.map(valToBase).join('');
+};
+
+export const encodeSequenceWithChecksums = (dna) => {
+  if (!dna) return "";
+  let output = "";
+  for (let i = 0; i < dna.length; i += 100) {
+    const block = dna.slice(i, i + 100);
+    const chk = compute4BaseChecksum(block);
+    output += block + chk;
+  }
+  return output;
+};
+
+export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
+  if (!dnaWithChecksums) return { cleanDna: "", corruptions: [] };
+  const cleanBlocks = [];
+  const corruptions = [];
+  let cleanDna = "";
+
+  let index = 0;
+  let blockNum = 1;
+
+  while (index < dnaWithChecksums.length) {
+    const remainingLength = dnaWithChecksums.length - index;
+    let blockLen = 100;
+    let chunkLen = 104;
+
+    if (remainingLength < 104) {
+      if (remainingLength <= 4) {
+        // Trailing bases without parity
+        const tr = dnaWithChecksums.slice(index);
+        cleanBlocks.push(tr);
+        cleanDna += tr;
+        break;
+      }
+      blockLen = remainingLength - 4;
+      chunkLen = remainingLength;
+    }
+
+    const block = dnaWithChecksums.slice(index, index + blockLen);
+    const expectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
+    const computedChecksum = compute4BaseChecksum(block);
+
+    if (expectedChecksum !== computedChecksum) {
+      corruptions.push({
+        blockNum,
+        start: index,
+        end: index + blockLen,
+        expected: expectedChecksum,
+        computed: computedChecksum,
+        blockContent: block
+      });
+    }
+
+    cleanBlocks.push(block);
+    cleanDna += block;
+
+    index += chunkLen;
+    blockNum++;
+  }
+
+  return { cleanDna, corruptions };
+};
+
 export default function AIScientistWorkspace() {
   const [hypotheses, setHypotheses] = useState(() => {
     // Verified localStorage persistence key: 'apex_os_v4_hypotheses'
@@ -122,6 +211,7 @@ export default function AIScientistWorkspace() {
   const [encoderLoading, setEncoderLoading] = useState(false);
   const [encoderError, setEncoderError] = useState(null);
   const [encoderResult, setEncoderResult] = useState("");
+  const [checksumCorruptions, setChecksumCorruptions] = useState([]);
 
   // File to DNA States
   const [selectedFile, setSelectedFile] = useState(null);
@@ -159,6 +249,7 @@ export default function AIScientistWorkspace() {
     setEncoderResult("");
     setFastaResult("");
     setFastaError(null);
+    setChecksumCorruptions([]);
     try {
       const res = await fetch(`${PROXY_URL}/dna-encode`, {
         method: "POST",
@@ -170,7 +261,8 @@ export default function AIScientistWorkspace() {
       }
       const data = await res.json();
       if (data.success) {
-        setEncoderResult(data.dna);
+        const dnaWithChecksums = encodeSequenceWithChecksums(data.dna);
+        setEncoderResult(dnaWithChecksums);
       } else {
         throw new Error(data.error || "Unknown error during encoding");
       }
@@ -193,11 +285,18 @@ export default function AIScientistWorkspace() {
     setEncoderResult("");
     setFastaResult("");
     setFastaError(null);
+    setChecksumCorruptions([]);
+
+    const { cleanDna, corruptions } = decodeSequenceAndVerifyChecksums(inputDna.trim().toUpperCase());
+    if (corruptions.length > 0) {
+      setChecksumCorruptions(corruptions);
+    }
+
     try {
       const res = await fetch(`${PROXY_URL}/dna-decode`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dna: inputDna.trim().toUpperCase() })
+        body: JSON.stringify({ dna: cleanDna })
       });
       if (!res.ok) {
         throw new Error(`Decoding failed (${res.status} ${res.statusText})`);
@@ -227,6 +326,7 @@ export default function AIScientistWorkspace() {
     setEncoderError(null);
     setFileDnaResult("");
     setFileMetadata(null);
+    setChecksumCorruptions([]);
 
     try {
       const formData = new FormData();
@@ -258,11 +358,12 @@ export default function AIScientistWorkspace() {
       const data = await res.json();
       if (data.success || data.dna) {
         const dnaSeq = data.dna;
-        setFileDnaResult(dnaSeq);
+        const dnaWithChecksums = encodeSequenceWithChecksums(dnaSeq);
+        setFileDnaResult(dnaWithChecksums);
         setFileMetadata({
           name: selectedFile.name,
           size: selectedFile.size,
-          length: dnaSeq.length,
+          length: dnaWithChecksums.length,
           source: "Backend Server"
         });
         setEncoderLoading(false);
@@ -288,11 +389,12 @@ export default function AIScientistWorkspace() {
         const dataUrl = evt.target.result;
         const result = Encode(dataUrl);
         if (result && result.dnaSequence) {
-          setFileDnaResult(result.dnaSequence);
+          const dnaWithChecksums = encodeSequenceWithChecksums(result.dnaSequence);
+          setFileDnaResult(dnaWithChecksums);
           setFileMetadata({
             name: selectedFile.name,
             size: selectedFile.size,
-            length: result.dnaSequence.length,
+            length: dnaWithChecksums.length,
             source: "Local Engine (Offline Fallback)"
           });
         } else {
@@ -321,12 +423,18 @@ export default function AIScientistWorkspace() {
 
     setDecodeLoading(true);
     setDecodeError(null);
+    setChecksumCorruptions([]);
+
+    const { cleanDna, corruptions } = decodeSequenceAndVerifyChecksums(fileDnaResult.trim().toUpperCase());
+    if (corruptions.length > 0) {
+      setChecksumCorruptions(corruptions);
+    }
 
     try {
       const res = await fetch(`${PROXY_URL}/dna-decode-file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dna: fileDnaResult.trim().toUpperCase() })
+        body: JSON.stringify({ dna: cleanDna })
       });
 
       if (!res.ok) {
@@ -340,7 +448,7 @@ export default function AIScientistWorkspace() {
 
         if (status === 404 || status === 405 || status >= 500) {
           console.warn("Backend route not found or server error. Switching to local offline decoding fallback...");
-          runLocalFileDecode();
+          runLocalFileDecode(cleanDna);
           return;
         } else {
           throw new Error(errMsg);
@@ -361,7 +469,7 @@ export default function AIScientistWorkspace() {
       console.error("API error during file decoding:", err);
       if (err instanceof TypeError || err.message.includes("failed to fetch") || err.message.includes("404") || err.message.includes("405")) {
         console.warn("Network error or unavailable route. Switching to local offline decoding fallback...");
-        runLocalFileDecode();
+        runLocalFileDecode(cleanDna);
       } else {
         setDecodeError(err.message || "Failed to communicate with DNA Decoder backend");
         setDecodeLoading(false);
@@ -369,9 +477,9 @@ export default function AIScientistWorkspace() {
     }
   };
 
-  const runLocalFileDecode = () => {
+  const runLocalFileDecode = (cleanDna) => {
     try {
-      const result = Decode(fileDnaResult);
+      const result = Decode(cleanDna);
       if (result && result.decodedText) {
         const dataUrl = result.decodedText;
         if (!dataUrl.startsWith("data:")) {
@@ -1402,6 +1510,53 @@ export default function AIScientistWorkspace() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Checksum Parity Corruptions Alert UI */}
+            {checksumCorruptions.length > 0 && (
+              <div style={{
+                marginTop: "16px",
+                padding: "14px",
+                background: `${T.red}15`,
+                border: `1px solid ${T.red}`,
+                borderRadius: "10px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.red, fontWeight: 800, fontSize: "0.85rem" }}>
+                  <span>⚠️ Checksum Verification Failed</span>
+                  <span style={{ fontSize: "0.7rem", background: T.red, color: "#fff", padding: "1px 6px", borderRadius: "10px", textTransform: "uppercase" }}>
+                    Corrupted
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: "0.78rem", color: T.text2 }}>
+                  The following block(s) failed XOR-based 4-base parity verification. Please review for data transmission noise:
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+                  {checksumCorruptions.map((corr) => (
+                    <div key={corr.blockNum} style={{
+                      background: T.surf2,
+                      border: `1px solid ${T.red}30`,
+                      borderRadius: "6px",
+                      padding: "8px 12px",
+                      fontSize: "0.76rem"
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                        <span style={{ fontWeight: 800, color: T.red }}>Block #{corr.blockNum} (CORRUPTED)</span>
+                        <span style={{ color: T.text3 }}>Range: {corr.start} - {corr.end}</span>
+                      </div>
+                      <div style={{ fontFamily: "monospace", fontSize: "0.72rem", wordBreak: "break-all", background: T.surf, padding: "6px", borderRadius: "4px", color: T.text2, marginBottom: "4px" }}>
+                        {corr.blockContent}
+                      </div>
+                      <div style={{ display: "flex", gap: "12px", fontSize: "0.72rem", color: T.text2 }}>
+                        <span>Expected Checksum: <strong style={{ color: T.green, fontFamily: "monospace" }}>{corr.expected}</strong></span>
+                        <span>Computed Parity: <strong style={{ color: T.red, fontFamily: "monospace" }}>{corr.computed}</strong></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
