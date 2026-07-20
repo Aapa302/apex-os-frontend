@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { Encode, Decode } from "../core/DNACoreEngine";
 
 // Initial professional hypotheses & experiments for AI Scientist Workspace
 const INITIAL_HYPOTHESES = [
@@ -122,6 +123,14 @@ export default function AIScientistWorkspace() {
   const [encoderError, setEncoderError] = useState(null);
   const [encoderResult, setEncoderResult] = useState("");
 
+  // File to DNA States
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileDnaResult, setFileDnaResult] = useState("");
+  const [fileMetadata, setFileMetadata] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [decodeLoading, setDecodeLoading] = useState(false);
+  const [decodeError, setDecodeError] = useState(null);
+
   // Synthesizer States
   const [seqName, setSeqName] = useState("");
   const [fastaLoading, setFastaLoading] = useState(false);
@@ -204,6 +213,197 @@ export default function AIScientistWorkspace() {
       setEncoderError(err.message || "Failed to communicate with DNA Decoder backend");
     } finally {
       setEncoderLoading(false);
+    }
+  };
+
+  const handleFileEncode = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!selectedFile) {
+      alert("Please select a file first!");
+      return;
+    }
+
+    setEncoderLoading(true);
+    setEncoderError(null);
+    setFileDnaResult("");
+    setFileMetadata(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const res = await fetch(`${PROXY_URL}/dna-encode-file`, {
+        method: "POST",
+        body: formData
+      });
+
+      if (!res.ok) {
+        const status = res.status;
+        const errText = await res.text();
+        let errMsg = `Backend error ${status}: ${res.statusText || "Encoding failed"}`;
+        try {
+          const parsed = JSON.parse(errText);
+          if (parsed.error) errMsg = parsed.error;
+        } catch (e) {}
+
+        if (status === 413 || (status >= 400 && status < 500 && status !== 404 && status !== 405)) {
+          throw new Error(errMsg);
+        } else {
+          console.warn("Backend not ready or returned 404. Switching to local offline encoding fallback...");
+          runLocalFileEncode();
+          return;
+        }
+      }
+
+      const data = await res.json();
+      if (data.success || data.dna) {
+        const dnaSeq = data.dna;
+        setFileDnaResult(dnaSeq);
+        setFileMetadata({
+          name: selectedFile.name,
+          size: selectedFile.size,
+          length: dnaSeq.length,
+          source: "Backend Server"
+        });
+        setEncoderLoading(false);
+      } else {
+        throw new Error(data.error || "Unknown error from encoding backend");
+      }
+    } catch (err) {
+      console.error("API error during file encoding:", err);
+      if (err instanceof TypeError || err.message.includes("failed to fetch") || err.message.includes("404") || err.message.includes("405")) {
+        console.warn("Network error or unavailable route. Switching to local offline encoding fallback...");
+        runLocalFileEncode();
+      } else {
+        setEncoderError(err.message || "Failed to communicate with DNA Encoder backend");
+        setEncoderLoading(false);
+      }
+    }
+  };
+
+  const runLocalFileEncode = () => {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const dataUrl = evt.target.result;
+        const result = Encode(dataUrl);
+        if (result && result.dnaSequence) {
+          setFileDnaResult(result.dnaSequence);
+          setFileMetadata({
+            name: selectedFile.name,
+            size: selectedFile.size,
+            length: result.dnaSequence.length,
+            source: "Local Engine (Offline Fallback)"
+          });
+        } else {
+          throw new Error("Local encoding engine did not produce a sequence.");
+        }
+      } catch (innerErr) {
+        console.error("Local encoding fallback failed:", innerErr);
+        setEncoderError("Local fallback error: " + (innerErr.message || "Could not encode file locally"));
+      } finally {
+        setEncoderLoading(false);
+      }
+    };
+    reader.onerror = () => {
+      setEncoderError("FileReader error: Failed to read file locally");
+      setEncoderLoading(false);
+    };
+    reader.readAsDataURL(selectedFile);
+  };
+
+  const handleFileDecode = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!fileDnaResult) {
+      alert("No DNA sequence to decode!");
+      return;
+    }
+
+    setDecodeLoading(true);
+    setDecodeError(null);
+
+    try {
+      const res = await fetch(`${PROXY_URL}/dna-decode-file`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dna: fileDnaResult.trim().toUpperCase() })
+      });
+
+      if (!res.ok) {
+        const status = res.status;
+        const errText = await res.text();
+        let errMsg = `Backend error ${status}: ${res.statusText || "Decoding failed"}`;
+        try {
+          const parsed = JSON.parse(errText);
+          if (parsed.error) errMsg = parsed.error;
+        } catch (e) {}
+
+        if (status === 404 || status === 405 || status >= 500) {
+          console.warn("Backend route not found or server error. Switching to local offline decoding fallback...");
+          runLocalFileDecode();
+          return;
+        } else {
+          throw new Error(errMsg);
+        }
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `decoded_${fileMetadata?.name || "image.jpg"}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setDecodeLoading(false);
+    } catch (err) {
+      console.error("API error during file decoding:", err);
+      if (err instanceof TypeError || err.message.includes("failed to fetch") || err.message.includes("404") || err.message.includes("405")) {
+        console.warn("Network error or unavailable route. Switching to local offline decoding fallback...");
+        runLocalFileDecode();
+      } else {
+        setDecodeError(err.message || "Failed to communicate with DNA Decoder backend");
+        setDecodeLoading(false);
+      }
+    }
+  };
+
+  const runLocalFileDecode = () => {
+    try {
+      const result = Decode(fileDnaResult);
+      if (result && result.decodedText) {
+        const dataUrl = result.decodedText;
+        if (!dataUrl.startsWith("data:")) {
+          throw new Error("Decoded content is not a valid Data URL structure.");
+        }
+
+        const arr = dataUrl.split(",");
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `decoded_${fileMetadata?.name || "image.jpg"}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        throw new Error("Local decoding engine returned empty payload.");
+      }
+    } catch (innerErr) {
+      console.error("Local decoding fallback failed:", innerErr);
+      setDecodeError("Local fallback error: " + (innerErr.message || "Could not reconstruct file locally"));
+    } finally {
+      setDecodeLoading(false);
     }
   };
 
@@ -927,9 +1127,26 @@ export default function AIScientistWorkspace() {
               >
                 DNA to Text
               </button>
+              <button
+                onClick={() => { setEncoderMode("fileToDna"); setEncoderResult(""); setEncoderError(null); }}
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  borderRadius: "6px",
+                  border: "none",
+                  background: encoderMode === "fileToDna" ? T.accent : "transparent",
+                  color: encoderMode === "fileToDna" ? "#ffffff" : T.text2,
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                File to DNA
+              </button>
             </div>
 
-            {encoderMode === "encode" ? (
+            {encoderMode === "encode" && (
               <form onSubmit={handleDnaEncode} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div>
                   <label style={{ display: "block", color: T.text2, fontSize: "0.75rem", fontWeight: 700, marginBottom: "5px" }}>Text / String to Encode</label>
@@ -968,7 +1185,9 @@ export default function AIScientistWorkspace() {
                   {encoderLoading ? "Encoding..." : "Encode ➔"}
                 </button>
               </form>
-            ) : (
+            )}
+
+            {encoderMode === "decode" && (
               <form onSubmit={handleDnaDecode} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div>
                   <label style={{ display: "block", color: T.text2, fontSize: "0.75rem", fontWeight: 700, marginBottom: "5px" }}>DNA Sequence to Decode</label>
@@ -1008,6 +1227,182 @@ export default function AIScientistWorkspace() {
                   {encoderLoading ? "Decoding..." : "Decode ➔"}
                 </button>
               </form>
+            )}
+
+            {encoderMode === "fileToDna" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+                  <label style={{ display: "block", color: T.text2, fontSize: "0.75rem", fontWeight: 700, marginBottom: "5px" }}>
+                    Select Image File (.jpg, .png)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/jpg"
+                    onChange={e => {
+                      if (e.target.files && e.target.files[0]) {
+                        setSelectedFile(e.target.files[0]);
+                        setFileDnaResult("");
+                        setFileMetadata(null);
+                        setEncoderError(null);
+                        setDecodeError(null);
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: "8px",
+                      padding: "10px 14px",
+                      color: T.text1,
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      cursor: "pointer"
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleFileEncode}
+                  disabled={encoderLoading || !selectedFile}
+                  style={{
+                    padding: "10px 18px",
+                    background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                    border: "none",
+                    borderRadius: "8px",
+                    color: "white",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    cursor: (encoderLoading || !selectedFile) ? "default" : "pointer",
+                    opacity: (encoderLoading || !selectedFile) ? 0.7 : 1
+                  }}
+                >
+                  {encoderLoading ? "Encoding File..." : "Encode File ➔"}
+                </button>
+
+                {/* Local Spinner specific to File Encoding */}
+                {encoderLoading && (
+                  <div style={{ padding: "8px 0", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ width: 14, height: 14, border: `2px solid ${T.border2}`, borderTopColor: T.accent, borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                    <span style={{ fontSize: "0.8rem", color: T.text2 }}>
+                      Processing file to DNA on {selectedFile && selectedFile.size > 200000 ? "large " : ""}file...
+                    </span>
+                  </div>
+                )}
+
+                {/* Local error for File Encoding */}
+                {encoderError && (
+                  <div style={{ padding: "10px 14px", background: `${T.red}12`, border: `1px solid ${T.red}30`, borderRadius: "8px", color: T.red, fontSize: "0.8rem" }}>
+                    ⚠️ <strong>Encoding Error:</strong> {encoderError}
+                  </div>
+                )}
+
+                {/* Successful encoding result view */}
+                {fileDnaResult && (
+                  <div style={{ marginTop: "12px", padding: "14px", background: `${T.green}10`, border: `1px solid ${T.green}30`, borderRadius: "8px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <div>
+                      <span style={{ display: "block", color: T.green, fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", marginBottom: "4px" }}>
+                        DNA Sequence Preview
+                      </span>
+                      <pre style={{
+                        background: T.surf2,
+                        border: `1px solid ${T.border2}`,
+                        borderRadius: "6px",
+                        padding: "10px",
+                        color: T.text1,
+                        fontSize: "0.8rem",
+                        fontFamily: "monospace",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-all",
+                        margin: 0
+                      }}>
+                        {fileDnaResult.length > 100
+                          ? `${fileDnaResult.slice(0, 100)}... (total ${fileDnaResult.length} bases)`
+                          : fileDnaResult
+                        }
+                      </pre>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(fileDnaResult);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                        style={{
+                          background: T.surf2,
+                          color: T.text1,
+                          border: `1px solid ${T.border2}`,
+                          borderRadius: "6px",
+                          padding: "6px 12px",
+                          fontSize: "0.78rem",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px"
+                        }}
+                      >
+                        {copied ? "✅ Copied!" : "📋 Copy Full Sequence"}
+                      </button>
+                    </div>
+
+                    {fileMetadata && (
+                      <div style={{ background: T.surf2, padding: "10px", borderRadius: "6px", border: `1px solid ${T.border2}`, display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <span style={{ fontSize: "0.72rem", fontWeight: 800, color: T.cyan, textTransform: "uppercase" }}>File Metadata</span>
+                        <div style={{ fontSize: "0.76rem", color: T.text2 }}>
+                          <strong>Filename:</strong> {fileMetadata.name}
+                        </div>
+                        <div style={{ fontSize: "0.76rem", color: T.text2 }}>
+                          <strong>Size:</strong> {fileMetadata.size.toLocaleString()} bytes ({(fileMetadata.size / 1024).toFixed(2)} KB)
+                        </div>
+                        <div style={{ fontSize: "0.76rem", color: T.text2 }}>
+                          <strong>Sequence Length:</strong> {fileMetadata.length.toLocaleString()} bases
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: T.text3, fontStyle: "italic", marginTop: "2px" }}>
+                          Source: {fileMetadata.source}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ borderTop: `1px solid ${T.border2}`, paddingTop: "12px", marginTop: "4px" }}>
+                      <button
+                        type="button"
+                        onClick={handleFileDecode}
+                        disabled={decodeLoading}
+                        style={{
+                          width: "100%",
+                          padding: "10px 14px",
+                          background: `linear-gradient(135deg, ${T.green}, #059669)`,
+                          border: "none",
+                          borderRadius: "8px",
+                          color: "white",
+                          fontWeight: 700,
+                          fontSize: "0.82rem",
+                          cursor: decodeLoading ? "default" : "pointer"
+                        }}
+                      >
+                        {decodeLoading ? "Decoding back to File..." : "📥 Decode back to File"}
+                      </button>
+
+                      {decodeLoading && (
+                        <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div style={{ width: 12, height: 12, border: `2px solid ${T.border2}`, borderTopColor: T.green, borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                          <span style={{ fontSize: "0.76rem", color: T.text2 }}>Reconstructing binary file...</span>
+                        </div>
+                      )}
+
+                      {decodeError && (
+                        <div style={{ marginTop: "10px", padding: "8px 12px", background: `${T.red}12`, border: `1px solid ${T.red}30`, borderRadius: "6px", color: T.red, fontSize: "0.78rem" }}>
+                          ⚠️ <strong>Decoding Error:</strong> {decodeError}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Loading / Spinner State */}
