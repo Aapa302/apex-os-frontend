@@ -145,13 +145,84 @@ const getMajorityBase = (triplet) => {
   return maxBase;
 };
 
+export const calculateGcContent = (dna) => {
+  if (!dna) return { percentage: 0, isIdeal: false };
+  const clean = dna.toUpperCase().replace(/[^ATCG]/g, "");
+  if (clean.length === 0) return { percentage: 0, isIdeal: false };
+  const gcCount = (clean.match(/[GC]/g) || []).length;
+  const pct = Math.round((gcCount / clean.length) * 100);
+  return {
+    percentage: pct,
+    isIdeal: pct >= 40 && pct <= 60
+  };
+};
+
+export const deNoiseDna = (dna) => {
+  if (!dna) return "";
+  let encoded = "";
+  let consecCount = 0;
+  let lastBase = "";
+
+  for (let i = 0; i < dna.length; i++) {
+    const base = dna[i];
+    encoded += base;
+
+    if (base === lastBase) {
+      consecCount++;
+    } else {
+      consecCount = 1;
+      lastBase = base;
+    }
+
+    if (consecCount === 3) {
+      if (i + 1 < dna.length) {
+        const nextBase = dna[i + 1];
+        const escapeBase = valToBase((baseToVal(base) + 1) % 4);
+        encoded += escapeBase;
+        consecCount = 0;
+        lastBase = "";
+      }
+    }
+  }
+  return encoded;
+};
+
+export const reNoiseDna = (encodedDna) => {
+  if (!encodedDna) return "";
+  let decoded = "";
+  let consecCount = 0;
+  let lastBase = "";
+
+  for (let i = 0; i < encodedDna.length; i++) {
+    const base = encodedDna[i];
+    decoded += base;
+
+    if (base === lastBase) {
+      consecCount++;
+    } else {
+      consecCount = 1;
+      lastBase = base;
+    }
+
+    if (consecCount === 3) {
+      if (i + 1 < encodedDna.length) {
+        i++;
+        consecCount = 0;
+        lastBase = "";
+      }
+    }
+  }
+  return decoded;
+};
+
 export const encodeSequenceWithChecksums = (dna) => {
   if (!dna) return "";
+  const deNoised = deNoiseDna(dna);
   const history = getMismatchHistory();
   let output = "";
   let blockNum = 1;
-  for (let i = 0; i < dna.length; i += 100) {
-    const block = dna.slice(i, i + 100);
+  for (let i = 0; i < deNoised.length; i += 100) {
+    const block = deNoised.slice(i, i + 100);
     const isTriplicated = history.includes(blockNum);
 
     if (isTriplicated) {
@@ -262,7 +333,10 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
     blockNum++;
   }
 
-  return { cleanDna, corruptions, autoCorrected };
+  // Re-noise (reconstruct original homopolymers)
+  const fullyRestoredDna = reNoiseDna(cleanDna);
+
+  return { cleanDna: fullyRestoredDna, corruptions, autoCorrected };
 };
 
 export default function AIScientistWorkspace() {
@@ -1716,23 +1790,41 @@ export default function AIScientistWorkspace() {
                       )}
                     </div>
 
-                    {fileMetadata && (
-                      <div style={{ background: T.surf2, padding: "10px", borderRadius: "6px", border: `1px solid ${T.border2}`, display: "flex", flexDirection: "column", gap: "4px" }}>
-                        <span style={{ fontSize: "0.72rem", fontWeight: 800, color: T.cyan, textTransform: "uppercase" }}>File Metadata</span>
-                        <div style={{ fontSize: "0.76rem", color: T.text2 }}>
-                          <strong>Filename:</strong> {fileMetadata.name}
+                    {fileMetadata && (() => {
+                      const gc = calculateGcContent(fileDnaResult);
+                      return (
+                        <div style={{ background: T.surf2, padding: "10px", borderRadius: "6px", border: `1px solid ${T.border2}`, display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <span style={{ fontSize: "0.72rem", fontWeight: 800, color: T.cyan, textTransform: "uppercase" }}>File Metadata</span>
+                          <div style={{ fontSize: "0.76rem", color: T.text2 }}>
+                            <strong>Filename:</strong> {fileMetadata.name}
+                          </div>
+                          <div style={{ fontSize: "0.76rem", color: T.text2 }}>
+                            <strong>Size:</strong> {fileMetadata.size.toLocaleString()} bytes ({(fileMetadata.size / 1024).toFixed(2)} KB)
+                          </div>
+                          <div style={{ fontSize: "0.76rem", color: T.text2 }}>
+                            <strong>Sequence Length:</strong> {fileMetadata.length.toLocaleString()} bases
+                          </div>
+                          <div style={{ fontSize: "0.76rem", color: T.text2, display: "flex", alignItems: "center", gap: "6px" }}>
+                            <strong>GC-Content:</strong>
+                            <span style={{ color: gc.isIdeal ? T.green : T.yellow, fontWeight: 800 }}>{gc.percentage}%</span>
+                            <span style={{
+                              fontSize: "0.62rem",
+                              padding: "1px 6px",
+                              borderRadius: "8px",
+                              background: gc.isIdeal ? `${T.green}15` : `${T.yellow}15`,
+                              color: gc.isIdeal ? T.green : T.yellow,
+                              fontWeight: 700,
+                              textTransform: "uppercase"
+                            }}>
+                              {gc.isIdeal ? "Ideal (40-60%)" : "Sub-optimal"}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: "0.72rem", color: T.text3, fontStyle: "italic", marginTop: "2px" }}>
+                            Source: {fileMetadata.source}
+                          </div>
                         </div>
-                        <div style={{ fontSize: "0.76rem", color: T.text2 }}>
-                          <strong>Size:</strong> {fileMetadata.size.toLocaleString()} bytes ({(fileMetadata.size / 1024).toFixed(2)} KB)
-                        </div>
-                        <div style={{ fontSize: "0.76rem", color: T.text2 }}>
-                          <strong>Sequence Length:</strong> {fileMetadata.length.toLocaleString()} bases
-                        </div>
-                        <div style={{ fontSize: "0.72rem", color: T.text3, fontStyle: "italic", marginTop: "2px" }}>
-                          Source: {fileMetadata.source}
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     <div style={{ borderTop: `1px solid ${T.border2}`, paddingTop: "12px", marginTop: "4px" }}>
                       {/* Optional Index File Uploader for Index-Assisted Decoding */}
@@ -1932,6 +2024,29 @@ export default function AIScientistWorkspace() {
                 }}>
                   {encoderResult}
                 </div>
+
+                {encoderMode === "encode" && (() => {
+                  const gc = calculateGcContent(encoderResult);
+                  return (
+                    <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "0.76rem", color: T.text2 }}>GC-Content:</span>
+                      <strong style={{ fontSize: "0.78rem", color: gc.isIdeal ? T.green : T.yellow }}>
+                        {gc.percentage}%
+                      </strong>
+                      <span style={{
+                        fontSize: "0.64rem",
+                        padding: "2px 6px",
+                        borderRadius: "10px",
+                        background: gc.isIdeal ? `${T.green}15` : `${T.yellow}15`,
+                        color: gc.isIdeal ? T.green : T.yellow,
+                        fontWeight: 700,
+                        textTransform: "uppercase"
+                      }}>
+                        {gc.isIdeal ? "Ideal (40-60%)" : "Sub-optimal"}
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {/* Synthesis Input & Action (Only if we have DNA to synthesize) */}
                 {((encoderMode === "encode" && encoderResult) || (encoderMode === "decode" && inputDna.trim())) && (
