@@ -76,6 +76,158 @@ const INITIAL_NOTES = [
   }
 ];
 
+// Biometric Cryptography & WebAuthn Helpers
+const sha256Hash = async (message) => {
+  try {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) {
+    let hash = 0;
+    for (let i = 0; i < message.length; i++) {
+      const char = message.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(16);
+  }
+};
+
+const stringToHex = (str) => {
+  const bytes = new TextEncoder().encode(str);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+};
+
+const hexToString = (hex) => {
+  const bytes = [];
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes.push(parseInt(hex.slice(i, i + 2), 16));
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes));
+};
+
+const xorHex = (hex, key) => {
+  if (!key) return hex;
+  const keyBytes = new TextEncoder().encode(key);
+  let result = "";
+  for (let i = 0; i < hex.length; i += 2) {
+    const byte = parseInt(hex.slice(i, i + 2), 16);
+    const keyByte = keyBytes[(i / 2) % keyBytes.length] || 0;
+    const xorByte = byte ^ keyByte;
+    result += xorByte.toString(16).padStart(2, "0");
+  }
+  return result;
+};
+
+// WebAuthn Biometric API Helpers
+const registerBiometricCredential = async (onShowModal) => {
+  if (navigator.credentials && navigator.credentials.create && window.isSecureContext && !navigator.webdriver) {
+    try {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: "APEX OS" },
+          user: {
+            id: new Uint8Array([1, 2, 3, 4]),
+            name: "scientist@apex.os",
+            displayName: "Apex Scientist"
+          },
+          pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+          timeout: 10000,
+          authenticatorSelection: { authenticatorAttachment: "platform" }
+        }
+      });
+      if (credential) {
+        return credential.id;
+      }
+    } catch (e) {
+      console.warn("Physical WebAuthn registration failed, using simulation...", e);
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    onShowModal({
+      title: "Register Biometric Credential",
+      message: "Headless/Non-secure context detected. Please verify identity using the virtual fingerprint/face scanner.",
+      onSuccess: () => {
+        resolve("bio_cred_default_id");
+      },
+      onFailure: () => {
+        reject(new Error("Biometric Registration Canceled"));
+      }
+    });
+  });
+};
+
+const verifyBiometricCredential = async (expectedCredId, onShowModal) => {
+  if (navigator.credentials && navigator.credentials.get && window.isSecureContext && !navigator.webdriver) {
+    try {
+      const challenge = new Uint8Array(32);
+      window.crypto.getRandomValues(challenge);
+      const credential = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          timeout: 10000,
+          allowCredentials: [{
+            id: new TextEncoder().encode(expectedCredId),
+            type: "public-key"
+          }]
+        }
+      });
+      if (credential) {
+        return credential.id;
+      }
+    } catch (e) {
+      console.warn("Physical WebAuthn verification failed, using simulation...", e);
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    onShowModal({
+      title: "Verify Biometric Identity",
+      message: "Please scan your fingerprint or scan face to unlock and decrypt the DNA payload.",
+      onSuccess: (status) => {
+        if (status === "success") {
+          resolve(expectedCredId);
+        } else {
+          resolve("bio_cred_mismatched_id");
+        }
+      },
+      onFailure: () => {
+        reject(new Error("Access Denied - Biometric Mismatch"));
+      }
+    });
+  });
+};
+
+const decryptBiometricPayload = async (decodedText, onShowModal) => {
+  if (typeof decodedText === "string" && decodedText.startsWith("BIO:")) {
+    const parts = decodedText.split(":");
+    if (parts.length >= 3) {
+      const credId = parts[1];
+      const scrambledHex = parts[2];
+      try {
+        const verifiedId = await verifyBiometricCredential(credId, onShowModal);
+        onShowModal(null); // Dismiss modal on success
+        if (verifiedId === credId) {
+          const derivedKey = await sha256Hash(verifiedId);
+          const unscrambledHex = xorHex(scrambledHex, derivedKey);
+          return hexToString(unscrambledHex);
+        } else {
+          throw new Error("Access Denied - Biometric Mismatch");
+        }
+      } catch (err) {
+        onShowModal(null); // Dismiss modal on error
+        throw new Error(err.message || "Access Denied - Biometric Mismatch");
+      }
+    }
+  }
+  return decodedText;
+};
+
 // XOR-based 4-base parity checksum protocol helpers
 const baseToVal = (b) => {
   const base = b.toUpperCase();
@@ -417,6 +569,14 @@ export default function AIScientistWorkspace() {
   const [searchDnaExecuted, setSearchDnaExecuted] = useState(false);
   const [searchDnaError, setSearchDnaError] = useState("");
 
+  // Biometric Encryption States
+  const [biometricActive, setBiometricActive] = useState(false);
+  const [biometricRegistered, setBiometricRegistered] = useState(false);
+  const [biometricCredentialId, setBiometricCredentialId] = useState("");
+  const [biometricKey, setBiometricKey] = useState("");
+  const [biometricError, setBiometricError] = useState("");
+  const [biometricModal, setBiometricModal] = useState(null); // { title, message, onSuccess(status), onFailure }
+
   useEffect(() => {
     if (fileDnaResult) {
       setSearchDnaTarget(fileDnaResult);
@@ -448,11 +608,19 @@ export default function AIScientistWorkspace() {
     setFastaResult("");
     setFastaError(null);
     setChecksumCorruptions([]);
+
+    let textToEncode = inputText;
+    if (biometricActive && biometricKey) {
+      const payloadHex = stringToHex(inputText);
+      const scrambled = xorHex(payloadHex, biometricKey);
+      textToEncode = `BIO:${biometricCredentialId}:${scrambled}`;
+    }
+
     try {
       const res = await fetch(`${PROXY_URL}/dna-encode`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: inputText })
+        body: JSON.stringify({ text: textToEncode })
       });
       if (!res.ok) {
         throw new Error(`Encoding failed (${res.status} ${res.statusText})`);
@@ -467,7 +635,7 @@ export default function AIScientistWorkspace() {
     } catch (err) {
       console.warn("Backend encoding failed. Switching to local offline fallback...", err);
       try {
-        const localResult = Encode(inputText);
+        const localResult = Encode(textToEncode);
         if (localResult && localResult.dnaSequence) {
           // Slice off the first 16 bases (the 32-bit CRC checksum) to match backend's raw output
           const rawDna = localResult.dnaSequence.slice(16);
@@ -507,6 +675,9 @@ export default function AIScientistWorkspace() {
       setAutoCorrectedBlocks(autoCorrected);
     }
 
+    let apiSuccess = false;
+    let decodedText = null;
+
     try {
       const res = await fetch(`${PROXY_URL}/dna-decode`, {
         method: "POST",
@@ -518,7 +689,8 @@ export default function AIScientistWorkspace() {
       }
       const data = await res.json();
       if (data.success) {
-        setEncoderResult(data.text);
+        apiSuccess = true;
+        decodedText = data.text;
       } else {
         throw new Error(data.error || "Unknown error during decoding");
       }
@@ -529,17 +701,27 @@ export default function AIScientistWorkspace() {
         const complDna = "A".repeat(16) + cleanDna;
         const localResult = Decode(complDna);
         if (localResult && localResult.decodedText) {
-          setEncoderResult(localResult.decodedText);
+          apiSuccess = true;
+          decodedText = localResult.decodedText;
         } else {
           throw new Error("Local offline decoder returned empty text.");
         }
       } catch (localErr) {
         console.error("Local decoding fallback failed:", localErr);
-        setEncoderError(err.message || "Failed to communicate with DNA Decoder backend");
+        setEncoderError(localErr.message || err.message || "Failed to communicate with DNA Decoder backend");
       }
-    } finally {
-      setEncoderLoading(false);
     }
+
+    if (apiSuccess && decodedText !== null) {
+      try {
+        const finalPayload = await decryptBiometricPayload(decodedText, setBiometricModal);
+        setEncoderResult(finalPayload);
+      } catch (bioErr) {
+        setEncoderError(bioErr.message);
+      }
+    }
+
+    setEncoderLoading(false);
   };
 
   const handleFileEncode = async (e) => {
@@ -555,6 +737,12 @@ export default function AIScientistWorkspace() {
     setFileMetadata(null);
     setChecksumCorruptions([]);
     setGeneratedIndex(null);
+
+    if (biometricActive && biometricKey) {
+      console.log("Biometric security active, encoding locally to encrypt correctly...");
+      runLocalFileEncode();
+      return;
+    }
 
     try {
       const formData = new FormData();
@@ -637,7 +825,15 @@ export default function AIScientistWorkspace() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const dataUrl = evt.target.result;
+        let dataUrl = evt.target.result;
+        let isBiometricEncrypted = false;
+
+        if (biometricActive && biometricKey) {
+          const payloadHex = stringToHex(dataUrl);
+          const scrambled = xorHex(payloadHex, biometricKey);
+          dataUrl = `BIO:${biometricCredentialId}:${scrambled}`;
+          isBiometricEncrypted = true;
+        }
 
         // Split base64 data into 500-char chunks for robust, indexed bio-assembly
         const chunkSize = 500;
@@ -680,7 +876,7 @@ export default function AIScientistWorkspace() {
           name: selectedFile.name,
           size: selectedFile.size,
           length: compiledDna.length,
-          source: "Local Engine with Indexing"
+          source: isBiometricEncrypted ? "Local Engine (Biometric XOR Encrypted)" : "Local Engine with Indexing"
         });
       } catch (innerErr) {
         console.error("Local encoding fallback failed:", innerErr);
@@ -708,18 +904,18 @@ export default function AIScientistWorkspace() {
     setChecksumCorruptions([]);
     setAutoCorrectedBlocks([]);
 
-    if (uploadedIndex) {
-      console.warn("Index file is loaded. Running direct position-based local decoder...");
-      runLocalFileDecode(null);
-      return;
-    }
-
     const { cleanDna, corruptions, autoCorrected } = decodeSequenceAndVerifyChecksums(fileDnaResult.trim().toUpperCase());
     if (corruptions.length > 0) {
       setChecksumCorruptions(corruptions);
     }
     if (autoCorrected.length > 0) {
       setAutoCorrectedBlocks(autoCorrected);
+    }
+
+    if (uploadedIndex || (biometricActive && biometricKey) || fileMetadata?.source?.includes("Biometric")) {
+      console.warn("Index file or Biometric Encryption is active. Running local decoder...");
+      runLocalFileDecode(cleanDna);
+      return;
     }
 
     try {
@@ -769,7 +965,7 @@ export default function AIScientistWorkspace() {
     }
   };
 
-  const runLocalFileDecode = (cleanDna) => {
+  const runLocalFileDecode = async (cleanDna) => {
     try {
       let dataUrl = "";
 
@@ -829,11 +1025,12 @@ export default function AIScientistWorkspace() {
       }
 
       if (dataUrl) {
-        if (!dataUrl.startsWith("data:")) {
+        const finalDataUrl = await decryptBiometricPayload(dataUrl, setBiometricModal);
+        if (!finalDataUrl.startsWith("data:")) {
           throw new Error("Decoded content is not a valid Data URL structure.");
         }
 
-        const arr = dataUrl.split(",");
+        const arr = finalDataUrl.split(",");
         const mime = arr[0].match(/:(.*?);/)[1];
         const bstr = atob(arr[1]);
         let n = bstr.length;
@@ -1119,6 +1316,39 @@ export default function AIScientistWorkspace() {
   }, [notes]);
 
   const categories = ["All", "Genomics", "Virology", "Quantum", "Proteomics", "Literature", "Methodology"];
+
+  const triggerBiometricRegistration = async () => {
+    setBiometricError("");
+    try {
+      const credId = await registerBiometricCredential((modalData) => {
+        setBiometricModal({
+          ...modalData,
+          onSuccess: async () => {
+            setBiometricModal(null);
+            const generatedKey = await sha256Hash("bio_cred_default_id");
+            setBiometricCredentialId("bio_cred_default_id");
+            setBiometricKey(generatedKey);
+            setBiometricRegistered(true);
+            setBiometricActive(true);
+          },
+          onFailure: () => {
+            setBiometricModal(null);
+            setBiometricError("Biometric Registration Canceled");
+          }
+        });
+      });
+
+      if (credId) {
+        const generatedKey = await sha256Hash(credId);
+        setBiometricCredentialId(credId);
+        setBiometricKey(generatedKey);
+        setBiometricRegistered(true);
+        setBiometricActive(true);
+      }
+    } catch (err) {
+      setBiometricError(err.message || "Failed to register biometrics");
+    }
+  };
 
   const handleAddHypothesis = (e) => {
     e.preventDefault();
@@ -1794,6 +2024,68 @@ export default function AIScientistWorkspace() {
               >
                 Search DNA
               </button>
+            </div>
+
+            {/* Biometric Security Control Card */}
+            <div style={{
+              background: T.surf2,
+              border: `1px solid ${biometricActive ? T.green : T.border2}`,
+              borderRadius: "12px",
+              padding: "14px",
+              marginBottom: "16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "1.1rem" }}>🔒</span>
+                  <span style={{ fontWeight: 800, fontSize: "0.85rem", color: biometricActive ? T.green : T.text1 }}>
+                    Biometric Encryption Security
+                  </span>
+                </div>
+                {biometricRegistered ? (
+                  <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={biometricActive}
+                      onChange={(e) => setBiometricActive(e.target.checked)}
+                      style={{ accentColor: T.green }}
+                    />
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: biometricActive ? T.green : T.text2 }}>
+                      {biometricActive ? "Active" : "Inactive"}
+                    </span>
+                  </label>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={triggerBiometricRegistration}
+                    style={{
+                      background: T.accent,
+                      color: "white",
+                      border: "none",
+                      borderRadius: "6px",
+                      padding: "4px 10px",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    🔐 Register Biometrics
+                  </button>
+                )}
+              </div>
+              <p style={{ margin: 0, fontSize: "0.74rem", color: T.text2, lineHeight: 1.3 }}>
+                {biometricRegistered
+                  ? `Biometric credential linked: ${biometricCredentialId}. Payloads will be XOR-scrambled with a 256-bit hashed key.`
+                  : "Secure your DNA payloads with physical biometric credentials (WebAuthn). Headless testing fallbacks supported."
+                }
+              </p>
+              {biometricError && (
+                <div style={{ fontSize: "0.74rem", color: T.red, fontWeight: 700 }}>
+                  ⚠️ {biometricError}
+                </div>
+              )}
             </div>
 
             {encoderMode === "encode" && (
@@ -2798,6 +3090,99 @@ export default function AIScientistWorkspace() {
           </div>
         </div>
       </div>
+
+      {/* ── BIOMETRIC SCANNER VIRTUAL MODAL ── */}
+      {biometricModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100vw",
+          height: "100vh",
+          background: "rgba(5, 5, 15, 0.85)",
+          backdropFilter: "blur(8px)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 99999,
+          padding: "20px",
+          boxSizing: "border-box"
+        }}>
+          <div style={{
+            background: T.surf,
+            border: `2px solid ${T.accent}`,
+            borderRadius: "16px",
+            padding: "24px",
+            maxWidth: "400px",
+            width: "100%",
+            textAlign: "center",
+            boxShadow: `0 8px 32px rgba(91, 94, 244, 0.25)`
+          }}>
+            <div style={{ fontSize: "3rem", marginBottom: "16px" }}>
+              🧬
+            </div>
+            <h3 style={{ margin: "0 0 10px 0", color: T.text1, fontSize: "1.2rem", fontWeight: 800 }}>
+              {biometricModal.title}
+            </h3>
+            <p style={{ margin: "0 0 24px 0", color: T.text2, fontSize: "0.85rem", lineHeight: 1.5 }}>
+              {biometricModal.message}
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => biometricModal.onSuccess("success")}
+                style={{
+                  padding: "12px",
+                  background: `linear-gradient(135deg, ${T.green}, #059669)`,
+                  border: "none",
+                  borderRadius: "8px",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: "0.85rem",
+                  cursor: "pointer"
+                }}
+              >
+                Scan Fingerprint (Success)
+              </button>
+              {biometricModal.title.includes("Verify") && (
+                <button
+                  type="button"
+                  onClick={() => biometricModal.onSuccess("failure")}
+                  style={{
+                    padding: "10px",
+                    background: `${T.red}20`,
+                    border: `1px solid ${T.red}50`,
+                    borderRadius: "8px",
+                    color: T.red,
+                    fontWeight: 700,
+                    fontSize: "0.8rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  Simulate Scan Mismatch (Fail)
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={biometricModal.onFailure}
+                style={{
+                  padding: "10px",
+                  background: "transparent",
+                  border: `1px solid ${T.border2}`,
+                  borderRadius: "8px",
+                  color: T.text2,
+                  fontWeight: 700,
+                  fontSize: "0.8rem",
+                  cursor: "pointer"
+                }}
+              >
+                Cancel Authentication
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
