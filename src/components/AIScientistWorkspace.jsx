@@ -367,6 +367,157 @@ export const reNoiseDna = (encodedDna) => {
   return decoded;
 };
 
+export const reNoiseDnaWithMapping = (encodedDna) => {
+  if (!encodedDna) return { decoded: "", mapping: [] };
+  let decoded = "";
+  let mapping = []; // mapping[j] will store the index in encodedDna for decoded[j]
+  let consecCount = 0;
+  let lastBase = "";
+
+  for (let i = 0; i < encodedDna.length; i++) {
+    const base = encodedDna[i];
+    decoded += base;
+    mapping.push(i);
+
+    if (base === lastBase) {
+      consecCount++;
+    } else {
+      consecCount = 1;
+      lastBase = base;
+    }
+
+    if (consecCount === 3) {
+      if (i + 1 < encodedDna.length) {
+        i++; // skip escape character
+        consecCount = 0;
+        lastBase = "";
+      }
+    }
+  }
+  return { decoded, mapping };
+};
+
+export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) => {
+  if (!dnaWithChecksums) return { cleanDna: "", mapping: [], corruptions: [], autoCorrected: [] };
+  const history = getMismatchHistory();
+  const corruptions = [];
+  const autoCorrected = [];
+  let cleanDna = "";
+  let mapping = []; // mapping[k] will store the index in dnaWithChecksums for cleanDna[k]
+
+  let index = 0;
+  let blockNum = 1;
+
+  while (index < dnaWithChecksums.length) {
+    const remainingLength = dnaWithChecksums.length - index;
+    const isTriplicated = history.includes(blockNum);
+
+    let blockLen = isTriplicated ? 300 : 100;
+    let chunkLen = blockLen + 4;
+
+    if (remainingLength < chunkLen) {
+      if (remainingLength <= 4) {
+        // Trailing bases without parity
+        const tr = dnaWithChecksums.slice(index);
+        if (isTriplicated) {
+          let resolved = "";
+          for (let j = 0; j < tr.length; j += 3) {
+            const triplet = tr.slice(j, j + 3);
+            const resolvedBase = getMajorityBase(triplet);
+            resolved += resolvedBase;
+            mapping.push(index + j);
+          }
+          cleanDna += resolved;
+        } else {
+          for (let j = 0; j < tr.length; j++) {
+            mapping.push(index + j);
+          }
+          cleanDna += tr;
+        }
+        break;
+      }
+      blockLen = remainingLength - 4;
+      chunkLen = remainingLength;
+    }
+
+    const block = dnaWithChecksums.slice(index, index + blockLen);
+    const expectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
+    const computedChecksum = compute4BaseChecksum(block);
+
+    if (expectedChecksum !== computedChecksum) {
+      if (isTriplicated) {
+        // Run majority vote auto-correction
+        let correctedBlock = "";
+        const origSize = Math.floor(blockLen / 3);
+        for (let j = 0; j < origSize; j++) {
+          const triplet = block.slice(j * 3, j * 3 + 3);
+          const resolvedBase = getMajorityBase(triplet);
+          correctedBlock += resolvedBase;
+          mapping.push(index + j * 3);
+        }
+
+        autoCorrected.push({
+          blockNum,
+          start: index,
+          end: index + blockLen,
+          originalContent: block,
+          correctedContent: correctedBlock
+        });
+
+        cleanDna += correctedBlock;
+      } else {
+        // Standard mismatch - add to mismatch history for future runs!
+        addMismatchToHistory(blockNum);
+
+        corruptions.push({
+          blockNum,
+          start: index,
+          end: index + blockLen,
+          expected: expectedChecksum,
+          computed: computedChecksum,
+          blockContent: block
+        });
+
+        for (let j = 0; j < block.length; j++) {
+          mapping.push(index + j);
+        }
+        cleanDna += block;
+      }
+    } else {
+      if (isTriplicated) {
+        let untriplicated = "";
+        const origSize = Math.floor(blockLen / 3);
+        for (let j = 0; j < origSize; j++) {
+          untriplicated += block[j * 3];
+          mapping.push(index + j * 3);
+        }
+        cleanDna += untriplicated;
+      } else {
+        for (let j = 0; j < block.length; j++) {
+          mapping.push(index + j);
+        }
+        cleanDna += block;
+      }
+    }
+
+    index += chunkLen;
+    blockNum++;
+  }
+
+  // Re-noise (reconstruct original homopolymers) with mapping
+  const { decoded: fullyRestoredDna, mapping: restoredToCleanMap } = reNoiseDnaWithMapping(cleanDna);
+
+  // Now compose both mappings to map index in fullyRestoredDna directly to index in dnaWithChecksums!
+  const finalMapping = []; // finalMapping[j] maps fullyRestoredDna[j] to dnaWithChecksums index
+  for (let j = 0; j < fullyRestoredDna.length; j++) {
+    const cleanIdx = restoredToCleanMap[j];
+    const originalIdx = mapping[cleanIdx];
+    finalMapping.push(originalIdx);
+  }
+
+  return { cleanDna: fullyRestoredDna, mapping: finalMapping, corruptions, autoCorrected };
+};
+
 export const encodeSequenceWithChecksums = (dna) => {
   if (!dna) return "";
   const deNoised = deNoiseDna(dna);
@@ -1207,9 +1358,9 @@ export default function AIScientistWorkspace() {
         return binary;
       };
 
-      const binary = textToBin(nativeSearchQuery);
+      const binary = textToBin(nativeSearchQuery.trim());
 
-      // Map binary to DNA bases (00=A, 01=C, 10=G, 11=T)
+      // Map binary to DNA bases (00=A, 01=C, 10=G, 11=T) - simpler, standard 2-bit mapping
       let queryDna = "";
       for (let i = 0; i < binary.length; i += 2) {
         const bits = binary.slice(i, i + 2).padEnd(2, "0");
@@ -1219,47 +1370,56 @@ export default function AIScientistWorkspace() {
         else if (bits === "11") queryDna += "T";
       }
 
-      // De-noise the query DNA
-      const deNoisedQueryDna = deNoiseDna(queryDna);
-
+      const pattern = queryDna.toUpperCase();
       const targetDna = fileDnaResult.toUpperCase();
-      const patternsToTry = [];
-      if (deNoisedQueryDna) {
-        patternsToTry.push({ pattern: deNoisedQueryDna, type: "De-noised" });
-      }
-      if (queryDna && queryDna !== deNoisedQueryDna) {
-        patternsToTry.push({ pattern: queryDna, type: "Raw DNA" });
-      }
+
+      // Decode and restore the target DNA to raw DNA along with mapping index tracking
+      const { cleanDna: restoredTargetDna, mapping: finalMapping } = decodeSequenceAndVerifyChecksumsWithMapping(targetDna);
+
+      // Console debug logging as requested by the prompt
+      console.log("[DEBUG] DNA-Native Search Debugging:");
+      console.log("[DEBUG] Query text:", nativeSearchQuery.trim());
+      console.log("[DEBUG] Generated DNA pattern for query (simple 2-bit mapping):", pattern);
+      console.log("[DEBUG] First 200 bases of raw target DNA (with parity/denoise):", targetDna.slice(0, 200));
+      console.log("[DEBUG] First 200 bases of restored target DNA (standard 2-bit, checksums-stripped):", restoredTargetDna.slice(0, 200));
+
+      const oldDenoisedQuery = deNoiseDna(pattern);
+      const isMatchInRawTarget = targetDna.indexOf(oldDenoisedQuery) !== -1;
+      console.log("[DEBUG] Old search query (de-noised independently):", oldDenoisedQuery);
+      console.log("[DEBUG] Was old query found directly in raw target DNA?", isMatchInRawTarget ? "Yes" : "No (Failed because homopolymer de-noising is context-dependent, and raw target contains block checksums/triplication)");
 
       const allMatches = [];
 
-      patternsToTry.forEach(({ pattern, type }) => {
-        let pos = targetDna.indexOf(pattern);
-        while (pos !== -1) {
-          const matchLength = pattern.length;
+      let pos = restoredTargetDna.indexOf(pattern);
+      while (pos !== -1) {
+        const matchLength = pattern.length;
 
-          let matchingChunks = [];
-          if (indexData) {
-            matchingChunks = indexData.filter(chunk => {
-              const chunkStart = chunk.DNA_position.start;
-              const chunkEnd = chunk.DNA_position.end;
-              return (pos < chunkEnd && (pos + matchLength) > chunkStart);
-            });
-          }
+        // Map restored start and end indices back to original targetDna coordinates
+        const origStart = finalMapping[pos];
+        const origEnd = finalMapping[pos + matchLength - 1] + 1;
+        const matchedDna = targetDna.slice(origStart, origEnd);
 
-          const alreadyFound = allMatches.some(m => m.index === pos && m.matchedDna === pattern);
-          if (!alreadyFound) {
-            allMatches.push({
-              index: pos,
-              matchedDna: pattern,
-              type,
-              chunks: matchingChunks
-            });
-          }
-
-          pos = targetDna.indexOf(pattern, pos + 1);
+        let matchingChunks = [];
+        if (indexData) {
+          matchingChunks = indexData.filter(chunk => {
+            const chunkStart = chunk.DNA_position.start;
+            const chunkEnd = chunk.DNA_position.end;
+            return (origStart < chunkEnd && origEnd > chunkStart);
+          });
         }
-      });
+
+        const alreadyFound = allMatches.some(m => m.index === origStart);
+        if (!alreadyFound) {
+          allMatches.push({
+            index: origStart,
+            matchedDna: matchedDna,
+            type: "Direct Search",
+            chunks: matchingChunks
+          });
+        }
+
+        pos = restoredTargetDna.indexOf(pattern, pos + 1);
+      }
 
       setNativeSearchResults(allMatches);
     } catch (err) {
@@ -1299,54 +1459,59 @@ export default function AIScientistWorkspace() {
 
       const targetStr = searchDnaTarget.trim().toUpperCase();
 
-      // De-noise the query DNA
-      const deNoisedQueryDna = deNoiseDna(queryDna);
+      // Decode and restore the target DNA to raw DNA along with mapping index tracking
+      const { cleanDna: restoredTargetDna, mapping: finalMapping } = decodeSequenceAndVerifyChecksumsWithMapping(targetStr);
 
-      const patternsToTry = [];
-      if (deNoisedQueryDna) {
-        patternsToTry.push({ pattern: deNoisedQueryDna, type: "De-noised" });
-      }
-      if (queryDna && queryDna !== deNoisedQueryDna) {
-        patternsToTry.push({ pattern: queryDna, type: "Raw DNA" });
-      }
+      const pattern = queryDna.toUpperCase();
+
+      // Console debug logging:
+      console.log("[DEBUG] Search DNA Tab Debugging:");
+      console.log("[DEBUG] Query text:", searchDnaQuery.trim());
+      console.log("[DEBUG] Generated DNA pattern for query (simple 2-bit mapping):", pattern);
+      console.log("[DEBUG] First 200 bases of raw target DNA:", targetStr.slice(0, 200));
+      console.log("[DEBUG] First 200 bases of restored target DNA:", restoredTargetDna.slice(0, 200));
+
+      const oldDenoisedQuery = deNoiseDna(pattern);
+      const isMatchInRawTarget = targetStr.indexOf(oldDenoisedQuery) !== -1;
+      console.log("[DEBUG] Old search query (de-noised independently):", oldDenoisedQuery);
+      console.log("[DEBUG] Was old query found directly in raw target DNA?", isMatchInRawTarget ? "Yes" : "No (Failed because homopolymer de-noising is context-dependent, and raw target contains block checksums/triplication)");
 
       const matches = [];
       const indexData = uploadedIndex || generatedIndex;
 
-      patternsToTry.forEach(({ pattern, type }) => {
-        let pos = targetStr.indexOf(pattern.toUpperCase());
-        while (pos !== -1) {
-          const matchLength = pattern.length;
-          const startPos = pos;
-          const endPos = pos + matchLength;
+      let pos = restoredTargetDna.indexOf(pattern);
+      while (pos !== -1) {
+        const matchLength = pattern.length;
+        const origStart = finalMapping[pos];
+        const origEnd = finalMapping[pos + matchLength - 1] + 1;
+        const matchedDna = targetStr.slice(origStart, origEnd);
 
-          // Find chunk_id and byte range if indexData is available
-          let overlappingChunks = [];
-          if (indexData && Array.isArray(indexData)) {
-            overlappingChunks = indexData.filter(chunk => {
-              if (chunk && chunk.DNA_position) {
-                const chunkStart = chunk.DNA_position.start;
-                const chunkEnd = chunk.DNA_position.end;
-                return (startPos < chunkEnd && endPos > chunkStart);
-              }
-              return false;
-            });
-          }
-
-          // Avoid duplicate positions
-          const alreadyFound = matches.some(m => m.index === startPos);
-          if (!alreadyFound) {
-            matches.push({
-              index: startPos,
-              matchedDna: pattern.toUpperCase(),
-              type,
-              chunks: overlappingChunks
-            });
-          }
-
-          pos = targetStr.indexOf(pattern.toUpperCase(), pos + 1);
+        // Find chunk_id and byte range if indexData is available
+        let overlappingChunks = [];
+        if (indexData && Array.isArray(indexData)) {
+          overlappingChunks = indexData.filter(chunk => {
+            if (chunk && chunk.DNA_position) {
+              const chunkStart = chunk.DNA_position.start;
+              const chunkEnd = chunk.DNA_position.end;
+              return (origStart < chunkEnd && origEnd > chunkStart);
+            }
+            return false;
+          });
         }
-      });
+
+        // Avoid duplicate positions
+        const alreadyFound = matches.some(m => m.index === origStart);
+        if (!alreadyFound) {
+          matches.push({
+            index: origStart,
+            matchedDna: matchedDna,
+            type: "Direct Search",
+            chunks: overlappingChunks
+          });
+        }
+
+        pos = restoredTargetDna.indexOf(pattern, pos + 1);
+      }
 
       setSearchDnaResults(matches);
     } catch (err) {
