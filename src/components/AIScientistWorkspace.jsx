@@ -410,6 +410,21 @@ export default function AIScientistWorkspace() {
   const [nativeSearchExecuted, setNativeSearchExecuted] = useState(false);
   const [nativeSearchError, setNativeSearchError] = useState("");
 
+  // Search DNA tab states
+  const [searchDnaQuery, setSearchDnaQuery] = useState("");
+  const [searchDnaTarget, setSearchDnaTarget] = useState("");
+  const [searchDnaResults, setSearchDnaResults] = useState([]);
+  const [searchDnaExecuted, setSearchDnaExecuted] = useState(false);
+  const [searchDnaError, setSearchDnaError] = useState("");
+
+  useEffect(() => {
+    if (fileDnaResult) {
+      setSearchDnaTarget(fileDnaResult);
+    } else if (encoderResult && encoderMode === "encode") {
+      setSearchDnaTarget(encoderResult);
+    }
+  }, [fileDnaResult, encoderResult, encoderMode]);
+
   const PROXY_URL = (() => {
     try {
       const stateStr = localStorage.getItem("apex_os_v4_state");
@@ -450,8 +465,21 @@ export default function AIScientistWorkspace() {
         throw new Error(data.error || "Unknown error during encoding");
       }
     } catch (err) {
-      console.error(err);
-      setEncoderError(err.message || "Failed to communicate with DNA Encoder backend");
+      console.warn("Backend encoding failed. Switching to local offline fallback...", err);
+      try {
+        const localResult = Encode(inputText);
+        if (localResult && localResult.dnaSequence) {
+          // Slice off the first 16 bases (the 32-bit CRC checksum) to match backend's raw output
+          const rawDna = localResult.dnaSequence.slice(16);
+          const dnaWithChecksums = encodeSequenceWithChecksums(rawDna);
+          setEncoderResult(dnaWithChecksums);
+        } else {
+          throw new Error("Local offline encoder returned empty sequence.");
+        }
+      } catch (localErr) {
+        console.error("Local encoding fallback failed:", localErr);
+        setEncoderError(err.message || "Failed to communicate with DNA Encoder backend");
+      }
     } finally {
       setEncoderLoading(false);
     }
@@ -495,8 +523,20 @@ export default function AIScientistWorkspace() {
         throw new Error(data.error || "Unknown error during decoding");
       }
     } catch (err) {
-      console.error(err);
-      setEncoderError(err.message || "Failed to communicate with DNA Decoder backend");
+      console.warn("Backend decoding failed. Switching to local offline fallback...", err);
+      try {
+        // Prepend 16 dummy 'A' bases so the offline Decode parses them as checksum and correctly decodes payload
+        const complDna = "A".repeat(16) + cleanDna;
+        const localResult = Decode(complDna);
+        if (localResult && localResult.decodedText) {
+          setEncoderResult(localResult.decodedText);
+        } else {
+          throw new Error("Local offline decoder returned empty text.");
+        }
+      } catch (localErr) {
+        console.error("Local decoding fallback failed:", localErr);
+        setEncoderError(err.message || "Failed to communicate with DNA Decoder backend");
+      }
     } finally {
       setEncoderLoading(false);
     }
@@ -941,6 +981,93 @@ export default function AIScientistWorkspace() {
     } catch (err) {
       console.error("Native search error:", err);
       setNativeSearchError("Search error: " + (err.message || "Unknown error occurred"));
+    }
+  };
+
+  const handleSearchDna = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setSearchDnaError("");
+    setSearchDnaResults([]);
+    setSearchDnaExecuted(true);
+
+    if (!searchDnaQuery.trim()) {
+      setSearchDnaError("Please enter a text query to search!");
+      return;
+    }
+
+    if (!searchDnaTarget.trim()) {
+      setSearchDnaError("Please provide a target DNA sequence to search in!");
+      return;
+    }
+
+    try {
+      // Convert query text to DNA sequence using the same Encode function used during encoding
+      const enc = Encode(searchDnaQuery.trim());
+      // The Encode function prepends a 32-bit checksum.
+      // In 2-bit mapping (which is standard), 32 bits translates to exactly the first 16 bases.
+      // Slicing them off leaves the exact DNA mapped pattern of the text query.
+      const queryDna = enc.dnaSequence.slice(16);
+
+      if (!queryDna) {
+        setSearchDnaError("Could not convert query text to a valid DNA sequence.");
+        return;
+      }
+
+      const targetStr = searchDnaTarget.trim().toUpperCase();
+
+      // De-noise the query DNA
+      const deNoisedQueryDna = deNoiseDna(queryDna);
+
+      const patternsToTry = [];
+      if (deNoisedQueryDna) {
+        patternsToTry.push({ pattern: deNoisedQueryDna, type: "De-noised" });
+      }
+      if (queryDna && queryDna !== deNoisedQueryDna) {
+        patternsToTry.push({ pattern: queryDna, type: "Raw DNA" });
+      }
+
+      const matches = [];
+      const indexData = uploadedIndex || generatedIndex;
+
+      patternsToTry.forEach(({ pattern, type }) => {
+        let pos = targetStr.indexOf(pattern.toUpperCase());
+        while (pos !== -1) {
+          const matchLength = pattern.length;
+          const startPos = pos;
+          const endPos = pos + matchLength;
+
+          // Find chunk_id and byte range if indexData is available
+          let overlappingChunks = [];
+          if (indexData && Array.isArray(indexData)) {
+            overlappingChunks = indexData.filter(chunk => {
+              if (chunk && chunk.DNA_position) {
+                const chunkStart = chunk.DNA_position.start;
+                const chunkEnd = chunk.DNA_position.end;
+                return (startPos < chunkEnd && endPos > chunkStart);
+              }
+              return false;
+            });
+          }
+
+          // Avoid duplicate positions
+          const alreadyFound = matches.some(m => m.index === startPos);
+          if (!alreadyFound) {
+            matches.push({
+              index: startPos,
+              matchedDna: pattern.toUpperCase(),
+              type,
+              chunks: overlappingChunks
+            });
+          }
+
+          pos = targetStr.indexOf(pattern.toUpperCase(), pos + 1);
+        }
+      });
+
+      setSearchDnaResults(matches);
+    } catch (err) {
+      console.error("Search error:", err);
+      setSearchDnaError("Search error: " + (err.message || "Unknown error occurred"));
     }
   };
 
@@ -1650,6 +1777,23 @@ export default function AIScientistWorkspace() {
               >
                 File to DNA
               </button>
+              <button
+                onClick={() => { setEncoderMode("searchDna"); setEncoderResult(""); setEncoderError(null); }}
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  borderRadius: "6px",
+                  border: "none",
+                  background: encoderMode === "searchDna" ? T.accent : "transparent",
+                  color: encoderMode === "searchDna" ? "#ffffff" : T.text2,
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.15s"
+                }}
+              >
+                Search DNA
+              </button>
             </div>
 
             {encoderMode === "encode" && (
@@ -2113,6 +2257,163 @@ export default function AIScientistWorkspace() {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {encoderMode === "searchDna" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+                  <label style={{ display: "block", color: T.text2, fontSize: "0.75rem", fontWeight: 700, marginBottom: "5px" }}>
+                    Target DNA Sequence
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={searchDnaTarget}
+                    onChange={e => setSearchDnaTarget(e.target.value)}
+                    placeholder="Paste or enter raw DNA sequence stream to search in..."
+                    style={{
+                      width: "100%",
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: "8px",
+                      padding: "10px 14px",
+                      color: T.text1,
+                      fontSize: "0.85rem",
+                      fontFamily: "monospace",
+                      outline: "none",
+                      resize: "none",
+                      textTransform: "uppercase"
+                    }}
+                  />
+                  {/* Quick helper buttons to fill in sequence */}
+                  <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+                    {fileDnaResult && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchDnaTarget(fileDnaResult)}
+                        style={{
+                          background: T.surf2,
+                          color: T.cyan,
+                          border: `1px solid ${T.border}`,
+                          borderRadius: "4px",
+                          padding: "4px 8px",
+                          fontSize: "0.7rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        📋 Load File DNA Result
+                      </button>
+                    )}
+                    {encoderResult && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchDnaTarget(encoderResult)}
+                        style={{
+                          background: T.surf2,
+                          color: T.green,
+                          border: `1px solid ${T.border}`,
+                          borderRadius: "4px",
+                          padding: "4px 8px",
+                          fontSize: "0.7rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        📋 Load Encoded Result
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", color: T.text2, fontSize: "0.75rem", fontWeight: 700, marginBottom: "5px" }}>
+                    Text Query to Search
+                  </label>
+                  <input
+                    type="text"
+                    value={searchDnaQuery}
+                    onChange={e => setSearchDnaQuery(e.target.value)}
+                    placeholder="Enter plain text query (e.g., metadata or word)"
+                    style={{
+                      width: "100%",
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: "8px",
+                      padding: "10px 14px",
+                      color: T.text1,
+                      fontSize: "0.85rem",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSearchDna}
+                  style={{
+                    padding: "10px 18px",
+                    background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                    border: "none",
+                    borderRadius: "8px",
+                    color: "white",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  Search DNA Stream ➔
+                </button>
+
+                {searchDnaExecuted && (
+                  <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {searchDnaError ? (
+                      <div style={{ padding: "10px 14px", background: `${T.red}12`, border: `1px solid ${T.red}30`, borderRadius: "8px", color: T.red, fontSize: "0.8rem" }}>
+                        ⚠️ <strong>Search Error:</strong> {searchDnaError}
+                      </div>
+                    ) : searchDnaResults.length === 0 ? (
+                      <div style={{ padding: "10px 14px", background: `${T.yellow}12`, border: `1px solid ${T.yellow}30`, borderRadius: "8px", color: T.yellow, fontSize: "0.8rem", fontWeight: 700 }}>
+                        No match found in DNA sequence
+                      </div>
+                    ) : (
+                      <div style={{ padding: "14px", background: `${T.green}10`, border: `1px solid ${T.green}30`, borderRadius: "8px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                        <div style={{ fontSize: "0.8rem", color: T.green, fontWeight: 800, textTransform: "uppercase" }}>
+                          ✅ Found {searchDnaResults.length} match(es) in DNA sequence!
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "250px", overflowY: "auto" }}>
+                          {searchDnaResults.map((match, idx) => (
+                            <div key={idx} style={{
+                              background: T.surf2,
+                              border: `1px solid ${T.border2}`,
+                              borderRadius: "6px",
+                              padding: "10px",
+                              fontSize: "0.78rem"
+                            }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, marginBottom: "4px" }}>
+                                <span style={{ color: T.cyan }}>Match #{idx + 1}</span>
+                                <span style={{ color: T.text3 }}>DNA Index Start: {match.index}</span>
+                              </div>
+                              <div style={{ fontFamily: "monospace", fontSize: "0.74rem", wordBreak: "break-all", background: T.surf, padding: "6px", borderRadius: "4px", color: T.text2, marginBottom: "6px" }}>
+                                Query DNA Pattern: {match.matchedDna}
+                              </div>
+                              {match.chunks && match.chunks.length > 0 ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "4px", borderTop: `1px solid ${T.border}`, paddingTop: "6px" }}>
+                                  {match.chunks.map(chunk => (
+                                    <div key={chunk.chunk_id} style={{ fontSize: "0.74rem", color: T.text2 }}>
+                                      📍 <strong>Chunk ID:</strong> {chunk.chunk_id} | <strong>Byte Range:</strong> {chunk.byte_start} - {chunk.byte_end} bytes
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: "0.72rem", color: T.text3, fontStyle: "italic" }}>
+                                  No index mapping available for byte range/chunk ID.
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
