@@ -797,6 +797,23 @@ export default function AIScientistWorkspace() {
     return "https://apex-os-nztm.onrender.com";
   })();
 
+  const fetchNotes = async () => {
+    try {
+      const res = await fetch(`${PROXY_URL}/api/research-notes`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch research notes: ${res.status} ${res.statusText}`);
+      }
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setNotes(data);
+      } else {
+        throw new Error("Invalid research notes response format");
+      }
+    } catch (err) {
+      console.error("Failed to fetch research notes from backend, using localStorage fallback:", err);
+    }
+  };
+
   const fetchHealthLogs = async () => {
     setHealthError(null);
     try {
@@ -871,6 +888,7 @@ export default function AIScientistWorkspace() {
   };
 
   useEffect(() => {
+    fetchNotes();
     fetchHealthLogs();
     const interval = setInterval(() => {
       console.log("Triggering scheduled 24-hour background archive health check...");
@@ -1794,14 +1812,15 @@ export default function AIScientistWorkspace() {
     }));
   };
 
-  const handleAddNote = (e) => {
+  const handleAddNote = async (e) => {
     e.preventDefault();
     if (!newNoteTitle.trim() || !newNoteContent.trim()) {
       alert("Note title and content are required!");
       return;
     }
+    const tempId = `note_${Date.now()}`;
     const newNote = {
-      id: `note_${Date.now()}`,
+      id: tempId,
       title: newNoteTitle,
       category: newNoteCategory,
       content: newNoteContent,
@@ -1810,12 +1829,44 @@ export default function AIScientistWorkspace() {
     setNotes(prev => [...prev, newNote]);
     setNewNoteTitle("");
     setNewNoteContent("");
+    try {
+      const res = await fetch(`${PROXY_URL}/api/research-notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newNote.title,
+          category: newNote.category,
+          content: newNote.content
+        })
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to save research note: ${res.status} ${res.statusText}`);
+      }
+      const data = await res.json();
+      if (data.success && data.id) {
+        setNotes(prev => prev.map(n => n.id === tempId ? { ...n, id: data.id } : n));
+      }
+      await fetchNotes();
+    } catch (err) {
+      console.warn("Backend save failed, keeping note offline/local:", err);
+    }
     alert("Research note logged!");
   };
 
-  const handleDeleteNote = (id) => {
+  const handleDeleteNote = async (id) => {
     if (window.confirm("Are you sure you want to delete this research note?")) {
       setNotes(prev => prev.filter(n => n.id !== id));
+      try {
+        const res = await fetch(`${PROXY_URL}/api/research-notes/${id}`, {
+          method: "DELETE"
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to delete research note: ${res.status} ${res.statusText}`);
+        }
+        await fetchNotes();
+      } catch (err) {
+        console.warn("Backend delete failed, note removed locally only:", err);
+      }
     }
   };
 
