@@ -2483,6 +2483,9 @@ export default function AIScientistWorkspace() {
                       textTransform: "uppercase"
                     }}
                   />
+                  <div style={{ marginTop: "6px", fontSize: "0.7rem", color: T.text3, lineHeight: 1.3, fontStyle: "italic" }}>
+                    Note: Pasting a partial/standalone DNA fragment (not a full encoded sequence) may show a checksum error — this is expected. For search results, use the "Show Full Decoded Context" button on the Search DNA tab instead.
+                  </div>
                 </div>
                 <button
                   type="submit"
