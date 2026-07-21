@@ -3,13 +3,7 @@
 > vite
 
 
-  VITE v5.4.21  ready in 293 ms
+  VITE v5.4.21  ready in 264 ms
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
-2:19:53 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
-2:23:07 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
-2:26:51 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
-3:13:08 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
-3:14:12 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
-3:15:04 PM [vite] hmr update /src/components/AIScientistWorkspace.jsx
