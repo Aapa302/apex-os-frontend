@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Encode, Decode } from "../core/DNACoreEngine";
+import { Encode, Decode, crc32 } from "../core/DNACoreEngine";
 
 // Initial professional hypotheses & experiments for AI Scientist Workspace
 const INITIAL_HYPOTHESES = [
@@ -762,6 +762,8 @@ export default function AIScientistWorkspace() {
   const [searchDnaExecuted, setSearchDnaExecuted] = useState(false);
   const [searchDnaError, setSearchDnaError] = useState("");
   const [decodedContexts, setDecodedContexts] = useState({});
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveMessage, setSaveMessage] = useState(null);
 
   // Biometric Encryption States
   const [biometricActive, setBiometricActive] = useState(false);
@@ -1510,6 +1512,43 @@ export default function AIScientistWorkspace() {
         ...prev,
         [idx]: { text: "", error: err.message || "Decoding failed.", loading: false }
       }));
+    }
+  };
+
+  const handleSaveToArchive = async () => {
+    if (!encoderResult) {
+      alert("No encoded DNA sequence available to save.");
+      return;
+    }
+    setSaveLoading(true);
+    setSaveMessage(null);
+
+    const nameToSave = seqName.trim() || `SEQ_${Date.now()}`;
+    const checksumValue = crc32(inputText).toString();
+
+    try {
+      const res = await fetch("https://apex-os-nztm.onrender.com/api/save-simulation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sequence: encoderResult,
+          name: nameToSave,
+          checksum: checksumValue
+        })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Failed to save: ${res.status} - ${errText || res.statusText}`);
+      }
+
+      await res.json();
+      setSaveMessage({ type: "success", text: "Saved to Archive!" });
+    } catch (err) {
+      console.error("Save to archive failed:", err);
+      setSaveMessage({ type: "error", text: err.message || "Failed to save to archive." });
+    } finally {
+      setSaveLoading(false);
     }
   };
 
@@ -3270,6 +3309,26 @@ export default function AIScientistWorkspace() {
                       >
                         {fastaLoading ? "Synthesizing..." : "Synthesize (FASTA)"}
                       </button>
+
+                      {encoderMode === "encode" && (
+                        <button
+                          onClick={handleSaveToArchive}
+                          disabled={saveLoading}
+                          style={{
+                            background: T.green,
+                            color: "white",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "6px 12px",
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            opacity: saveLoading ? 0.7 : 1
+                          }}
+                        >
+                          {saveLoading ? "Saving..." : "Save to Archive"}
+                        </button>
+                      )}
                     </div>
 
                     {/* Fasta Load / Error states */}
@@ -3282,6 +3341,28 @@ export default function AIScientistWorkspace() {
                     {fastaError && (
                       <div style={{ fontSize: "0.74rem", color: T.red, marginTop: "4px" }}>
                         ⚠️ Error: {fastaError}
+                      </div>
+                    )}
+
+                    {/* Save to Archive Load / Success / Error states */}
+                    {saveLoading && (
+                      <div style={{ fontSize: "0.74rem", color: T.text2, display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                        <div style={{ width: 10, height: 10, border: `2px solid ${T.border2}`, borderTopColor: T.green, borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                        Saving to central archive...
+                      </div>
+                    )}
+                    {saveMessage && (
+                      <div style={{
+                        marginTop: "8px",
+                        padding: "6px 10px",
+                        background: saveMessage.type === "success" ? `${T.green}15` : `${T.red}15`,
+                        border: `1px solid ${saveMessage.type === "success" ? T.green : T.red}40`,
+                        borderRadius: "6px",
+                        color: saveMessage.type === "success" ? T.green : T.red,
+                        fontSize: "0.76rem",
+                        fontWeight: 700
+                      }}>
+                        {saveMessage.type === "success" ? "Saved to Archive!" : `Error: ${saveMessage.text}`}
                       </div>
                     )}
 
