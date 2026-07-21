@@ -1454,7 +1454,7 @@ export default function AIScientistWorkspace() {
         if (!alreadyFound) {
           allMatches.push({
             index: origStart,
-            matchedDna: matchedDna,
+            matchedDna: pattern,
             type: "Direct Search",
             chunks: matchingChunks
           });
@@ -1542,7 +1542,7 @@ export default function AIScientistWorkspace() {
         if (!alreadyFound) {
           matches.push({
             index: origStart,
-            matchedDna: matchedDna,
+            matchedDna: pattern,
             type: "Direct Search",
             chunks: overlappingChunks
           });
