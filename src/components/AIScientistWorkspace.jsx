@@ -761,6 +761,7 @@ export default function AIScientistWorkspace() {
   const [searchDnaResults, setSearchDnaResults] = useState([]);
   const [searchDnaExecuted, setSearchDnaExecuted] = useState(false);
   const [searchDnaError, setSearchDnaError] = useState("");
+  const [decodedContexts, setDecodedContexts] = useState({});
 
   // Biometric Encryption States
   const [biometricActive, setBiometricActive] = useState(false);
@@ -1467,6 +1468,48 @@ export default function AIScientistWorkspace() {
     } catch (err) {
       console.error("Native search error:", err);
       setNativeSearchError("Search error: " + (err.message || "Unknown error occurred"));
+    }
+  };
+
+  const handleShowFullContext = async (idx) => {
+    setDecodedContexts(prev => ({
+      ...prev,
+      [idx]: { text: "", error: null, loading: true }
+    }));
+
+    try {
+      if (!searchDnaTarget) {
+        throw new Error("No target DNA sequence available.");
+      }
+
+      // First, block-level XOR checksum / auto-correction
+      const { cleanDna, corruptions } = decodeSequenceAndVerifyChecksums(searchDnaTarget.trim().toUpperCase());
+      if (corruptions.length > 0) {
+        throw new Error(`Checksum verification failed: ${corruptions.length} corrupted blocks detected.`);
+      }
+
+      // Offline local Decode
+      const complDna = "A".repeat(16) + cleanDna;
+      const localResult = Decode(complDna);
+      if (!localResult || !localResult.decodedText) {
+        throw new Error("Decoding engine returned empty text.");
+      }
+
+      const decodedText = localResult.decodedText;
+
+      // Handle potential biometric encryption
+      const finalPayload = await decryptBiometricPayload(decodedText, setBiometricModal);
+
+      setDecodedContexts(prev => ({
+        ...prev,
+        [idx]: { text: finalPayload, error: null, loading: false }
+      }));
+    } catch (err) {
+      console.error("Context decoding error:", err);
+      setDecodedContexts(prev => ({
+        ...prev,
+        [idx]: { text: "", error: err.message || "Decoding failed.", loading: false }
+      }));
     }
   };
 
@@ -2991,6 +3034,51 @@ export default function AIScientistWorkspace() {
                                   No index mapping available for byte range/chunk ID.
                                 </div>
                               )}
+
+                              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px", borderTop: `1px solid ${T.border2}`, paddingTop: "8px" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleShowFullContext(idx)}
+                                  style={{
+                                    alignSelf: "flex-start",
+                                    padding: "5px 10px",
+                                    background: T.accent + "18",
+                                    border: `1px solid ${T.accent}40`,
+                                    borderRadius: "4px",
+                                    color: T.accent,
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    cursor: "pointer"
+                                  }}
+                                >
+                                  {decodedContexts[idx]?.loading ? "Decoding..." : "Show Full Decoded Context"}
+                                </button>
+
+                                {decodedContexts[idx] && (
+                                  <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: "6px", padding: "8px", marginTop: "4px" }}>
+                                    {decodedContexts[idx].error ? (
+                                      <span style={{ color: T.red, fontSize: "0.74rem" }}>
+                                        ⚠️ {decodedContexts[idx].error}
+                                      </span>
+                                    ) : decodedContexts[idx].text ? (
+                                      <div style={{ fontSize: "0.76rem", lineHeight: 1.4, color: T.text1 }}>
+                                        <strong style={{ color: T.text3 }}>Full Context:</strong>{" "}
+                                        {(() => {
+                                          const fullText = decodedContexts[idx].text;
+                                          const query = searchDnaQuery.trim();
+                                          if (!query) return <span>{fullText}</span>;
+                                          const parts = fullText.split(new RegExp(`(${query})`, 'gi'));
+                                          return parts.map((part, pIdx) =>
+                                            part.toLowerCase() === query.toLowerCase()
+                                              ? <strong key={pIdx} style={{ color: T.green, background: `${T.green}20`, padding: "2px 4px", borderRadius: "4px" }}>{part}</strong>
+                                              : <span key={pIdx}>{part}</span>
+                                          );
+                                        })()}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
