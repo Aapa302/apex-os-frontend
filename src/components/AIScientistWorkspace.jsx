@@ -1545,7 +1545,7 @@ export default function AIScientistWorkspace() {
     const checksumValue = crc32(inputText).toString();
 
     try {
-      const res = await fetch("https://apex-os-nztm.onrender.com/api/save-simulation", {
+      const res = await fetch(`${PROXY_URL}/api/save-simulation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
