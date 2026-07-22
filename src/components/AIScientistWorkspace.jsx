@@ -564,11 +564,12 @@ export const encodeSequenceWithChecksums = (dna) => {
 };
 
 export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
-  if (!dnaWithChecksums) return { cleanDna: "", corruptions: [], autoCorrected: [] };
+  if (!dnaWithChecksums) return { cleanDna: "", corruptions: [], autoCorrected: [], decodingReport: [] };
   console.log("[DEBUG-DECODE] raw input DNA length:", dnaWithChecksums.length);
   const history = getMismatchHistory();
   const corruptions = [];
   const autoCorrected = [];
+  const decodingReport = [];
   let cleanDna = "";
 
   let index = 0;
@@ -625,9 +626,11 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
     const expectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
     const computedChecksum = compute4BaseChecksum(block);
 
+    // Step 1: Run checksum verification on each block first
     if (expectedChecksum !== computedChecksum) {
+      // Failed checksum verification initially!
       if (isTriplicated) {
-        // Run majority vote auto-correction
+        // Step 2: Attempt error correction on that same block (majority-vote)
         let correctedBlock = "";
         const origSize = Math.floor(blockLen / 3);
         for (let j = 0; j < origSize; j++) {
@@ -635,18 +638,80 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
           correctedBlock += getMajorityBase(triplet);
         }
 
-        autoCorrected.push({
+        // Step 3: Re-run checksum verification on the corrected block.
+        // We re-triplicate the corrected block and compute its checksum to compare with expected.
+        let correctedTriplicated = "";
+        for (let j = 0; j < correctedBlock.length; j++) {
+          correctedTriplicated += correctedBlock[j] + correctedBlock[j] + correctedBlock[j];
+        }
+        const reComputedChecksum = compute4BaseChecksum(correctedTriplicated);
+
+        if (reComputedChecksum === expectedChecksum) {
+          // "Fully Recovered" (checksum passes after correction)
+          decodingReport.push({
+            blockNum,
+            status: "Fully Recovered",
+            start: index,
+            end: index + blockLen,
+            originalContent: block,
+            correctedContent: correctedBlock,
+            expected: expectedChecksum,
+            computed: computedChecksum,
+            reComputed: reComputedChecksum,
+            isTriplicated: true
+          });
+
+          autoCorrected.push({
+            blockNum,
+            start: index,
+            end: index + blockLen,
+            originalContent: block,
+            correctedContent: correctedBlock
+          });
+
+          cleanDna += correctedBlock;
+        } else {
+          // "Unrecoverable" (checksum still fails after correction attempt)
+          decodingReport.push({
+            blockNum,
+            status: "Unrecoverable",
+            start: index,
+            end: index + blockLen,
+            originalContent: block,
+            correctedContent: correctedBlock,
+            expected: expectedChecksum,
+            computed: computedChecksum,
+            reComputed: reComputedChecksum,
+            isTriplicated: true
+          });
+
+          corruptions.push({
+            blockNum,
+            start: index,
+            end: index + blockLen,
+            expected: expectedChecksum,
+            computed: reComputedChecksum,
+            blockContent: block
+          });
+
+          cleanDna += correctedBlock;
+        }
+      } else {
+        // Non-triplicated block. Cannot attempt error correction.
+        addMismatchToHistory(blockNum);
+
+        // "Unrecoverable"
+        decodingReport.push({
           blockNum,
+          status: "Unrecoverable",
           start: index,
           end: index + blockLen,
           originalContent: block,
-          correctedContent: correctedBlock
+          correctedContent: block,
+          expected: expectedChecksum,
+          computed: computedChecksum,
+          isTriplicated: false
         });
-
-        cleanDna += correctedBlock;
-      } else {
-        // Standard mismatch - add to mismatch history for future runs!
-        addMismatchToHistory(blockNum);
 
         corruptions.push({
           blockNum,
@@ -660,6 +725,7 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
         cleanDna += block;
       }
     } else {
+      // Checksum passes initially!
       if (isTriplicated) {
         let untriplicated = "";
         const origSize = Math.floor(blockLen / 3);
@@ -681,7 +747,7 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
   const fullyRestoredDna = reNoiseDna(cleanDna);
   console.log("[DEBUG-DECODE] homopolymer-reversed length:", fullyRestoredDna.length);
 
-  return { cleanDna: fullyRestoredDna, corruptions, autoCorrected };
+  return { cleanDna: fullyRestoredDna, corruptions, autoCorrected, decodingReport };
 };
 
 export default function AIScientistWorkspace() {
@@ -730,8 +796,7 @@ export default function AIScientistWorkspace() {
   const [encoderLoading, setEncoderLoading] = useState(false);
   const [encoderError, setEncoderError] = useState(null);
   const [encoderResult, setEncoderResult] = useState("");
-  const [checksumCorruptions, setChecksumCorruptions] = useState([]);
-  const [autoCorrectedBlocks, setAutoCorrectedBlocks] = useState([]);
+  const [decodingReport, setDecodingReport] = useState([]);
 
   // File to DNA States
   const [selectedFile, setSelectedFile] = useState(null);
@@ -908,7 +973,7 @@ export default function AIScientistWorkspace() {
     setEncoderResult("");
     setFastaResult("");
     setFastaError(null);
-    setChecksumCorruptions([]);
+    setDecodingReport([]);
 
     let textToEncode = inputText;
     if (biometricActive && biometricKey) {
@@ -965,15 +1030,11 @@ export default function AIScientistWorkspace() {
     setEncoderResult("");
     setFastaResult("");
     setFastaError(null);
-    setChecksumCorruptions([]);
-    setAutoCorrectedBlocks([]);
+    setDecodingReport([]);
 
-    const { cleanDna, corruptions, autoCorrected } = decodeSequenceAndVerifyChecksums(inputDna.trim().toUpperCase());
-    if (corruptions.length > 0) {
-      setChecksumCorruptions(corruptions);
-    }
-    if (autoCorrected.length > 0) {
-      setAutoCorrectedBlocks(autoCorrected);
+    const { cleanDna, decodingReport: blockReport } = decodeSequenceAndVerifyChecksums(inputDna.trim().toUpperCase());
+    if (blockReport && blockReport.length > 0) {
+      setDecodingReport(blockReport);
     }
 
     let apiSuccess = false;
@@ -1037,7 +1098,7 @@ export default function AIScientistWorkspace() {
     setEncoderError(null);
     setFileDnaResult("");
     setFileMetadata(null);
-    setChecksumCorruptions([]);
+    setDecodingReport([]);
     setGeneratedIndex(null);
 
     if (biometricActive && biometricKey) {
@@ -1203,15 +1264,11 @@ export default function AIScientistWorkspace() {
 
     setDecodeLoading(true);
     setDecodeError(null);
-    setChecksumCorruptions([]);
-    setAutoCorrectedBlocks([]);
+    setDecodingReport([]);
 
-    const { cleanDna, corruptions, autoCorrected } = decodeSequenceAndVerifyChecksums(fileDnaResult.trim().toUpperCase());
-    if (corruptions.length > 0) {
-      setChecksumCorruptions(corruptions);
-    }
-    if (autoCorrected.length > 0) {
-      setAutoCorrectedBlocks(autoCorrected);
+    const { cleanDna, decodingReport: blockReport } = decodeSequenceAndVerifyChecksums(fileDnaResult.trim().toUpperCase());
+    if (blockReport && blockReport.length > 0) {
+      setDecodingReport(blockReport);
     }
 
     if (uploadedIndex || (biometricActive && biometricKey) || fileMetadata?.source?.includes("Biometric")) {
@@ -1274,28 +1331,19 @@ export default function AIScientistWorkspace() {
       if (uploadedIndex) {
         console.log("Running index-assisted decoding...");
         const chunkTexts = [];
-        const allCorruptions = [];
-        const allCorrected = [];
+        const allReports = [];
 
         for (const chunk of uploadedIndex) {
           const { start, end } = chunk.DNA_position;
           const chunkDnaWithParity = fileDnaResult.slice(start, end);
 
           // Verify and strip checksums for this specific chunk
-          const { cleanDna: cleanChunkDna, corruptions, autoCorrected } = decodeSequenceAndVerifyChecksums(chunkDnaWithParity);
-          if (corruptions.length > 0) {
-            corruptions.forEach(c => {
-              allCorruptions.push({
-                ...c,
-                blockNum: `Chunk ${chunk.chunk_id} - ${c.blockNum}`
-              });
-            });
-          }
-          if (autoCorrected.length > 0) {
-            autoCorrected.forEach(ac => {
-              allCorrected.push({
-                ...ac,
-                blockNum: `Chunk ${chunk.chunk_id} - ${ac.blockNum}`
+          const { cleanDna: cleanChunkDna, decodingReport: chunkReport } = decodeSequenceAndVerifyChecksums(chunkDnaWithParity);
+          if (chunkReport && chunkReport.length > 0) {
+            chunkReport.forEach(r => {
+              allReports.push({
+                ...r,
+                blockNum: `Chunk ${chunk.chunk_id} - ${r.blockNum}`
               });
             });
           }
@@ -1308,11 +1356,8 @@ export default function AIScientistWorkspace() {
           }
         }
 
-        if (allCorruptions.length > 0) {
-          setChecksumCorruptions(allCorruptions);
-        }
-        if (allCorrected.length > 0) {
-          setAutoCorrectedBlocks(allCorrected);
+        if (allReports.length > 0) {
+          setDecodingReport(allReports);
         }
 
         dataUrl = chunkTexts.join("");
@@ -3182,86 +3227,75 @@ export default function AIScientistWorkspace() {
               </div>
             )}
 
-            {/* Auto-Corrected Triplication Redundancy Success Board */}
-            {autoCorrectedBlocks.length > 0 && (
+            {/* Unified DNA Block Decrypted Status Board */}
+            {decodingReport.length > 0 && (
               <div style={{
                 marginTop: "16px",
                 padding: "14px",
-                background: `${T.green}15`,
-                border: `1px solid ${T.green}`,
+                background: T.surf2,
+                border: `1px solid ${T.border2}`,
                 borderRadius: "10px",
                 display: "flex",
                 flexDirection: "column",
                 gap: "8px"
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.green, fontWeight: 800, fontSize: "0.85rem" }}>
-                  <span>🛡️ Error Correction Restored</span>
-                  <span style={{ fontSize: "0.7rem", background: T.green, color: "#fff", padding: "1px 6px", borderRadius: "10px", textTransform: "uppercase" }}>
-                    Secured
-                  </span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {autoCorrectedBlocks.map((ac) => (
-                    <div key={ac.blockNum} style={{
-                      background: T.surf2,
-                      border: `1px solid ${T.green}30`,
-                      borderRadius: "6px",
-                      padding: "8px 12px",
-                      fontSize: "0.76rem"
-                    }}>
-                      <span style={{ fontWeight: 800, color: T.green }}>Auto-corrected block #{ac.blockNum}</span>
-                      <p style={{ margin: "4px 0 0 0", fontSize: "0.74rem", color: T.text2 }}>
-                        Reconstructed original sequence using 3x majority-vote lookup.
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Checksum Parity Corruptions Alert UI */}
-            {checksumCorruptions.length > 0 && (
-              <div style={{
-                marginTop: "16px",
-                padding: "14px",
-                background: `${T.red}15`,
-                border: `1px solid ${T.red}`,
-                borderRadius: "10px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.red, fontWeight: 800, fontSize: "0.85rem" }}>
-                  <span>⚠️ Checksum Verification Failed</span>
-                  <span style={{ fontSize: "0.7rem", background: T.red, color: "#fff", padding: "1px 6px", borderRadius: "10px", textTransform: "uppercase" }}>
-                    Corrupted
-                  </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.text1, fontWeight: 800, fontSize: "0.85rem" }}>
+                  <span>🧬 DNA Block Diagnostics Report</span>
                 </div>
                 <p style={{ margin: 0, fontSize: "0.78rem", color: T.text2 }}>
-                  The following block(s) failed XOR-based 4-base parity verification. Please review for data transmission noise:
+                  The sequential validation pipeline completed with the following block diagnostics:
                 </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
-                  {checksumCorruptions.map((corr) => (
-                    <div key={corr.blockNum} style={{
-                      background: T.surf2,
-                      border: `1px solid ${T.red}30`,
-                      borderRadius: "6px",
-                      padding: "8px 12px",
-                      fontSize: "0.76rem"
-                    }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                        <span style={{ fontWeight: 800, color: T.red }}>Block #{corr.blockNum} (CORRUPTED)</span>
-                        <span style={{ color: T.text3 }}>Range: {corr.start} - {corr.end}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
+                  {decodingReport.map((report) => {
+                    const isFullyRecovered = report.status === "Fully Recovered";
+                    const badgeColor = isFullyRecovered ? T.green : T.red;
+                    const badgeBg = isFullyRecovered ? `${T.green}15` : `${T.red}15`;
+
+                    return (
+                      <div key={report.blockNum} style={{
+                        background: T.surf,
+                        border: `1px solid ${badgeColor}30`,
+                        borderRadius: "6px",
+                        padding: "10px 12px",
+                        fontSize: "0.76rem"
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                          <span style={{ fontWeight: 800, color: badgeColor }}>
+                            Block #{report.blockNum}
+                          </span>
+                          <span style={{
+                            fontSize: "0.68rem",
+                            background: badgeBg,
+                            color: badgeColor,
+                            border: `1px solid ${badgeColor}40`,
+                            padding: "2px 8px",
+                            borderRadius: "12px",
+                            fontWeight: 800,
+                            textTransform: "uppercase"
+                          }}>
+                            {report.status}
+                          </span>
+                        </div>
+                        <p style={{ margin: "0 0 6px 0", fontSize: "0.74rem", color: T.text2 }}>
+                          {isFullyRecovered
+                            ? "Initially failed checksum parity, but successfully reconstructed and verified via majority-vote error correction."
+                            : report.isTriplicated
+                              ? "Failed initial checksum parity. Error correction was attempted, but corrected block checksum still failed parity."
+                              : "Failed checksum parity. This block was not triplicated, so error correction could not be attempted."}
+                        </p>
+                        <div style={{ fontFamily: "monospace", fontSize: "0.72rem", wordBreak: "break-all", background: T.surf2, padding: "6px", borderRadius: "4px", color: T.text2, marginBottom: "6px" }}>
+                          {report.originalContent}
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", fontSize: "0.72rem", color: T.text3 }}>
+                          <span>Expected Checksum: <strong style={{ color: T.green, fontFamily: "monospace" }}>{report.expected}</strong></span>
+                          <span>Computed Parity: <strong style={{ color: T.red, fontFamily: "monospace" }}>{report.computed}</strong></span>
+                          {report.reComputed && (
+                            <span>Post-Correction Parity: <strong style={{ color: isFullyRecovered ? T.green : T.red, fontFamily: "monospace" }}>{report.reComputed}</strong></span>
+                          )}
+                        </div>
                       </div>
-                      <div style={{ fontFamily: "monospace", fontSize: "0.72rem", wordBreak: "break-all", background: T.surf, padding: "6px", borderRadius: "4px", color: T.text2, marginBottom: "4px" }}>
-                        {corr.blockContent}
-                      </div>
-                      <div style={{ display: "flex", gap: "12px", fontSize: "0.72rem", color: T.text2 }}>
-                        <span>Expected Checksum: <strong style={{ color: T.green, fontFamily: "monospace" }}>{corr.expected}</strong></span>
-                        <span>Computed Parity: <strong style={{ color: T.red, fontFamily: "monospace" }}>{corr.computed}</strong></span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
