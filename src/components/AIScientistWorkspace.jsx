@@ -411,25 +411,26 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
   while (index < dnaWithChecksums.length) {
     const remainingLength = dnaWithChecksums.length - index;
     let isTriplicated = history.includes(blockNum);
+    const testBlock = dnaWithChecksums.slice(index, Math.min(index + 300, dnaWithChecksums.length - 4));
 
-    if (isTriplicated) {
-      // Verify if the block is actually triplicated in the input sequence
-      const testBlock = dnaWithChecksums.slice(index, Math.min(index + 300, dnaWithChecksums.length - 4));
-      if (testBlock.length >= 3) {
-        let matchingTriplets = 0;
-        let totalTriplets = 0;
-        for (let j = 0; j + 2 < testBlock.length; j += 3) {
-          totalTriplets++;
-          if (testBlock[j] === testBlock[j + 1] && testBlock[j + 1] === testBlock[j + 2]) {
-            matchingTriplets++;
-          }
+    // Dynamic session-independent auto-detection based on actual sequence content
+    if (testBlock.length >= 9) {
+      let matchingTriplets = 0;
+      let totalTriplets = 0;
+      for (let j = 0; j + 2 < testBlock.length; j += 3) {
+        totalTriplets++;
+        if (testBlock[j] === testBlock[j + 1] && testBlock[j + 1] === testBlock[j + 2]) {
+          matchingTriplets++;
         }
-        if (totalTriplets > 0 && (matchingTriplets / totalTriplets) < 0.7) {
-          isTriplicated = false;
-        }
-      } else {
+      }
+      const ratio = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
+      if (ratio >= 0.85) {
+        isTriplicated = true;
+      } else if (ratio < 0.7) {
         isTriplicated = false;
       }
+    } else {
+      isTriplicated = false;
     }
 
     let blockLen = isTriplicated ? 300 : 100;
@@ -578,25 +579,26 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
   while (index < dnaWithChecksums.length) {
     const remainingLength = dnaWithChecksums.length - index;
     let isTriplicated = history.includes(blockNum);
+    const testBlock = dnaWithChecksums.slice(index, Math.min(index + 300, dnaWithChecksums.length - 4));
 
-    if (isTriplicated) {
-      // Verify if the block is actually triplicated in the input sequence
-      const testBlock = dnaWithChecksums.slice(index, Math.min(index + 300, dnaWithChecksums.length - 4));
-      if (testBlock.length >= 3) {
-        let matchingTriplets = 0;
-        let totalTriplets = 0;
-        for (let j = 0; j + 2 < testBlock.length; j += 3) {
-          totalTriplets++;
-          if (testBlock[j] === testBlock[j + 1] && testBlock[j + 1] === testBlock[j + 2]) {
-            matchingTriplets++;
-          }
+    // Dynamic session-independent auto-detection based on actual sequence content
+    if (testBlock.length >= 9) {
+      let matchingTriplets = 0;
+      let totalTriplets = 0;
+      for (let j = 0; j + 2 < testBlock.length; j += 3) {
+        totalTriplets++;
+        if (testBlock[j] === testBlock[j + 1] && testBlock[j + 1] === testBlock[j + 2]) {
+          matchingTriplets++;
         }
-        if (totalTriplets > 0 && (matchingTriplets / totalTriplets) < 0.7) {
-          isTriplicated = false;
-        }
-      } else {
+      }
+      const ratio = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
+      if (ratio >= 0.85) {
+        isTriplicated = true;
+      } else if (ratio < 0.7) {
         isTriplicated = false;
       }
+    } else {
+      isTriplicated = false;
     }
 
     let blockLen = isTriplicated ? 300 : 100;
