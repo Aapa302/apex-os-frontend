@@ -3937,6 +3937,20 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
             <button onClick={handleMockSignIn} style={{ width: "100%", marginTop: 12, padding: "10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 10, color: T.text2, fontSize: "0.8rem", cursor: "pointer", fontWeight: 600 }}>
               Developer Mock Bypass
             </button>
+
+            {/* Temporary debug panel for troubleshooting */}
+            <div style={{ marginTop: 16, padding: "10px 12px", background: "#1a1625", border: "1px solid #3c2a4f", borderRadius: 10, textAlign: "left", fontFamily: "monospace" }}>
+              <div style={{ fontSize: "0.68rem", fontWeight: "bold", color: T.accent, textTransform: "uppercase", marginBottom: 6 }}>🔧 Debug Config Info</div>
+              <div style={{ fontSize: "0.65rem", color: T.text2, wordBreak: "break-all" }}>
+                <strong>apiKey:</strong> {auth?.app?.options?.apiKey && auth.app.options.apiKey !== "dummy-api-key" ? `${auth.app.options.apiKey.slice(0, 8)}...` : <span style={{ color: T.red, fontWeight: "bold" }}>MISSING/DUMMY</span>}
+              </div>
+              <div style={{ fontSize: "0.65rem", color: T.text2, wordBreak: "break-all", marginTop: 4 }}>
+                <strong>authDomain:</strong> {auth?.app?.options?.authDomain && auth.app.options.authDomain !== "dummy-auth-domain.firebaseapp.com" ? auth.app.options.authDomain : <span style={{ color: T.red, fontWeight: "bold" }}>MISSING/DUMMY</span>}
+              </div>
+              <div style={{ fontSize: "0.65rem", color: T.text2, wordBreak: "break-all", marginTop: 4 }}>
+                <strong>projectId:</strong> {auth?.app?.options?.projectId && auth.app.options.projectId !== "dummy-project-id" ? auth.app.options.projectId : <span style={{ color: T.red, fontWeight: "bold" }}>MISSING/DUMMY</span>}
+              </div>
+            </div>
           </div>
         </div>
         <style>{CSS}</style>
