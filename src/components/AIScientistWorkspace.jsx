@@ -275,6 +275,23 @@ const addMismatchToHistory = (blockNum) => {
   } catch (e) {}
 };
 
+const getExpectedLength = (dna) => {
+  if (!dna) return null;
+  try {
+    const registry = JSON.parse(localStorage.getItem("apex_os_encoded_metadata") || "{}");
+    const prefix = dna.slice(0, 30);
+    for (const key of Object.keys(registry)) {
+      for (let i = 0; i <= Math.min(key.length - 12, 18); i++) {
+        const sub = key.slice(i, i + 12);
+        if (prefix.indexOf(sub) !== -1) {
+          return registry[key];
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+};
+
 const getMajorityBase = (triplet) => {
   if (!triplet) return 'A';
   const counts = { 'A': 0, 'T': 0, 'C': 0, 'G': 0 };
@@ -407,6 +424,14 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
 
   let index = 0;
   let blockNum = 1;
+  let hasShifted = false;
+
+  const expectedLength = getExpectedLength(dnaWithChecksums);
+  let lengthMismatch = 0;
+  if (expectedLength && dnaWithChecksums.length !== expectedLength) {
+    lengthMismatch = dnaWithChecksums.length - expectedLength;
+    console.log(`[DEBUG-REALIGN] Length mismatch detected! Actual: ${dnaWithChecksums.length}, Expected: ${expectedLength}. Mismatch: ${lengthMismatch}`);
+  }
 
   while (index < dnaWithChecksums.length) {
     const remainingLength = dnaWithChecksums.length - index;
@@ -426,7 +451,7 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
       const ratio = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
       if (ratio >= 0.85) {
         isTriplicated = true;
-      } else if (ratio < 0.7) {
+      } else if (ratio < 0.7 && lengthMismatch === 0) {
         isTriplicated = false;
       }
     } else {
@@ -461,15 +486,133 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
       chunkLen = remainingLength;
     }
 
-    const block = dnaWithChecksums.slice(index, index + blockLen);
-    const expectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
-    const computedChecksum = compute4BaseChecksum(block);
+    let block;
+    let expectedChecksum;
+    let computedChecksum;
+    let actualChunkLen = chunkLen;
+    let repairStatus = "Normal";
+
+    const stdBlock = dnaWithChecksums.slice(index, index + blockLen);
+    const stdExpectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
+    const stdComputedChecksum = compute4BaseChecksum(stdBlock);
+    const stdChecksumMatches = (stdComputedChecksum === stdExpectedChecksum);
+
+    if (lengthMismatch !== 0 && !hasShifted && !stdChecksumMatches) {
+      // Try to realign the block assuming the frameshift is here
+      const candidateChunkLen = chunkLen + lengthMismatch;
+      const candidateChunk = dnaWithChecksums.slice(index, index + candidateChunkLen);
+      const candidateBlockRaw = candidateChunk.slice(0, candidateChunkLen - 4);
+      const candidateExpectedChecksum = candidateChunk.slice(candidateChunkLen - 4);
+
+      let bestCandidateBlock = null;
+      let bestScore = -1;
+      let isPerfectParity = false;
+
+      if (lengthMismatch < 0) {
+        // Deletion: insert 1 base
+        for (let i = 0; i <= candidateBlockRaw.length; i++) {
+          for (const base of ["A", "T", "C", "G"]) {
+            const candidateBlock = candidateBlockRaw.slice(0, i) + base + candidateBlockRaw.slice(i);
+            const chk = compute4BaseChecksum(candidateBlock);
+            const parityMatches = (chk === candidateExpectedChecksum);
+
+            let tripletScore = 0;
+            if (isTriplicated) {
+              let matchingTriplets = 0;
+              let totalTriplets = 0;
+              for (let j = 0; j + 2 < candidateBlock.length; j += 3) {
+                totalTriplets++;
+                if (candidateBlock[j] === candidateBlock[j + 1] && candidateBlock[j + 1] === candidateBlock[j + 2]) {
+                  matchingTriplets += 1.0;
+                } else if (candidateBlock[j] === candidateBlock[j + 1] || candidateBlock[j + 1] === candidateBlock[j + 2] || candidateBlock[j] === candidateBlock[j + 2]) {
+                  matchingTriplets += 0.3;
+                }
+              }
+              tripletScore = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
+            }
+
+            const score = tripletScore + (parityMatches ? 10.0 : 0.0);
+            if (score > bestScore) {
+              bestScore = score;
+              bestCandidateBlock = candidateBlock;
+              isPerfectParity = parityMatches;
+            }
+          }
+        }
+      } else {
+        // Insertion: delete 1 base
+        for (let i = 0; i < candidateBlockRaw.length; i++) {
+          const candidateBlock = candidateBlockRaw.slice(0, i) + candidateBlockRaw.slice(i + 1);
+          const chk = compute4BaseChecksum(candidateBlock);
+          const parityMatches = (chk === candidateExpectedChecksum);
+
+          let tripletScore = 0;
+          if (isTriplicated) {
+            let matchingTriplets = 0;
+            let totalTriplets = 0;
+            for (let j = 0; j + 2 < candidateBlock.length; j += 3) {
+              totalTriplets++;
+              if (candidateBlock[j] === candidateBlock[j + 1] && candidateBlock[j + 1] === candidateBlock[j + 2]) {
+                matchingTriplets += 1.0;
+              } else if (candidateBlock[j] === candidateBlock[j + 1] || candidateBlock[j + 1] === candidateBlock[j + 2] || candidateBlock[j] === candidateBlock[j + 2]) {
+                matchingTriplets += 0.3;
+              }
+            }
+            tripletScore = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
+          }
+
+          const score = tripletScore + (parityMatches ? 10.0 : 0.0);
+          if (score > bestScore) {
+            bestScore = score;
+            bestCandidateBlock = candidateBlock;
+            isPerfectParity = parityMatches;
+          }
+        }
+      }
+
+      // Benchmark original shifted segment to evaluate if realignment is beneficial
+      const originalBlockRaw = dnaWithChecksums.slice(index, index + chunkLen - 4);
+      let originalTripletScore = 0;
+      if (isTriplicated) {
+        let matchingTriplets = 0;
+        let totalTriplets = 0;
+        for (let j = 0; j + 2 < originalBlockRaw.length; j += 3) {
+          totalTriplets++;
+          if (originalBlockRaw[j] === originalBlockRaw[j + 1] && originalBlockRaw[j + 1] === originalBlockRaw[j + 2]) {
+            matchingTriplets += 1.0;
+          }
+        }
+        originalTripletScore = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
+      }
+
+      const isRealignmentValid = bestScore >= 10.0 || (isTriplicated && bestScore > originalTripletScore + 0.15);
+
+      if (isRealignmentValid && bestCandidateBlock) {
+        block = bestCandidateBlock;
+        expectedChecksum = candidateExpectedChecksum;
+        computedChecksum = compute4BaseChecksum(block);
+        actualChunkLen = candidateChunkLen;
+        hasShifted = true;
+        lengthMismatch = 0;
+        repairStatus = isPerfectParity ? "Recovered from frameshift" : "Partially recovered";
+      } else {
+        block = dnaWithChecksums.slice(index, index + blockLen);
+        expectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
+        computedChecksum = compute4BaseChecksum(block);
+        actualChunkLen = chunkLen;
+      }
+    } else {
+      block = dnaWithChecksums.slice(index, index + blockLen);
+      expectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
+      computedChecksum = compute4BaseChecksum(block);
+      actualChunkLen = chunkLen;
+    }
 
     if (expectedChecksum !== computedChecksum) {
       if (isTriplicated) {
         // Run majority vote auto-correction
         let correctedBlock = "";
-        const origSize = Math.floor(blockLen / 3);
+        const origSize = Math.floor(block.length / 3);
         for (let j = 0; j < origSize; j++) {
           const triplet = block.slice(j * 3, j * 3 + 3);
           const resolvedBase = getMajorityBase(triplet);
@@ -480,7 +623,7 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
         autoCorrected.push({
           blockNum,
           start: index,
-          end: index + blockLen,
+          end: index + actualChunkLen,
           originalContent: block,
           correctedContent: correctedBlock
         });
@@ -492,7 +635,7 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
         corruptions.push({
           blockNum,
           start: index,
-          end: index + blockLen,
+          end: index + actualChunkLen,
           expected: expectedChecksum,
           computed: computedChecksum,
           blockContent: block
@@ -506,7 +649,7 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
     } else {
       if (isTriplicated) {
         let untriplicated = "";
-        const origSize = Math.floor(blockLen / 3);
+        const origSize = Math.floor(block.length / 3);
         for (let j = 0; j < origSize; j++) {
           untriplicated += block[j * 3];
           mapping.push(index + j * 3);
@@ -520,7 +663,7 @@ export const decodeSequenceAndVerifyChecksumsWithMapping = (dnaWithChecksums) =>
       }
     }
 
-    index += chunkLen;
+    index += actualChunkLen;
     blockNum++;
   }
 
@@ -561,6 +704,14 @@ export const encodeSequenceWithChecksums = (dna) => {
     }
     blockNum++;
   }
+
+  // Save expected length to local registry
+  try {
+    const registry = JSON.parse(localStorage.getItem("apex_os_encoded_metadata") || "{}");
+    registry[output.slice(0, 30)] = output.length;
+    localStorage.setItem("apex_os_encoded_metadata", JSON.stringify(registry));
+  } catch (e) {}
+
   return output;
 };
 
@@ -575,6 +726,14 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
 
   let index = 0;
   let blockNum = 1;
+  let hasShifted = false;
+
+  const expectedLength = getExpectedLength(dnaWithChecksums);
+  let lengthMismatch = 0;
+  if (expectedLength && dnaWithChecksums.length !== expectedLength) {
+    lengthMismatch = dnaWithChecksums.length - expectedLength;
+    console.log(`[DEBUG-REALIGN] Length mismatch detected! Actual: ${dnaWithChecksums.length}, Expected: ${expectedLength}. Mismatch: ${lengthMismatch}`);
+  }
 
   while (index < dnaWithChecksums.length) {
     const remainingLength = dnaWithChecksums.length - index;
@@ -594,7 +753,7 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
       const ratio = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
       if (ratio >= 0.85) {
         isTriplicated = true;
-      } else if (ratio < 0.7) {
+      } else if (ratio < 0.7 && lengthMismatch === 0) {
         isTriplicated = false;
       }
     } else {
@@ -624,14 +783,157 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
       chunkLen = remainingLength;
     }
 
-    const block = dnaWithChecksums.slice(index, index + blockLen);
-    const expectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
-    const computedChecksum = compute4BaseChecksum(block);
+    let block;
+    let expectedChecksum;
+    let computedChecksum;
+    let actualChunkLen = chunkLen;
+    let repairStatus = "Normal";
+
+    const stdBlock = dnaWithChecksums.slice(index, index + blockLen);
+    const stdExpectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
+    const stdComputedChecksum = compute4BaseChecksum(stdBlock);
+    const stdChecksumMatches = (stdComputedChecksum === stdExpectedChecksum);
+
+    if (lengthMismatch !== 0 && !hasShifted && !stdChecksumMatches) {
+      // Try to realign the block assuming the frameshift is here
+      const candidateChunkLen = chunkLen + lengthMismatch;
+      const candidateChunk = dnaWithChecksums.slice(index, index + candidateChunkLen);
+      const candidateBlockRaw = candidateChunk.slice(0, candidateChunkLen - 4);
+      const candidateExpectedChecksum = candidateChunk.slice(candidateChunkLen - 4);
+
+      let bestCandidateBlock = null;
+      let bestScore = -1;
+      let isPerfectParity = false;
+
+      if (lengthMismatch < 0) {
+        // Deletion: insert 1 base
+        for (let i = 0; i <= candidateBlockRaw.length; i++) {
+          for (const base of ["A", "T", "C", "G"]) {
+            const candidateBlock = candidateBlockRaw.slice(0, i) + base + candidateBlockRaw.slice(i);
+            const chk = compute4BaseChecksum(candidateBlock);
+            const parityMatches = (chk === candidateExpectedChecksum);
+
+            let tripletScore = 0;
+            if (isTriplicated) {
+              let matchingTriplets = 0;
+              let totalTriplets = 0;
+              for (let j = 0; j + 2 < candidateBlock.length; j += 3) {
+                totalTriplets++;
+                if (candidateBlock[j] === candidateBlock[j + 1] && candidateBlock[j + 1] === candidateBlock[j + 2]) {
+                  matchingTriplets += 1.0;
+                } else if (candidateBlock[j] === candidateBlock[j + 1] || candidateBlock[j + 1] === candidateBlock[j + 2] || candidateBlock[j] === candidateBlock[j + 2]) {
+                  matchingTriplets += 0.3;
+                }
+              }
+              tripletScore = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
+            }
+
+            const score = tripletScore + (parityMatches ? 10.0 : 0.0);
+            if (score > bestScore) {
+              bestScore = score;
+              bestCandidateBlock = candidateBlock;
+              isPerfectParity = parityMatches;
+            }
+          }
+        }
+      } else {
+        // Insertion: delete 1 base
+        for (let i = 0; i < candidateBlockRaw.length; i++) {
+          const candidateBlock = candidateBlockRaw.slice(0, i) + candidateBlockRaw.slice(i + 1);
+          const chk = compute4BaseChecksum(candidateBlock);
+          const parityMatches = (chk === candidateExpectedChecksum);
+
+          let tripletScore = 0;
+          if (isTriplicated) {
+            let matchingTriplets = 0;
+            let totalTriplets = 0;
+            for (let j = 0; j + 2 < candidateBlock.length; j += 3) {
+              totalTriplets++;
+              if (candidateBlock[j] === candidateBlock[j + 1] && candidateBlock[j + 1] === candidateBlock[j + 2]) {
+                matchingTriplets += 1.0;
+              } else if (candidateBlock[j] === candidateBlock[j + 1] || candidateBlock[j + 1] === candidateBlock[j + 2] || candidateBlock[j] === candidateBlock[j + 2]) {
+                matchingTriplets += 0.3;
+              }
+            }
+            tripletScore = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
+          }
+
+          const score = tripletScore + (parityMatches ? 10.0 : 0.0);
+          if (score > bestScore) {
+            bestScore = score;
+            bestCandidateBlock = candidateBlock;
+            isPerfectParity = parityMatches;
+          }
+        }
+      }
+
+      // Benchmark original shifted segment to evaluate if realignment is beneficial
+      const originalBlockRaw = dnaWithChecksums.slice(index, index + chunkLen - 4);
+      let originalTripletScore = 0;
+      if (isTriplicated) {
+        let matchingTriplets = 0;
+        let totalTriplets = 0;
+        for (let j = 0; j + 2 < originalBlockRaw.length; j += 3) {
+          totalTriplets++;
+          if (originalBlockRaw[j] === originalBlockRaw[j + 1] && originalBlockRaw[j + 1] === originalBlockRaw[j + 2]) {
+            matchingTriplets += 1.0;
+          }
+        }
+        originalTripletScore = totalTriplets > 0 ? (matchingTriplets / totalTriplets) : 0;
+      }
+
+      const isRealignmentValid = bestScore >= 10.0 || (isTriplicated && bestScore > originalTripletScore + 0.15);
+
+      if (isRealignmentValid && bestCandidateBlock) {
+        console.log(`[DEBUG-REALIGN] Frameshift resolved at Block #${blockNum}! Status: ${isPerfectParity ? "Recovered from frameshift" : "Partially recovered"}`);
+        block = bestCandidateBlock;
+        expectedChecksum = candidateExpectedChecksum;
+        computedChecksum = compute4BaseChecksum(block);
+        actualChunkLen = candidateChunkLen;
+        hasShifted = true;
+        lengthMismatch = 0;
+        repairStatus = isPerfectParity ? "Recovered from frameshift" : "Partially recovered";
+      } else {
+        block = dnaWithChecksums.slice(index, index + blockLen);
+        expectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
+        computedChecksum = compute4BaseChecksum(block);
+        actualChunkLen = chunkLen;
+      }
+    } else {
+      block = dnaWithChecksums.slice(index, index + blockLen);
+      expectedChecksum = dnaWithChecksums.slice(index + blockLen, index + chunkLen);
+      computedChecksum = compute4BaseChecksum(block);
+      actualChunkLen = chunkLen;
+    }
 
     // Step 1: Run checksum verification on each block first
     if (expectedChecksum !== computedChecksum) {
-      // Failed checksum verification initially!
-      if (isTriplicated) {
+      if (repairStatus === "Partially recovered") {
+        let correctedBlock = "";
+        if (isTriplicated) {
+          const origSize = Math.floor(block.length / 3);
+          for (let j = 0; j < origSize; j++) {
+            const triplet = block.slice(j * 3, j * 3 + 3);
+            correctedBlock += getMajorityBase(triplet);
+          }
+        } else {
+          correctedBlock = block;
+        }
+
+        decodingReport.push({
+          blockNum,
+          status: "Partially recovered",
+          start: index,
+          end: index + actualChunkLen,
+          originalContent: dnaWithChecksums.slice(index, index + actualChunkLen - 4),
+          correctedContent: correctedBlock,
+          expected: expectedChecksum,
+          computed: computedChecksum,
+          isTriplicated: isTriplicated
+        });
+
+        cleanDna += correctedBlock;
+      } else if (isTriplicated) {
         // Step 2: Attempt error correction on that same block (majority-vote)
         let correctedBlock = "";
         const origSize = Math.floor(blockLen / 3);
@@ -673,10 +975,10 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
 
           cleanDna += correctedBlock;
         } else {
-          // "Unrecoverable" (checksum still fails after correction attempt)
+          // "Unrecoverable — data loss beyond correction capability"
           decodingReport.push({
             blockNum,
-            status: "Unrecoverable",
+            status: "Unrecoverable — data loss beyond correction capability",
             start: index,
             end: index + blockLen,
             originalContent: block,
@@ -702,10 +1004,10 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
         // Non-triplicated block. Cannot attempt error correction.
         addMismatchToHistory(blockNum);
 
-        // "Unrecoverable"
+        // "Unrecoverable — data loss beyond correction capability"
         decodingReport.push({
           blockNum,
-          status: "Unrecoverable",
+          status: "Unrecoverable — data loss beyond correction capability",
           start: index,
           end: index + blockLen,
           originalContent: block,
@@ -727,8 +1029,33 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
         cleanDna += block;
       }
     } else {
-      // Checksum passes initially!
-      if (isTriplicated) {
+      // Checksum passes!
+      if (repairStatus === "Recovered from frameshift") {
+        let correctedBlock = "";
+        if (isTriplicated) {
+          const origSize = Math.floor(block.length / 3);
+          for (let j = 0; j < origSize; j++) {
+            const triplet = block.slice(j * 3, j * 3 + 3);
+            correctedBlock += getMajorityBase(triplet);
+          }
+        } else {
+          correctedBlock = block;
+        }
+
+        decodingReport.push({
+          blockNum,
+          status: "Recovered from frameshift",
+          start: index,
+          end: index + actualChunkLen,
+          originalContent: dnaWithChecksums.slice(index, index + actualChunkLen - 4),
+          correctedContent: correctedBlock,
+          expected: expectedChecksum,
+          computed: computedChecksum,
+          isTriplicated: isTriplicated
+        });
+
+        cleanDna += correctedBlock;
+      } else if (isTriplicated) {
         let untriplicated = "";
         const origSize = Math.floor(blockLen / 3);
         for (let j = 0; j < origSize; j++) {
@@ -740,7 +1067,7 @@ export const decodeSequenceAndVerifyChecksums = (dnaWithChecksums) => {
       }
     }
 
-    index += chunkLen;
+    index += actualChunkLen;
     blockNum++;
   }
 
