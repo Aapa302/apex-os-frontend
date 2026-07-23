@@ -3,7 +3,16 @@
 > vite
 
 
-  VITE v5.4.21  ready in 264 ms
+  VITE v5.4.21  ready in 287 ms
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
+1:36:07 PM [vite] page reload src/main.jsx
+1:36:40 PM [vite] hmr update /src/App.jsx
+1:36:54 PM [vite] hmr update /src/App.jsx
+1:37:07 PM [vite] hmr update /src/App.jsx
+1:37:21 PM [vite] hmr update /src/App.jsx
+1:37:33 PM [vite] hmr update /src/App.jsx
+1:37:51 PM [vite] hmr update /src/App.jsx
+1:48:05 PM [vite] ✨ new dependencies optimized: firebase/app, firebase/auth
+1:48:05 PM [vite] ✨ optimized dependencies changed. reloading
