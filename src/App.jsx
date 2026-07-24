@@ -26,7 +26,6 @@ import {
 } from "./core/AlgorithmEngine";
 import { Encode, Decode, Validate } from "./core/DNACoreEngine";
 import { executeWithFallback } from "./utils/aiExecutor";
-import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
 
 
 // ── AI PROVIDER CONFIGURATION ─────────────────────────────────
@@ -1758,10 +1757,6 @@ const CSS = `
 
 export default function ApexOS() {
   const [state, dispatch] = useReducer(appReducer, null, initialAppState);
-  const [user, setUser] = useState(null);
-  const [idToken, setIdToken] = useState(() => sessionStorage.getItem("firebase_id_token") || null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authError, setAuthError] = useState("");
   PROXY_BASE_URL = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
   const [view, setView] = useState("dashboard");
   const [proxyStatus, setProxyStatus] = useState("checking");
@@ -2072,68 +2067,6 @@ export default function ApexOS() {
   const addActivity = useCallback((text, icon = "⚡") => {
     dispatch({ type: "ADD_ACTIVITY", payload: { id: Date.now(), text, icon, time: new Date().toLocaleTimeString() } });
   }, []);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        try {
-          const token = await currentUser.getIdToken();
-          setIdToken(token);
-          sessionStorage.setItem("firebase_id_token", token);
-        } catch (err) {
-          console.error("Error getting ID token:", err);
-          setAuthError("Failed to retrieve ID token from Google.");
-        }
-      } else {
-        setUser(null);
-        setIdToken(null);
-        sessionStorage.removeItem("firebase_id_token");
-      }
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleGoogleSignIn = async () => {
-    setAuthError("");
-    setAuthLoading(true);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const token = await result.user.getIdToken();
-      setUser(result.user);
-      setIdToken(token);
-      sessionStorage.setItem("firebase_id_token", token);
-      toast("Successfully signed in with Google!", "success");
-    } catch (err) {
-      console.error("Google Sign-In Error:", err);
-      setAuthError(err.message || "Failed to sign in with Google.");
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleMockSignIn = () => {
-    const mockToken = "mock-developer-jwt-token-apex-os";
-    setIdToken(mockToken);
-    sessionStorage.setItem("firebase_id_token", mockToken);
-    toast("Signed in via Developer Mock Bypass", "success");
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      setUser(null);
-      setIdToken(null);
-      sessionStorage.removeItem("firebase_id_token");
-      toast("Signed out successfully.", "info");
-    } catch (err) {
-      console.error("Sign-out Error:", err);
-      setUser(null);
-      setIdToken(null);
-      sessionStorage.removeItem("firebase_id_token");
-    }
-  };
 
   // ── BUILD PIPELINE (Research → Engineer → CTO → Reviewer) ──
   const runBuild = useCallback(async (overrideSpec, overrideName) => {
@@ -3893,71 +3826,6 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
     };
   }, [view, dnaStats, ncbiApiKeySet]);
 
-  // ── AUTH LOADING SCREEN ──
-  if (authLoading && !idToken) {
-    return (
-      <div style={{ minHeight: "100vh", background: T.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
-        <div style={{ width: 40, height: 40, border: `3px solid ${T.border2}`, borderTopColor: T.accent, borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-        <div style={{ color: T.text2, fontSize: "0.85rem" }}>Verifying security credentials...</div>
-        <style>{`
-          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        `}</style>
-      </div>
-    );
-  }
-
-  // ── LOGIN SCREEN ──
-  if (!idToken) {
-    return (
-      <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter',system-ui,sans-serif", padding: 20 }}>
-        <div style={{ maxWidth: 440, width: "100%", textAlign: "center" }}>
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ display: "inline-flex", width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, alignItems: "center", justifyContent: "center", fontSize: 36, marginBottom: 20, boxShadow: `0 0 60px ${T.accent}40` }}>👑</div>
-            <h1 style={{ color: T.text1, fontSize: "2.4rem", fontWeight: 900, letterSpacing: "-1.5px", margin: "0 0 8px" }}>APEX OS</h1>
-            <p style={{ color: T.text2, fontSize: "0.9rem", margin: 0 }}>Secure Enterprise Biological Operating Platform</p>
-          </div>
-          <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 20, padding: 32 }}>
-            <h2 style={{ color: T.text1, fontSize: "1.25rem", fontWeight: 700, marginBottom: 20 }}>Sign In Required</h2>
-            {authError && <div style={{ color: T.red, fontSize: "0.8rem", marginBottom: 16, background: `${T.red}15`, padding: 10, borderRadius: 8, border: `1px solid ${T.red}30` }}>{authError}</div>}
-
-            <button onClick={handleGoogleSignIn} disabled={authLoading} style={{ width: "100%", padding: "14px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 12, color: "white", fontSize: "0.95rem", fontWeight: 800, cursor: authLoading ? "not-allowed" : "pointer", letterSpacing: "0.5px", boxShadow: `0 8px 32px ${T.accent}40`, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, opacity: authLoading ? 0.7 : 1 }}>
-              {authLoading ? <Dots color="white" /> : (
-                <>
-                  <svg width="18" height="18" viewBox="0 0 18 18" style={{ fill: "currentColor" }}>
-                    <path d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.47h4.84c-.21 1.12-.84 2.07-1.8 2.71v2.24h2.91c1.7-1.56 2.69-3.86 2.69-6.58z" />
-                    <path d="M9 18c2.43 0 4.47-.8 5.96-2.2l-2.91-2.24c-.8.54-1.84.87-3.05.87-2.35 0-4.33-1.58-5.04-3.71H.92v2.32C2.4 15.97 5.46 18 9 18z" />
-                    <path d="M3.96 10.72c-.18-.54-.28-1.12-.28-1.72s.1-1.18.28-1.72V4.96H.92c-.63 1.25-.97 2.67-.97 4.18s.34 2.93.97 4.18l3.04-2.32z" />
-                    <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35L15 2.4C13.46.97 11.43 0 9 0 5.46 0 2.4 2.03.92 4.96l3.04 2.32C4.67 5.16 6.65 3.58 9 3.58z" />
-                  </svg>
-                  Sign in with Google
-                </>
-              )}
-            </button>
-
-            <button onClick={handleMockSignIn} style={{ width: "100%", marginTop: 12, padding: "10px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 10, color: T.text2, fontSize: "0.8rem", cursor: "pointer", fontWeight: 600 }}>
-              Developer Mock Bypass
-            </button>
-
-            {/* Temporary debug panel for troubleshooting */}
-            <div style={{ marginTop: 16, padding: "10px 12px", background: "#1a1625", border: "1px solid #3c2a4f", borderRadius: 10, textAlign: "left", fontFamily: "monospace" }}>
-              <div style={{ fontSize: "0.68rem", fontWeight: "bold", color: T.accent, textTransform: "uppercase", marginBottom: 6 }}>🔧 Debug Config Info</div>
-              <div style={{ fontSize: "0.65rem", color: T.text2, wordBreak: "break-all" }}>
-                <strong>apiKey:</strong> {auth?.app?.options?.apiKey && auth.app.options.apiKey !== "dummy-api-key" ? `${auth.app.options.apiKey.slice(0, 8)}...` : <span style={{ color: T.red, fontWeight: "bold" }}>MISSING/DUMMY</span>}
-              </div>
-              <div style={{ fontSize: "0.65rem", color: T.text2, wordBreak: "break-all", marginTop: 4 }}>
-                <strong>authDomain:</strong> {auth?.app?.options?.authDomain && auth.app.options.authDomain !== "dummy-auth-domain.firebaseapp.com" ? auth.app.options.authDomain : <span style={{ color: T.red, fontWeight: "bold" }}>MISSING/DUMMY</span>}
-              </div>
-              <div style={{ fontSize: "0.65rem", color: T.text2, wordBreak: "break-all", marginTop: 4 }}>
-                <strong>projectId:</strong> {auth?.app?.options?.projectId && auth.app.options.projectId !== "dummy-project-id" ? auth.app.options.projectId : <span style={{ color: T.red, fontWeight: "bold" }}>MISSING/DUMMY</span>}
-              </div>
-            </div>
-          </div>
-        </div>
-        <style>{CSS}</style>
-      </div>
-    );
-  }
-
   // ── SETUP SCREEN ──
   if (!state.setupDone) {
     return (
@@ -4085,7 +3953,6 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
               ● {proxyStatus === "online" ? "APEX Online" : proxyStatus === "waking" ? "Waking up backend..." : proxyStatus === "offline" ? "Proxy Offline" : proxyStatus.startsWith("error") ? `Proxy Error (${proxyStatus.split('-')[1]})` : "Checking Proxy..."}
             </div>
             <div style={{ background: T.surf2, border: `1px solid ${T.border2}`, padding: "4px 12px", borderRadius: 20, fontSize: "0.72rem", color: T.text2 }}>{state.tasks.length} tasks</div>
-            <button onClick={handleSignOut} style={{ background: `${T.red}18`, border: `1px solid ${T.red}40`, color: T.red, padding: "4px 12px", borderRadius: 20, fontSize: "0.72rem", fontWeight: 700, cursor: "pointer", transition: "all 0.15s" }}>Logout</button>
           </div>
         </div>
 
@@ -4821,12 +4688,6 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                     </div>
                   ))}
                 </div>
-              </div>
-
-              <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 14, padding: 20, marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, fontSize: "0.88rem", marginBottom: 10 }}>👤 User Session</div>
-                <div style={{ fontSize: "0.78rem", color: T.text2, marginBottom: 12 }}>You are signed in securely with Google Auth.</div>
-                <button onClick={handleSignOut} style={{ padding: "9px 18px", background: `${T.red}18`, border: `1px solid ${T.red}44`, borderRadius: 9, color: T.red, fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}>Sign Out</button>
               </div>
 
               <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 14, padding: 20, marginBottom: 16 }}>
