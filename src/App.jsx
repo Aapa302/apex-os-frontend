@@ -1794,6 +1794,61 @@ export default function ApexOS() {
   const [memFilter, setMemFilter] = useState("all");
   const [kpiEdit, setKpiEdit] = useState(null);
 
+  // Autonomous CEO Trigger State
+  const [autoTriggerLoading, setAutoTriggerLoading] = useState(false);
+  const [autoTriggerStatus, setAutoTriggerStatus] = useState("");
+  const [autoLogLoading, setAutoLogLoading] = useState(false);
+  const [autoLogData, setAutoLogData] = useState(null);
+  const [autoLogError, setAutoLogError] = useState("");
+
+  const fetchAutonomousLog = async () => {
+    setAutoLogLoading(true);
+    setAutoLogError("");
+    const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
+    try {
+      const res = await fetch(`${base}/autonomous-log`, { cache: 'no-cache' });
+      if (!res.ok) {
+        throw new Error(`Failed to fetch autonomous log (${res.status} ${res.statusText})`);
+      }
+      const data = await res.json();
+      setAutoLogData(data);
+    } catch (err) {
+      console.error("Error fetching autonomous log:", err);
+      setAutoLogError(err.message || "Failed to retrieve log from backend.");
+    } finally {
+      setAutoLogLoading(false);
+    }
+  };
+
+  const handleTestAutonomousCheck = async () => {
+    setAutoTriggerLoading(true);
+    setAutoTriggerStatus("");
+    const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
+    try {
+      const res = await fetch(`${base}/autonomous-trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (!res.ok) {
+        throw new Error(`Server returned error (${res.status} ${res.statusText})`);
+      }
+      const data = await res.json();
+      setAutoTriggerStatus("Autonomous check triggered — see log below");
+      await fetchAutonomousLog();
+    } catch (err) {
+      console.error("Error triggering autonomous check:", err);
+      setAutoTriggerStatus(`Trigger failed: ${err.message}`);
+    } finally {
+      setAutoTriggerLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (view === "settings") {
+      fetchAutonomousLog();
+    }
+  }, [view]);
+
   const ceoChatEndRef = useRef();
   const empChatEndRef = useRef();
   const fileRef = useRef();
@@ -4758,6 +4813,133 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                   >
                     Test Connection
                   </button>
+                </div>
+              </div>
+
+              <div style={{ background: T.surf, border: `1px solid ${T.border2}`, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ fontWeight: 700, fontSize: "0.88rem" }}>🤖 Autonomous CEO Testing</div>
+                  <button
+                    onClick={fetchAutonomousLog}
+                    disabled={autoLogLoading}
+                    style={{ padding: "6px 12px", background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 8, color: T.text1, fontSize: "0.72rem", cursor: "pointer" }}
+                  >
+                    {autoLogLoading ? "Refreshing..." : "🔄 Refresh Log"}
+                  </button>
+                </div>
+                <div style={{ color: T.text2, fontSize: "0.78rem", marginBottom: 16 }}>
+                  Trigger a background autonomous check and view real-time operations, decisions, and system review logs.
+                </div>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+                  <button
+                    onClick={handleTestAutonomousCheck}
+                    disabled={autoTriggerLoading}
+                    style={{
+                      padding: "10px 18px",
+                      background: autoTriggerLoading ? T.surf2 : `linear-gradient(135deg, ${T.accent}, ${T.accent2})`,
+                      border: "none",
+                      borderRadius: 9,
+                      color: "white",
+                      fontWeight: 700,
+                      fontSize: "0.8rem",
+                      cursor: autoTriggerLoading ? "default" : "pointer",
+                      opacity: autoTriggerLoading ? 0.6 : 1
+                    }}
+                  >
+                    {autoTriggerLoading ? "Triggering..." : "Test Autonomous Check"}
+                  </button>
+                </div>
+
+                {autoTriggerStatus && (
+                  <div style={{
+                    padding: "10px 12px",
+                    background: autoTriggerStatus.toLowerCase().includes("failed") ? `${T.red}15` : `${T.green}15`,
+                    border: `1px solid ${autoTriggerStatus.toLowerCase().includes("failed") ? T.red : T.green}30`,
+                    borderRadius: 8,
+                    color: autoTriggerStatus.toLowerCase().includes("failed") ? T.red : T.green,
+                    fontSize: "0.78rem",
+                    marginBottom: 16,
+                    lineHeight: 1.4
+                  }}>
+                    {autoTriggerStatus}
+                  </div>
+                )}
+
+                {/* Log display */}
+                <div style={{ borderTop: `1px solid ${T.border2}`, paddingTop: 16 }}>
+                  <div style={{ fontWeight: 700, fontSize: "0.8rem", color: T.text2, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                    📋 Log Output
+                    {autoLogLoading && <span style={{ fontSize: "0.7rem", color: T.text3, fontWeight: "normal" }}>(Loading...)</span>}
+                  </div>
+
+                  {autoLogError && (
+                    <div style={{ color: T.red, fontSize: "0.78rem", padding: "8px 0" }}>
+                      ⚠️ Error loading log: {autoLogError}
+                    </div>
+                  )}
+
+                  {!autoLogLoading && !autoLogError && (!autoLogData || (Array.isArray(autoLogData) && autoLogData.length === 0)) ? (
+                    <div style={{ color: T.text3, fontSize: "0.78rem", fontStyle: "italic", padding: "12px 0" }}>
+                      No log entries found. Tap "Test Autonomous Check" above to generate a new entry.
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
+                      {(Array.isArray(autoLogData) ? autoLogData : (autoLogData ? [autoLogData] : [])).map((entry, idx) => {
+                        const timestamp = entry.timestamp || entry.time || entry.createdAt || entry.date || "";
+                        const reviewed = entry.reviewed || entry.reviewed_items || entry.whatWasReviewed || entry.what_was_reviewed || entry.review || "";
+                        const decision = entry.decision || entry.decision_made || entry.decisionMade || entry.result || "";
+                        const actions = entry.actions || entry.actions_taken || entry.actionsTaken || entry.action || "";
+
+                        if (typeof entry === "string") {
+                          return (
+                            <div key={idx} style={{ background: T.surf2, border: `1px solid ${T.border2}`, borderRadius: 10, padding: 12, fontSize: "0.76rem", color: T.text2, whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
+                              {entry}
+                            </div>
+                          );
+                        }
+
+                        const isGenericObj = !timestamp && !reviewed && !decision && !actions;
+
+                        return (
+                          <div key={entry.id || idx} style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                            {isGenericObj ? (
+                              <pre style={{ margin: 0, fontSize: "0.72rem", color: T.text2, overflowX: "auto", whiteSpace: "pre-wrap" }}>
+                                {JSON.stringify(entry, null, 2)}
+                              </pre>
+                            ) : (
+                              <>
+                                {timestamp && (
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.border2}`, paddingBottom: 4, marginBottom: 2 }}>
+                                    <span style={{ fontSize: "0.68rem", color: T.text3, fontFamily: "monospace" }}>📅 {new Date(timestamp).toLocaleString() === "Invalid Date" ? timestamp : new Date(timestamp).toLocaleString()}</span>
+                                    <span style={{ fontSize: "0.6rem", background: `${T.accent}15`, color: T.accent, padding: "2px 6px", borderRadius: 4, fontWeight: "bold" }}>AUTONOMOUS</span>
+                                  </div>
+                                )}
+                                {reviewed && (
+                                  <div style={{ fontSize: "0.78rem" }}>
+                                    <strong style={{ color: T.text1 }}>👁️ Reviewed: </strong>
+                                    <span style={{ color: T.text2 }}>{reviewed}</span>
+                                  </div>
+                                )}
+                                {decision && (
+                                  <div style={{ fontSize: "0.78rem" }}>
+                                    <strong style={{ color: T.green }}>🧠 Decision Made: </strong>
+                                    <span style={{ color: T.text2 }}>{decision}</span>
+                                  </div>
+                                )}
+                                {actions && (
+                                  <div style={{ fontSize: "0.78rem" }}>
+                                    <strong style={{ color: T.yellow }}>⚡ Actions Taken: </strong>
+                                    <span style={{ color: T.text2 }}>{actions}</span>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
