@@ -136,16 +136,25 @@ export async function executeWithFallback(request, options = {}) {
 
   // Pattern Matching Logic (replicated from CEO Chat)
   const isPaperSearch = (
-    lowerText.includes("pubmed") ||
-    lowerText.includes("search-pubmed") ||
-    lowerText.includes("literature") ||
     (
-      (lowerText.includes("paper") || lowerText.includes("papers") || lowerText.includes("publication") || lowerText.includes("publications") || lowerText.includes("study") || lowerText.includes("studies") || lowerText.includes("research")) &&
-      (lowerText.includes("search") || lowerText.includes("find") || lowerText.includes("look up") || lowerText.includes("fetch") || lowerText.includes("retrieve") || lowerText.includes("get")) &&
-      !lowerText.includes("market fit") &&
-      !lowerText.includes("strategy") &&
-      !lowerText.includes("go-to-market")
-    )
+      lowerText.includes("pubmed") ||
+      lowerText.includes("search-pubmed") ||
+      lowerText.includes("literature") ||
+      (
+        (lowerText.includes("paper") || lowerText.includes("papers") || lowerText.includes("publication") || lowerText.includes("publications") || lowerText.includes("study") || lowerText.includes("studies") || lowerText.includes("research")) &&
+        (lowerText.includes("search") || lowerText.includes("find") || lowerText.includes("look up") || lowerText.includes("fetch") || lowerText.includes("retrieve") || lowerText.includes("get")) &&
+        !lowerText.includes("market fit") &&
+        !lowerText.includes("strategy") &&
+        !lowerText.includes("go-to-market")
+      )
+    ) &&
+    !lowerText.includes("research note") &&
+    !lowerText.includes("task") &&
+    !lowerText.includes("note") &&
+    !lowerText.includes("banao") &&
+    !lowerText.includes("banav") &&
+    !lowerText.includes("create") &&
+    !lowerText.includes("make")
   );
 
   const isEncodeDecode = (
