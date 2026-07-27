@@ -1254,84 +1254,20 @@ Each locally-capable stage executed perfectly and wrote telemetry to the central
     }
 
     if (isEmployeeOrOrchestrator && !options.isJson) {
-      if (role === "engineer") {
-        return `💻 **Sarah Kim [AUTO: Build & Execute] — Software Engineer**:
-
-I have parsed the NCBI/genomic retrieval directive locally and initiated a production-grade software implementation draft.
-
-### Implementation Design:
-- **Local Script Module**: \`src/core/services/ncbiIntegrator.js\`
-- **Service Wrapper**: Implemented a local FASTA data stream parser and nucleotide mapping router.
-- **Compliance Checks**: Integrated automated GCContent validation and homopolymer run threshold filtering.
-
-### Generated Code Block (Local Synthesis):
-\`\`\`javascript
-export function parseAndBuildSequence(fastaData) {
-  const rawBases = fastaData.split('\\n').slice(1).join('').replace(/[^ATCG]/gi, '');
-  console.log(\`Processing \${rawBases.length} bp genomic segment...\`);
-  return {
-    bases: rawBases,
-    status: "implemented",
-    compiledAt: new Date().toISOString()
-  };
-}
-\`\`\`
-
-Completed using: [local DNA Engine] — Gemini was offline for this step.`;
-      }
-
-      if (role === "pm") {
-        return `📋 **Marcus Johnson [AUTO: Strategy & Spec] — Product Manager**:
-
-I have analyzed the NCBI/genomic retrieval directive and compiled a high-fidelity Product Specification and Strategy roadmap.
-
-### Strategic Product Specification:
-- **Feature Title**: Genomic Data Digital Archive Pipeline
-- **Objective**: Establish secure, compliant, high-density physical archiving of genomic datasets.
-- **Target Audience**: Bio-storage researchers and enterprise archival clients.
-
-### Strategic Recommendations:
-1. **Phased Integration**: Roll out local DNA Core conversions first, followed by live NCBI sequence fetching.
-2. **Compliance Standard**: Enforce strict GC content limits (45-55%) to prevent physical synthesis errors.
-3. **Risk Management**: Provide seamless client-side E-utilities fallbacks for server-side proxy timeouts.
-
-Completed using: [local DNA Engine] — Gemini was offline for this step.`;
-      }
-
-      if (role === "analyst" || role === "researcher") {
-        return `📊 **Ryan Thompson [AUTO: Discovery & Research] — Data Analyst**:
-
-I have retrieved the NCBI genomic dataset and computed the analytical performance benchmarks.
-
-### Biological Discovery Summary:
-- **Query Term**: "BRCA1 / Human Sequence"
-- **Database**: Nucleotide / Gene
-- **Analytical Insight**: The genomic target demonstrates a stable base-pair layout with significant coding density (approx. 1.8 bits/nt).
-
-### Performance Metric Review:
-- **Physical Coding Density**: 1.58 bits per base
-- **Structural Stability**: 98.4% GC balance efficiency
-- **Est. Storage Space Required**: 2.4 KB per kilobase of digital file
-
-Completed using: [local DNA Engine, NCBI API] — Gemini was offline for this step.`;
-      }
-
-      if (role === "cto") {
-        return `🔧 **Alex Chen [AUTO: CTO Review] — Chief Technology Officer**:
-
-I have conducted an architectural review of the genomic data storage pipeline and NCBI integration patterns.
-
-### Architectural Decisions:
-- **Persistence Pattern**: Utilize localStorage-backed dataset caching for retrieved FASTA segments to optimize API bandwidth.
-- **Failover Strategy**: Graceful local direct E-utilities failover upon backend status timeout.
-
-🔧 TECHNICAL RECOMMENDATION: Enforce strict isolation of third-party NCBI API boundaries using the NCBIService wrapper.
-
-Completed using: [local DNA Engine, local Storage Architect] — Gemini was offline for this step.`;
+      if (reason === "quota") {
+        return `⚠️ Gemini API quota exceeded. Please wait a few minutes and try again. (Error: rate limit reached for this request.)`;
+      } else if (reason === "offline") {
+        return `📡 Backend service offline. Please check your connection or try again later. (Error: network fetch failed.)`;
+      } else {
+        return `❌ An unexpected error occurred while communicating with the AI. (Error: temporary service failure.)`;
       }
     }
 
-    const friendlyMsg = `AI reasoning is temporarily unavailable right now (reason: [${reason}]). This request needed Gemini and couldn't be completed — please retry in a moment.`;
+    const friendlyMsg = reason === "quota"
+      ? `⚠️ Gemini API quota exceeded. Please wait a few minutes and try again. (Error: rate limit reached for this request.)`
+      : reason === "offline"
+        ? `📡 Backend service offline. Please check your connection or try again later. (Error: network fetch failed.)`
+        : `❌ An unexpected error occurred while communicating with the AI. (Error: temporary service failure.)`;
     const completedMsg = `Completed using: [none] — Gemini was unavailable for this step.`;
     const finalErrorMessage = `${friendlyMsg}\n\n${completedMsg}`;
 
