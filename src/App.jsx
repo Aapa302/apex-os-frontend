@@ -1849,6 +1849,84 @@ export default function ApexOS() {
     }
   }, [view]);
 
+  // Auto-Follow-Up for completed or failed Build Pipeline builds
+  useEffect(() => {
+    if (!state?.builds || state.builds.length === 0) return;
+
+    let notifiedStr = localStorage.getItem("apex_os_notified_builds");
+    let notified = [];
+    try {
+      if (notifiedStr) notified = JSON.parse(notifiedStr);
+    } catch (e) {
+      notified = [];
+    }
+    if (!Array.isArray(notified)) notified = [];
+
+    let updated = false;
+
+    state.builds.forEach(b => {
+      const isTerminal = ["completed", "needs_revision", "error", "aborted"].includes(b.status);
+      if (isTerminal && !notified.includes(b.id)) {
+        notified.push(b.id);
+        updated = true;
+
+        let content = "";
+        if (b.status === "completed") {
+          const filesList = (b.files || []).map(f => `- \`${f.path}\` — ${f.language}`).join("\n");
+          content = `🚀 **Autonomous CEO Update: Build Pipeline Complete!**
+
+The strategic build request for **${b.name}** has successfully passed all quality checks (CTO Review and Final QA).
+
+### **Project Summary:**
+- **Requirements Brief**: ${b.requirements?.summary || b.spec}
+- **Technology Stack**: ${b.requirements?.techStack || "Standard JavaScript / Web App"}
+- **CTO QA Score**: ${b.ctoReview?.score ? `${b.ctoReview.score}/100` : "Passed"}
+- **Final QA Score**: ${b.finalReview?.score ? `${b.finalReview.score}/100` : "Passed"}
+
+### **Generated Files (${(b.files || []).length}):**
+${filesList || "*No files generated*"}
+
+---
+
+### **Next Steps & Export Options:**
+1. **Download ZIP**: Go to the **Build** tab, select this project, and click **Download ZIP** to save the source code to your machine.
+2. **GitHub Export**: Click **Export to GitHub** in the Build tab to push the files directly to your repository.`;
+        } else if (b.status === "needs_revision") {
+          content = `⚠️ **Autonomous CEO Update: Build Pipeline Needs Revision**
+
+The build request for **${b.name}** has completed but requires some minor structural revisions.
+
+- **CTO QA Score**: ${b.ctoReview?.score ? `${b.ctoReview.score}/100` : "Pending"}
+- **Final QA Score**: ${b.finalReview?.score ? `${b.finalReview.score}/100` : "Pending"}
+
+You can view the full revision notes, check recommendations, and download the current version in the **Build** tab.`;
+        } else {
+          content = `❌ **Autonomous CEO Update: Build Pipeline ${b.status === "aborted" ? "Aborted" : "Failed"}**
+
+The build request for **${b.name}** could not be completed.
+
+- **Status**: ${b.status.toUpperCase()}
+- **Error Details**: ${b.error || "An unexpected error occurred during file generation."}
+
+Please check the Build tab to retry the build or adjust your configuration.`;
+        }
+
+        dispatch({
+          type: "ADD_CEO_MSG",
+          payload: {
+            id: `build_follow_up_${b.id}_${Date.now()}`,
+            role: "assistant",
+            content: content
+          }
+        });
+      }
+    });
+
+    if (updated) {
+      localStorage.setItem("apex_os_notified_builds", JSON.stringify(notified));
+    }
+  }, [state?.builds, dispatch]);
+
   const ceoChatEndRef = useRef();
   const empChatEndRef = useRef();
   const fileRef = useRef();
