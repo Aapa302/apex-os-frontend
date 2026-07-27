@@ -4887,9 +4887,10 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                     <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
                       {(Array.isArray(autoLogData) ? autoLogData : (autoLogData ? [autoLogData] : [])).map((entry, idx) => {
                         const timestamp = entry.timestamp || entry.time || entry.createdAt || entry.date || "";
-                        const reviewed = entry.reviewed || entry.reviewed_items || entry.whatWasReviewed || entry.what_was_reviewed || entry.review || "";
-                        const decision = entry.decision || entry.decision_made || entry.decisionMade || entry.result || "";
-                        const actions = entry.actions || entry.actions_taken || entry.actionsTaken || entry.action || "";
+                        const reviewed = entry.stateReviewed || entry.state_reviewed || entry.reviewed || entry.reviewedItems || entry.reviewed_items || entry.whatWasReviewed || entry.what_was_reviewed || entry.review || "";
+                        const decision = entry.decision || entry.decisionMade || entry.decision_made || entry.result || "";
+                        const actions = entry.actionsTaken || entry.actions_taken || entry.actions || entry.action || "";
+                        const error = entry.error || entry.message || "";
 
                         if (typeof entry === "string") {
                           return (
@@ -4899,10 +4900,10 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                           );
                         }
 
-                        const isGenericObj = !timestamp && !reviewed && !decision && !actions;
+                        const isGenericObj = !timestamp && !reviewed && !decision && !actions && !error;
 
                         return (
-                          <div key={entry.id || idx} style={{ background: T.surf2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div key={entry.id || idx} style={{ background: T.surf2, border: `1px solid ${error ? T.red + "40" : T.border}`, borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                             {isGenericObj ? (
                               <pre style={{ margin: 0, fontSize: "0.72rem", color: T.text2, overflowX: "auto", whiteSpace: "pre-wrap" }}>
                                 {JSON.stringify(entry, null, 2)}
@@ -4912,27 +4913,32 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                                 {timestamp && (
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.border2}`, paddingBottom: 4, marginBottom: 2 }}>
                                     <span style={{ fontSize: "0.68rem", color: T.text3, fontFamily: "monospace" }}>📅 {new Date(timestamp).toLocaleString() === "Invalid Date" ? timestamp : new Date(timestamp).toLocaleString()}</span>
-                                    <span style={{ fontSize: "0.6rem", background: `${T.accent}15`, color: T.accent, padding: "2px 6px", borderRadius: 4, fontWeight: "bold" }}>AUTONOMOUS</span>
+                                    <span style={{ fontSize: "0.6rem", background: error ? `${T.red}15` : `${T.accent}15`, color: error ? T.red : T.accent, padding: "2px 6px", borderRadius: 4, fontWeight: "bold" }}>
+                                      {error ? "❌ FAILED" : "🤖 AUTONOMOUS"}
+                                    </span>
                                   </div>
                                 )}
-                                {reviewed && (
-                                  <div style={{ fontSize: "0.78rem" }}>
-                                    <strong style={{ color: T.text1 }}>👁️ Reviewed: </strong>
-                                    <span style={{ color: T.text2 }}>{reviewed}</span>
+
+                                {error && (
+                                  <div style={{ fontSize: "0.78rem", background: `${T.red}08`, border: `1px solid ${T.red}20`, borderRadius: 6, padding: "6px 10px", margin: "2px 0", color: T.red }}>
+                                    <strong>⚠️ Error: </strong>{error}
                                   </div>
                                 )}
-                                {decision && (
-                                  <div style={{ fontSize: "0.78rem" }}>
-                                    <strong style={{ color: T.green }}>🧠 Decision Made: </strong>
-                                    <span style={{ color: T.text2 }}>{decision}</span>
-                                  </div>
-                                )}
-                                {actions && (
-                                  <div style={{ fontSize: "0.78rem" }}>
-                                    <strong style={{ color: T.yellow }}>⚡ Actions Taken: </strong>
-                                    <span style={{ color: T.text2 }}>{actions}</span>
-                                  </div>
-                                )}
+
+                                <div style={{ fontSize: "0.78rem" }}>
+                                  <strong style={{ color: T.text1 }}>👁️ Reviewed: </strong>
+                                  <span style={{ color: T.text2 }}>{reviewed || "none"}</span>
+                                </div>
+
+                                <div style={{ fontSize: "0.78rem" }}>
+                                  <strong style={{ color: T.green }}>🧠 Decision: </strong>
+                                  <span style={{ color: T.text2 }}>{decision || "none"}</span>
+                                </div>
+
+                                <div style={{ fontSize: "0.78rem" }}>
+                                  <strong style={{ color: T.yellow }}>⚡ Action: </strong>
+                                  <span style={{ color: T.text2 }}>{actions || "none"}</span>
+                                </div>
                               </>
                             )}
                           </div>
