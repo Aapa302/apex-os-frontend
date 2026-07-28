@@ -682,6 +682,7 @@ const initialAppState = () => {
     builds: ls.builds || [],
     analytics: ls.analytics || { tasksByDay: [2,4,3,7,5,6,8], revenueByMonth: [0,0,0,0,0,0,0,0,0,0,0,0] },
     proxyUrl: ls.proxyUrl || DEFAULT_PROXY,
+    activePlan: ls.activePlan || null,
   };
 };
 
@@ -994,6 +995,7 @@ const CEOOrchestrator = {
         };
       }
 
+      plan.id = plan.id || `plan_${Date.now()}`;
       setProgress(20);
       dispatch({ type:"SET_PLAN", payload:plan });
       MemoryEngine.store(dispatch, { category:"project", content:`Auto-plan: "${goal}" — ${plan.phases.length} phases, ${plan.totalDuration}`, importance:"high" });
@@ -1079,6 +1081,14 @@ const CEOOrchestrator = {
       const cmds = parseCEOCommands(finalReply);
       cmds.memories.forEach(m => MemoryEngine.store(dispatch, m));
       cmds.kpis.forEach(k => dispatch({ type:"UPSERT_KPI", payload:k }));
+
+      // Update plan with finalReport and completed status for auto-follow-up
+      const completedPlan = {
+        ...plan,
+        finalReport: finalReply,
+        status: "completed"
+      };
+      dispatch({ type:"SET_PLAN", payload: completedPlan });
 
       setProgress(100);
       log("🚀 Autonomous cycle complete!", "🚀");
@@ -1926,6 +1936,179 @@ Please check the Build tab to retry the build or adjust your configuration.`;
       localStorage.setItem("apex_os_notified_builds", JSON.stringify(notified));
     }
   }, [state?.builds, dispatch]);
+
+  // Auto-Follow-Up for NCBI Biological Imports & Benchmark Sweeps (Domain 1)
+  useEffect(() => {
+    const checkNCBIAndBenchmarks = () => {
+      // 1. Check FASTA sequence imports
+      try {
+        const datasetsStr = localStorage.getItem("apex_os_datasets");
+        if (datasetsStr) {
+          const datasets = JSON.parse(datasetsStr);
+          if (Array.isArray(datasets)) {
+            let notifiedStr = localStorage.getItem("apex_os_notified_ncbi_imports");
+            let notified = [];
+            try {
+              if (notifiedStr) notified = JSON.parse(notifiedStr);
+            } catch (e) {
+              notified = [];
+            }
+            if (!Array.isArray(notified)) notified = [];
+
+            let updated = false;
+            datasets.forEach(ds => {
+              // Identify if it's an NCBI or FASTA import
+              const isNcbiOrFasta = ds.type === "FASTA" || ds.category === "Genomics" || ds.source === "NCBI GenBank" || (ds.name && ds.name.startsWith("NCBI:"));
+              if (isNcbiOrFasta && !notified.includes(ds.id)) {
+                notified.push(ds.id);
+                updated = true;
+
+                const basesCount = ds.records || (ds.rawSequence ? ds.rawSequence.length : (ds.content ? ds.content.length : 0));
+                const content = `🚀 **Autonomous CEO Update: NCBI Biological Import Complete!**
+
+A new biological genomic sequence has been successfully imported and cached in local datasets.
+
+### **Import Details:**
+- **Sequence Name**: ${ds.name}
+- **Source**: ${ds.source || 'NCBI GenBank'}
+- **Length**: ${basesCount} bases
+- **File Size**: ${ds.size || 'Unknown'}
+- **Import Timestamp**: ${ds.lastUpdated || ds.addedAt || new Date().toLocaleString()}
+- **Status**: COMPLETED
+
+You can now view, analyze, or run algorithms on this imported sequence in the **Datasets** or **NCBI Import & Test** tabs.`;
+
+                dispatch({
+                  type: "ADD_CEO_MSG",
+                  payload: {
+                    id: `ncbi_import_follow_up_${ds.id}_${Date.now()}`,
+                    role: "assistant",
+                    content: content
+                  }
+                });
+              }
+            });
+            if (updated) {
+              localStorage.setItem("apex_os_notified_ncbi_imports", JSON.stringify(notified));
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error in NCBI imports auto-follow-up:", err);
+      }
+
+      // 2. Check Benchmark Sweeps
+      try {
+        const runsStr = localStorage.getItem("apex_os_v3_dna_runs");
+        if (runsStr) {
+          const runs = JSON.parse(runsStr);
+          if (Array.isArray(runs)) {
+            let notifiedStr = localStorage.getItem("apex_os_notified_ncbi_imports");
+            let notified = [];
+            try {
+              if (notifiedStr) notified = JSON.parse(notifiedStr);
+            } catch (e) {
+              notified = [];
+            }
+            if (!Array.isArray(notified)) notified = [];
+
+            let updated = false;
+            runs.forEach(run => {
+              const runId = run.executionId || run.id;
+              if (runId && !notified.includes(runId)) {
+                notified.push(runId);
+                updated = true;
+
+                const isSuccess = run.success !== false;
+                const content = `🔬 **Autonomous CEO Update: DNA Benchmark Sweep Complete!**
+
+The DNA storage encoding and decoding benchmark sweep has finished execution.
+
+### **Benchmark Results:**
+- **Execution ID**: \`${runId}\`
+- **Algorithm**: ${run.algorithmName || "Default DNA Encoder"}
+- **Total Latency**: ${run.time ? run.time.toFixed(3) : 'N/A'} ms
+- **Success**: ${isSuccess ? "YES (Integrity Perfect)" : "NO"}
+- **Status**: ${isSuccess ? '✅ COMPLETED' : '❌ FAILED'}
+${run.error ? `- **Error Details**: ${run.error}\n` : ''}
+
+The execution metrics and compliance indicators have been logged to the global runs registry and synchronised with our research memory.`;
+
+                dispatch({
+                  type: "ADD_CEO_MSG",
+                  payload: {
+                    id: `ncbi_sweep_follow_up_${runId}_${Date.now()}`,
+                    role: "assistant",
+                    content: content
+                  }
+                });
+              }
+            });
+            if (updated) {
+              localStorage.setItem("apex_os_notified_ncbi_imports", JSON.stringify(notified));
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error in benchmark sweeps auto-follow-up:", err);
+      }
+    };
+
+    // Run once on load
+    checkNCBIAndBenchmarks();
+
+    // Check periodically for real-time reactivity
+    const interval = setInterval(checkNCBIAndBenchmarks, 2000);
+    return () => clearInterval(interval);
+  }, [dispatch]);
+
+  // Auto-Follow-Up for Autonomous Company Mode / Strategic Planner (Domain 2)
+  useEffect(() => {
+    if (!state?.activePlan || state.activePlan.status !== "completed") return;
+
+    let notifiedStr = localStorage.getItem("apex_os_notified_strategic_plans");
+    let notified = [];
+    try {
+      if (notifiedStr) notified = JSON.parse(notifiedStr);
+    } catch (e) {
+      notified = [];
+    }
+    if (!Array.isArray(notified)) notified = [];
+
+    const planId = state.activePlan.id;
+    if (planId && !notified.includes(planId)) {
+      notified.push(planId);
+      localStorage.setItem("apex_os_notified_strategic_plans", JSON.stringify(notified));
+
+      const p = state.activePlan;
+      const content = `🚀 **Autonomous CEO Update: Strategic Plan Execution Complete!**
+
+We have successfully executed the autonomous company-wide strategic plan for goal: **"${p.goal || p.title}"**.
+
+### **Strategic Executive Summary:**
+${p.finalReport || "Execution completed successfully. All phases have been dispatched and reviewed."}
+
+---
+
+### **Execution Metrics & Performance:**
+- **Plan Title**: ${p.title}
+- **Total Duration**: ${p.totalDuration || "Unknown"}
+- **Phases Completed**: ${(p.phases || []).length}
+- **Total Tasks**: ${state.tasks.filter(t => t.source === "autonomous" || t.id.startsWith("auto_")).length}
+- **Reviews Generated**: ${(state.reviews || []).filter(r => r.id?.startsWith("r_")).length}
+
+All system metrics and company KPIs have been updated and synchronized with local memory.`;
+
+      dispatch({
+        type: "ADD_CEO_MSG",
+        payload: {
+          id: `strategic_plan_follow_up_${planId}_${Date.now()}`,
+          role: "assistant",
+          content: content
+        }
+      });
+    }
+  }, [state?.activePlan, state?.tasks, state?.reviews, dispatch]);
 
   const ceoChatEndRef = useRef();
   const empChatEndRef = useRef();
