@@ -5186,17 +5186,17 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                                   </div>
                                 )}
 
-                                <div style={{ fontSize: "0.78rem" }}>
+                                <div style={{ fontSize: "0.78rem", whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word" }}>
                                   <strong style={{ color: T.text1 }}>👁️ Reviewed: </strong>
                                   <span style={{ color: T.text2 }}>{reviewed || "none"}</span>
                                 </div>
 
-                                <div style={{ fontSize: "0.78rem" }}>
+                                <div style={{ fontSize: "0.78rem", whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word" }}>
                                   <strong style={{ color: T.green }}>🧠 Decision: </strong>
                                   <span style={{ color: T.text2 }}>{decision || "none"}</span>
                                 </div>
 
-                                <div style={{ fontSize: "0.78rem" }}>
+                                <div style={{ fontSize: "0.78rem", whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word" }}>
                                   <strong style={{ color: T.yellow }}>⚡ Action: </strong>
                                   <span style={{ color: T.text2 }}>{actions || "none"}</span>
                                 </div>
