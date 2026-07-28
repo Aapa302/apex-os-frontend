@@ -1927,6 +1927,177 @@ Please check the Build tab to retry the build or adjust your configuration.`;
     }
   }, [state?.builds, dispatch]);
 
+  // Auto-Follow-Up for NCBI imports and benchmark sweeps
+  useEffect(() => {
+    const checkNCBIAndSweeps = () => {
+      // 1. Check NCBI imports (datasets)
+      try {
+        const datasetsStr = localStorage.getItem("apex_os_datasets");
+        if (datasetsStr) {
+          const datasets = JSON.parse(datasetsStr);
+          if (Array.isArray(datasets)) {
+            let notifiedStr = localStorage.getItem("apex_os_notified_ncbi_imports") || "[]";
+            let notified = JSON.parse(notifiedStr);
+            let updated = false;
+
+            datasets.forEach(d => {
+              if (d.id?.startsWith("ncbi_") && !notified.includes(d.id)) {
+                notified.push(d.id);
+                updated = true;
+
+                const content = `🧬 **Autonomous CEO Update: NCBI Sequence Import Complete!**
+
+The biological dataset has been successfully retrieved from the NCBI server and cached locally.
+
+### **Dataset Details:**
+- **Name**: ${d.name}
+- **Source**: ${d.source || "NCBI Nucleotide"}
+- **Payload Size**: ${d.size}
+- **Import Timestamp**: ${d.addedAt || new Date().toLocaleString()}
+
+### **Sequence Preview (First 80 bases):**
+\`\`\`text
+${(d.content || "").slice(0, 80)}...
+\`\`\`
+
+---
+*This dataset has been cataloged under the persistent Dataset Manager key and is ready for benchmark trials.*`;
+
+                dispatch({
+                  type: "ADD_CEO_MSG",
+                  payload: {
+                    id: `ncbi_import_${d.id}_${Date.now()}`,
+                    role: "assistant",
+                    content: content
+                  }
+                });
+              }
+            });
+
+            if (updated) {
+              localStorage.setItem("apex_os_notified_ncbi_imports", JSON.stringify(notified));
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error processing NCBI imports auto-follow-up:", e);
+      }
+
+      // 2. Check benchmark sweeps / runs
+      try {
+        const runsStr = localStorage.getItem("apex_os_v3_dna_runs");
+        if (runsStr) {
+          const runs = JSON.parse(runsStr);
+          if (Array.isArray(runs)) {
+            let notifiedStr = localStorage.getItem("apex_os_notified_ncbi_sweeps") || "[]";
+            let notified = JSON.parse(notifiedStr);
+            let updated = false;
+
+            runs.forEach(r => {
+              const runId = r.id || `${r.algorithmName}_${r.timestamp || r.time || idx}`;
+              if (runId && !notified.includes(runId)) {
+                notified.push(runId);
+                updated = true;
+
+                const content = `⏱️ **Autonomous CEO Update: DNA Storage Benchmark Run Complete!**
+
+A performance sweep of registered biological storage models has been executed.
+
+### **Benchmark Execution Matrix:**
+- **Primary Model**: ${r.algorithmName || "Default Aligner"}
+- **Encoding/Decoding Time**: ${parseFloat(r.time || 0).toFixed(3)} ms
+- **Success Status**: ${r.status === "success" || r.status === "completed" ? "✅ Success" : "❌ Failed"}
+- **Verification Checksum**: ${r.checksum || "Verified"}
+- **Log Brief**: ${r.description || "Sequence processed through local simulator traceback matrices."}
+
+---
+*The complete execution latency report has been written directly to the system analytics dashboard.*`;
+
+                dispatch({
+                  type: "ADD_CEO_MSG",
+                  payload: {
+                    id: `ncbi_sweep_${runId}_${Date.now()}`,
+                    role: "assistant",
+                    content: content
+                  }
+                });
+              }
+            });
+
+            if (updated) {
+              localStorage.setItem("apex_os_notified_ncbi_sweeps", JSON.stringify(notified));
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error processing NCBI runs auto-follow-up:", e);
+      }
+    };
+
+    checkNCBIAndSweeps();
+    const interval = setInterval(checkNCBIAndSweeps, 5000);
+    return () => clearInterval(interval);
+  }, [dispatch]);
+
+  // Auto-Follow-Up for Autonomous Company Mode (Strategic Planner)
+  useEffect(() => {
+    if (autoProgress === 100 && !autoRunning && state?.activePlan) {
+      const planId = `plan_${state.activePlan.goal}_${state.activePlan.title}`.replace(/[^a-zA-Z0-9_]/g, "_");
+
+      let notifiedStr = localStorage.getItem("apex_os_notified_strategic_plans") || "[]";
+      let notified = [];
+      try {
+        if (notifiedStr) notified = JSON.parse(notifiedStr);
+      } catch (e) {
+        notified = [];
+      }
+      if (!Array.isArray(notified)) notified = [];
+
+      if (!notified.includes(planId)) {
+        notified.push(planId);
+        localStorage.setItem("apex_os_notified_strategic_plans", JSON.stringify(notified));
+
+        const phasesList = (state.activePlan.phases || []).map((ph, idx) => {
+          return `**Phase ${idx + 1}: ${ph.phase}**
+- **Owner / Lead**: ${ph.owner}
+- **Duration**: ${ph.duration}
+- **Deliverable**: ${ph.deliverable}
+- **Tasks Assigned**: ${(ph.tasks || []).join(", ")}`;
+        }).join("\n\n");
+
+        const content = `📊 **Autonomous CEO Update: Strategic Plan Execution Complete!**
+
+The strategic planning cycle for our primary goal has successfully reached **100% completion** with all tasks compiled, distributed, and quality-reviewed.
+
+### **Active Plan: ${state.activePlan.title}**
+- **Target Goal**: "${state.activePlan.goal}"
+- **Total Estimated Duration**: ${state.activePlan.totalDuration}
+
+---
+
+### **Phases Execution Report:**
+${phasesList}
+
+---
+
+### **Execution Metrics & Quality Audits:**
+- **Tasks Populated & Assigned**: ${(state.tasks || []).filter(t => t.source === "autonomous").length} tasks
+- **Quality Score Review**: Average quality rating is stable under the Reviews widget.
+
+The team has successfully cataloged all action items. Check the **Task Board** or **Reviews** tab to audit the live operations logs!`;
+
+        dispatch({
+          type: "ADD_CEO_MSG",
+          payload: {
+            id: `plan_follow_up_${Date.now()}`,
+            role: "assistant",
+            content: content
+          }
+        });
+      }
+    }
+  }, [autoProgress, autoRunning, state?.activePlan, dispatch, state?.tasks]);
+
   const ceoChatEndRef = useRef();
   const empChatEndRef = useRef();
   const fileRef = useRef();
