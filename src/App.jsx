@@ -262,8 +262,8 @@ const fetchWithRetry = async (url, options, maxRetries = 3) => {
 };
 
 // ── CLAUDE API ────────────────────────────────────────────
-const callClaude = async (messages, system, onStream) => {
-  return executeWithFallback(messages, { system, onStream });
+const callClaude = async (messages, system, onStream, maxTokens) => {
+  return executeWithFallback(messages, { system, onStream, maxTokens });
 };
 
 // ── PARSE CEO COMMANDS ────────────────────────────────────
@@ -1076,7 +1076,7 @@ const CEOOrchestrator = {
       dispatch({ type:"ADD_CEO_MSG", payload:{ id:`a_${Date.now()}`, role:"assistant", content:"", loading:true } });
 
       const finalSys = PromptGenerator.ceo(memory, company, `Just completed autonomous execution of: "${goal}"`);
-      const finalReply = await callClaude([{ role:"user", content:finalPrompt }], finalSys);
+      const finalReply = await callClaude([{ role:"user", content:finalPrompt }], finalSys, null, 4000);
       dispatch({ type:"UPDATE_CEO_LAST", payload:{ content:finalReply, loading:false } });
       const cmds = parseCEOCommands(finalReply);
       cmds.memories.forEach(m => MemoryEngine.store(dispatch, m));

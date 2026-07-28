@@ -1203,7 +1203,7 @@ Each locally-capable stage executed perfectly and wrote telemetry to the central
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: options.maxTokens || 1000,
+        max_tokens: options.maxTokens || 4000,
         system: options.system || "",
         messages: Array.isArray(request) ? request : [{ role: "user", content: request }],
       }),
