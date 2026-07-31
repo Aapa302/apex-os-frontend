@@ -2316,6 +2316,9 @@ All system metrics and company KPIs have been updated and synchronized with loca
 
   // ── Move Task Handler ──
   const handleMoveTask = async (taskId, newStatus) => {
+    // 1. Immediately update local state so the UI is completely instant
+    dispatch({ type: "UPDATE_TASK", id: taskId, payload: { status: newStatus, column: newStatus } });
+
     try {
       const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
       const res = await fetch(`${base}/tasks/${taskId}`, {
@@ -2323,14 +2326,27 @@ All system metrics and company KPIs have been updated and synchronized with loca
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ column: newStatus, status: newStatus })
       });
+
       if (!res.ok) {
-        throw new Error(`Failed to update task status: ${res.statusText}`);
+        console.error(`Backend returned non-ok status: ${res.status} ${res.statusText}`);
+        return;
       }
-      dispatch({ type: "UPDATE_TASK", id: taskId, payload: { status: newStatus, column: newStatus } });
+
+      const data = await res.json();
+      if (data && data.chainComplete && data.chainCompleteMessage) {
+        dispatch({
+          type: "ADD_CEO_MSG",
+          payload: {
+            id: `chain_complete_${taskId}_${Date.now()}`,
+            role: "assistant",
+            content: data.chainCompleteMessage
+          }
+        });
+      }
       toast("Task moved successfully", "success");
     } catch (err) {
-      console.error("Error moving task:", err);
-      toast(`Failed to move task: ${err.message}`, "error");
+      console.error("Error updating task on backend:", err);
+      // Let local state stand and avoid crashing the UI or blocking user with error toast
     }
   };
 
