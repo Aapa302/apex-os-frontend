@@ -1778,6 +1778,7 @@ export default function ApexOS() {
   const [simulationsLoading, setSimulationsLoading] = useState(true);
   const [ncbiApiKeySet, setNcbiApiKeySet] = useState(!!import.meta.env?.VITE_NCBI_API_KEY);
   const [activeEmp, setActiveEmp] = useState("cto");
+  const [voiceLang, setVoiceLang] = useState("en-US");
   const [ceoInput, setCeoInput] = useState("");
   const [empInput, setEmpInput] = useState("");
   const [ceoLoading, setCeoLoading] = useState(false);
@@ -2450,6 +2451,7 @@ All system metrics and company KPIs have been updated and synchronized with loca
       recognitionRef.current = new SR();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = voiceLang;
       recognitionRef.current.onresult = (e) => {
         const t = Array.from(e.results).map(r => r[0].transcript).join("");
         if (view === "chat") setCeoInput(t);
@@ -2457,8 +2459,19 @@ All system metrics and company KPIs have been updated and synchronized with loca
         if (e.results[e.results.length - 1].isFinal) setListening(false);
       };
       recognitionRef.current.onend = () => setListening(false);
+      recognitionRef.current.onerror = (event) => {
+        console.warn("Speech recognition error:", event.error);
+        if (event.error === "not-allowed") {
+          toast("Microphone permission denied", "error");
+        } else if (event.error === "no-speech") {
+          toast("No speech detected. Try speaking closer to the mic.", "warning");
+        } else {
+          toast(`Voice input error: ${event.error}`, "error");
+        }
+        setListening(false);
+      };
     }
-  }, [view]);
+  }, [view, voiceLang]);
 
   const toast = useCallback((message, type = "info") => {
     const id = Date.now() + Math.random();
@@ -4659,6 +4672,27 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                   <input ref={fileRef} type="file" style={{ display: "none" }} onChange={async e => { const f = e.target.files[0]; if (f) setAttachedFile(await readFile(f)); e.target.value = ""; }} />
                   <button onClick={() => fileRef.current?.click()} style={iconBtn} title="Attach file">📎</button>
                   <button onClick={toggleVoice} style={{ ...iconBtn, background: listening ? `${T.red}22` : T.surf2, color: listening ? T.red : T.text2 }} title="Voice input">🎤</button>
+                  <select
+                    value={voiceLang}
+                    onChange={(e) => setVoiceLang(e.target.value)}
+                    style={{
+                      background: T.surf2,
+                      border: `1px solid ${T.border2}`,
+                      borderRadius: 8,
+                      color: T.text2,
+                      fontSize: "0.7rem",
+                      padding: "0 6px",
+                      cursor: "pointer",
+                      outline: "none",
+                      height: 38,
+                      alignSelf: "flex-end",
+                      boxSizing: "border-box"
+                    }}
+                    title="Speech language"
+                  >
+                    <option value="en-US">🇺🇸 EN</option>
+                    <option value="hi-IN">🇮🇳 HI</option>
+                  </select>
                   <textarea value={ceoInput} onChange={e => setCeoInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendCEO(); } }} placeholder="Message APEX..." rows={1} style={{ ...inputStyle, flex: 1, resize: "none", fontFamily: "inherit" }} />
                   <button onClick={() => sendCEO()} disabled={ceoLoading || !ceoInput.trim()} style={{ padding: "10px 18px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 9, color: "white", fontWeight: 700, fontSize: "0.82rem", cursor: ceoLoading || !ceoInput.trim() ? "default" : "pointer", opacity: ceoLoading || !ceoInput.trim() ? 0.5 : 1, flexShrink: 0 }}>
                     {ceoLoading ? <Dots color="white" /> : "Send"}
