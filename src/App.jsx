@@ -673,7 +673,7 @@ const initialAppState = () => {
     setupDone: ls.setupDone || false,
     notifications: [],
     activities: ls.activities || [],
-    ceoChats: [],
+    ceoChats: ls.ceoChats || [],
     empChats: {},
     autonomousLog: [],
     projects: ls.projects || [],
@@ -766,6 +766,7 @@ function appReducer(state, action) {
     case "ADD_ACTIVITY": next = { ...state, activities: [action.payload, ...state.activities].slice(0, 100) }; break;
     case "ADD_AUTO_LOG": next = { ...state, autonomousLog: [action.payload, ...state.autonomousLog].slice(0, 50) }; break;
     case "CLEAR_CEO_CHAT": next = { ...state, ceoChats: [] }; break;
+    case "SET_CEO_CHATS": next = { ...state, ceoChats: action.payload }; break;
     case "CLEAR_EMP_CHAT": next = { ...state, empChats: { ...state.empChats, [action.empId]: [] } }; break;
     case "ADD_PROJECT": next = { ...state, projects: [...state.projects, action.payload] }; break;
     case "SET_PROXY": next = { ...state, proxyUrl: action.payload }; break;
@@ -787,7 +788,7 @@ function appReducer(state, action) {
     default: return state;
   }
   const { notifications, ...toSave } = next;
-  saveLS({ ...toSave, ceoChats: [], empChats: {} });
+  saveLS({ ...toSave, ceoChats: next.ceoChats, empChats: {} });
   return next;
 }
 
@@ -1783,6 +1784,91 @@ export default function ApexOS() {
   const [empLoading, setEmpLoading] = useState(false);
   const [ceoStream, setCeoStream] = useState("");
   const [empStream, setEmpStream] = useState("");
+
+  const postedKeysRef = useRef(new Set());
+  const chatLoadedRef = useRef(false);
+
+  // Load CEO Chat history on mount from the remote backend /api/ceo-chat
+  useEffect(() => {
+    const loadCEOFromBackend = async () => {
+      const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
+      try {
+        const res = await fetch(`${base}/api/ceo-chat`, { cache: "no-cache" });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const valid = data.filter(msg => msg && msg.id);
+            valid.forEach(msg => {
+              const key = `${msg.id}_${msg.content}_${msg.streaming || false}_${msg.loading || false}`;
+              postedKeysRef.current.add(key);
+            });
+            dispatch({ type: "SET_CEO_CHATS", payload: valid });
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load CEO Chat from backend:", err);
+      } finally {
+        chatLoadedRef.current = true;
+      }
+    };
+    loadCEOFromBackend();
+  }, []);
+
+  // Sync new and updated CEO Chat messages to backend /api/ceo-chat
+  useEffect(() => {
+    const base = (state.proxyUrl || DEFAULT_PROXY).replace(/\/+$/, '');
+
+    // Clear conversation if ceoChats is empty and loading from backend has completed
+    if (chatLoadedRef.current && (!state.ceoChats || state.ceoChats.length === 0)) {
+      const clearCEOFromBackend = async () => {
+        try {
+          await fetch(`${base}/api/ceo-chat`, { method: "DELETE" });
+          postedKeysRef.current.clear();
+        } catch (err) {
+          console.warn("Failed to clear backend CEO Chat conversation:", err);
+        }
+      };
+      clearCEOFromBackend();
+      return;
+    }
+
+    if (!state.ceoChats || state.ceoChats.length === 0) return;
+
+    state.ceoChats.forEach(async (msg) => {
+      if (!msg || !msg.id) return;
+      const key = `${msg.id}_${msg.content}_${msg.streaming || false}_${msg.loading || false}`;
+      if (postedKeysRef.current.has(key)) return;
+
+      postedKeysRef.current.add(key);
+
+      try {
+        const payload = {
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          display: msg.display || null,
+          streaming: !!msg.streaming,
+          loading: !!msg.loading,
+          autonomous: !!msg.autonomous,
+          source: msg.source || null
+        };
+
+        const res = await fetch(`${base}/api/ceo-chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to save message: ${res.status}`);
+        }
+      } catch (err) {
+        console.warn("Failed to persist CEO Chat message:", err);
+        postedKeysRef.current.delete(key);
+      }
+    });
+  }, [state.ceoChats]);
+
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [attachedFile, setAttachedFile] = useState(null);
   const [empFile, setEmpFile] = useState(null);
