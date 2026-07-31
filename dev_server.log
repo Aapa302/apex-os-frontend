@@ -1,7 +1,9 @@
 
-  VITE v5.4.21  ready in 287 ms
+> apex-os-frontend@1.0.0 dev
+> vite
 
-  ➜  Local:   http://127.0.0.1:5173/
-7:47:09 AM [vite] hmr update /src/App.jsx, /src/AlgorithmDesigner.jsx
-7:47:41 AM [vite] hmr update /src/App.jsx
-7:48:19 AM [vite] hmr update /src/App.jsx
+
+  VITE v5.4.21  ready in 298 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose

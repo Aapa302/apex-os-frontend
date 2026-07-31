@@ -1876,6 +1876,8 @@ export default function ApexOS() {
   const [dragTask, setDragTask] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [listening, setListening] = useState(false);
+  const [conversationMode, setConversationMode] = useState(false);
+  const [conversationStatus, setConversationStatus] = useState("idle"); // 'listening' | 'speaking' | 'idle'
   const [searchQuery, setSearchQuery] = useState("");
   const [autoGoal, setAutoGoal] = useState("");
   const [autoRunning, setAutoRunning] = useState(false);
@@ -2240,6 +2242,15 @@ All system metrics and company KPIs have been updated and synchronized with loca
   const fileRef = useRef();
   const empFileRef = useRef();
   const recognitionRef = useRef();
+  const conversationModeRef = useRef(false);
+  const conversationStatusRef = useRef("idle");
+  const ceoLoadingRef = useRef(false);
+
+  // Keep refs in sync
+  conversationModeRef.current = conversationMode;
+  conversationStatusRef.current = conversationStatus;
+  ceoLoadingRef.current = ceoLoading;
+
   const autoAbortRef = useRef(false);
   const buildAbortRef = useRef(false);
   const abortRef = autoAbortRef;
@@ -2490,35 +2501,6 @@ All system metrics and company KPIs have been updated and synchronized with loca
   // ── Scroll to bottom ──
   useEffect(() => { ceoChatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [state.ceoChats, ceoStream]);
   useEffect(() => { empChatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [state.empChats, empStream]);
-
-  // ── Voice setup ──
-  useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      recognitionRef.current = new SR();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = voiceLang;
-      recognitionRef.current.onresult = (e) => {
-        const t = Array.from(e.results).map(r => r[0].transcript).join("");
-        if (view === "chat") setCeoInput(t);
-        else setEmpInput(t);
-        if (e.results[e.results.length - 1].isFinal) setListening(false);
-      };
-      recognitionRef.current.onend = () => setListening(false);
-      recognitionRef.current.onerror = (event) => {
-        console.warn("Speech recognition error:", event.error);
-        if (event.error === "not-allowed") {
-          toast("Microphone permission denied", "error");
-        } else if (event.error === "no-speech") {
-          toast("No speech detected. Try speaking closer to the mic.", "warning");
-        } else {
-          toast(`Voice input error: ${event.error}`, "error");
-        }
-        setListening(false);
-      };
-    }
-  }, [view, voiceLang]);
 
   const toast = useCallback((message, type = "info") => {
     const id = Date.now() + Math.random();
@@ -3675,6 +3657,9 @@ Completed using: [none] — Gemini was unavailable for this step.`;
 
         dispatch({ type: "UPDATE_CEO_LAST", payload: { content: fallbackReply, streaming: false } });
         setCeoLoading(false);
+        if (conversationModeRef.current) {
+          handleCEOResponseCompleted(fallbackReply);
+        }
         return;
       }
 
@@ -4057,11 +4042,19 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
       processCEOCommands(replyWithTrace);
       addActivity(`CEO responded to: "${text.slice(0, 50)}"`, "💬");
       dispatch({ type: "ADD_MEMORY", payload: { id: Date.now(), category: "decision", content: `Q: ${text.slice(0, 100)} | A: ${replyWithTrace.slice(0, 200)}`, importance: "medium", savedAt: new Date().toISOString() } });
+
+      if (conversationModeRef.current) {
+        handleCEOResponseCompleted(replyWithTrace);
+      }
     } catch (e) {
       console.warn("Gemini call failed, displaying unavailable fallback:", e);
       const fallbackReply = e.message;
       dispatch({ type: "UPDATE_CEO_LAST", payload: { content: fallbackReply, streaming: false } });
       toast("AI reasoning is temporarily unavailable.", "error");
+
+      if (conversationModeRef.current) {
+        handleCEOResponseCompleted("AI reasoning is temporarily unavailable. " + fallbackReply);
+      }
     }
     setCeoLoading(false);
   }, [ceoInput, ceoLoading, attachedFile, state.ceoChats, state.memory, state.company, processCEOCommands, addActivity, toast]);
@@ -4141,9 +4134,176 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
     setAutoRunning(false); setAutoStage(""); setAutoProgress(0);
   }, [autoGoal, autoRunning, state.company, state.memory, addActivity, toast]);
 
+  // ── Conversation Mode Speech Utilities ──
+  const startSpeech = useCallback(() => {
+    if (!recognitionRef.current) return;
+    try {
+      recognitionRef.current.start();
+      setListening(true);
+      setConversationStatus("listening");
+    } catch (e) {
+      console.warn("SpeechRecognition already started or error:", e);
+    }
+  }, []);
+
+  const handleCEOResponseCompleted = useCallback((responseText) => {
+    if (!conversationModeRef.current) return;
+
+    if (!window.speechSynthesis) {
+      if (conversationModeRef.current) {
+        startSpeech();
+      }
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    // Clean markdown, backticks, code blocks, bracket metadata and non-verbal symbols
+    let clean = responseText
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/`[^`]+`/g, "")
+      .replace(/\[.*?\]/g, "")
+      .replace(/[#*`_~]/g, "")
+      .slice(0, 500);
+
+    if (!clean.trim()) {
+      clean = "Task complete.";
+    }
+
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+    utterance.lang = voiceLang;
+
+    setConversationStatus("speaking");
+
+    utterance.onend = () => {
+      if (conversationModeRef.current) {
+        setConversationStatus("listening");
+        startSpeech();
+      } else {
+        setConversationStatus("idle");
+      }
+    };
+
+    utterance.onerror = (e) => {
+      console.warn("SpeechSynthesis utterance error:", e);
+      if (conversationModeRef.current) {
+        setConversationStatus("listening");
+        startSpeech();
+      } else {
+        setConversationStatus("idle");
+      }
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }, [voiceLang, startSpeech]);
+
+  const handleToggleConversationMode = useCallback((enabled) => {
+    setConversationMode(enabled);
+    conversationModeRef.current = enabled;
+
+    if (enabled) {
+      try {
+        recognitionRef.current?.stop();
+      } catch (err) {}
+      setListening(false);
+      setConversationStatus("listening");
+      setTimeout(() => {
+        startSpeech();
+      }, 100);
+    } else {
+      try {
+        recognitionRef.current?.stop();
+      } catch (err) {}
+      setListening(false);
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setConversationStatus("idle");
+    }
+  }, [startSpeech]);
+
+  // ── Voice setup ──
+  useEffect(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      recognitionRef.current = new SR();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = voiceLang;
+
+      recognitionRef.current.onresult = (e) => {
+        const t = Array.from(e.results).map(r => r[0].transcript).join("");
+
+        if (view === "chat") {
+          setCeoInput(t);
+
+          if (conversationModeRef.current && e.results[e.results.length - 1].isFinal && t.trim()) {
+            setConversationStatus("idle");
+            sendCEO(t);
+          }
+        } else {
+          setEmpInput(t);
+        }
+
+        if (e.results[e.results.length - 1].isFinal) {
+          if (!conversationModeRef.current) {
+            setListening(false);
+          }
+        }
+      };
+
+      recognitionRef.current.onend = () => {
+        if (conversationModeRef.current && conversationStatusRef.current === "listening" && !ceoLoadingRef.current) {
+          try {
+            recognitionRef.current.start();
+            setListening(true);
+          } catch (err) {
+            console.warn("Could not auto-restart speech recognition:", err);
+          }
+        } else {
+          setListening(false);
+        }
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.warn("Speech recognition error:", event.error);
+        if (event.error === "not-allowed") {
+          toast("Microphone permission denied", "error");
+          if (conversationModeRef.current) {
+            setConversationMode(false);
+            conversationModeRef.current = false;
+            setListening(false);
+            if (window.speechSynthesis) {
+              window.speechSynthesis.cancel();
+            }
+            setConversationStatus("idle");
+          }
+        } else if (event.error === "no-speech") {
+          if (!conversationModeRef.current) {
+            toast("No speech detected. Try speaking closer to the mic.", "warning");
+          }
+        } else if (event.error === "aborted") {
+          console.log("Speech recognition aborted");
+        } else {
+          toast(`Voice input error: ${event.error}`, "error");
+        }
+
+        if (!conversationModeRef.current) {
+          setListening(false);
+        }
+      };
+    }
+  }, [view, voiceLang]);
+
   // ── Voice ──
   const toggleVoice = () => {
     if (!recognitionRef.current) { toast("Voice not supported in this browser", "warning"); return; }
+    if (conversationMode) {
+      handleToggleConversationMode(false);
+      return;
+    }
     if (listening) { recognitionRef.current.stop(); setListening(false); }
     else { recognitionRef.current.start(); setListening(true); }
   };
@@ -4709,6 +4869,44 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
 
               {/* Input */}
               <div style={{ padding: "12px 20px", borderTop: `1px solid ${T.border}`, flexShrink: 0 }}>
+                <style>{`
+                  @keyframes conversationPulse {
+                    0% { opacity: 0.4; transform: scale(0.9); }
+                    50% { opacity: 1; transform: scale(1.1); }
+                    100% { opacity: 0.4; transform: scale(0.9); }
+                  }
+                `}</style>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "0.76rem", color: T.text2, userSelect: "none" }}>
+                      <input
+                        type="checkbox"
+                        checked={conversationMode}
+                        onChange={(e) => handleToggleConversationMode(e.target.checked)}
+                        style={{ cursor: "pointer", width: 14, height: 14, accentColor: T.accent }}
+                      />
+                      <span style={{ fontWeight: conversationMode ? 600 : 400, color: conversationMode ? T.text1 : T.text3 }}>🗣️ Conversation Mode</span>
+                    </label>
+
+                    {conversationMode && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 9px", borderRadius: 12, background: `${conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.border2}15`, border: `1px solid ${conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.border2}33`, fontSize: "0.7rem", fontWeight: 600 }}>
+                        <span style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.text3,
+                          display: "inline-block",
+                          animation: conversationStatus === "listening" || conversationStatus === "speaking" ? "conversationPulse 1.5s infinite" : "none"
+                        }} />
+                        <span style={{ color: conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.text2, textTransform: "uppercase", fontSize: "0.62rem", letterSpacing: "0.5px" }}>
+                          {conversationStatus === "listening" ? "Listening" : conversationStatus === "speaking" ? "Speaking" : "Idle"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {attachedFile && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "6px 10px", background: T.surf2, borderRadius: 8, fontSize: "0.74rem", color: T.text2 }}>
                     📎 {attachedFile.name}
