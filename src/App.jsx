@@ -4154,7 +4154,16 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
       setListening(true);
       setConversationStatus("listening");
     } catch (e) {
-      console.warn("SpeechRecognition already started or error:", e);
+      console.warn("SpeechRecognition already started or error, attempting retry in 300ms...", e);
+      setTimeout(() => {
+        try {
+          recognitionRef.current.start();
+          setListening(true);
+          setConversationStatus("listening");
+        } catch (retryError) {
+          console.warn("SpeechRecognition retry failed:", retryError);
+        }
+      }, 300);
     }
   }, []);
 
@@ -4303,13 +4312,36 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
 
   const handleToggleConversationModeRef = useRef();
 
-  const stopWakeWordListener = useCallback(() => {
+  const stopWakeWordListener = useCallback((onReleased) => {
     if (wakeWordRecognitionRef.current) {
+      const wwr = wakeWordRecognitionRef.current;
+      let releasedCalled = false;
+      const releaseTimeout = setTimeout(() => {
+        if (!releasedCalled) {
+          releasedCalled = true;
+          if (onReleased) onReleased();
+        }
+      }, 800);
+
       try {
-        wakeWordRecognitionRef.current.onend = null;
-        wakeWordRecognitionRef.current.stop();
-      } catch (err) {}
+        wwr.onend = () => {
+          clearTimeout(releaseTimeout);
+          if (!releasedCalled) {
+            releasedCalled = true;
+            if (onReleased) onReleased();
+          }
+        };
+        wwr.stop();
+      } catch (err) {
+        clearTimeout(releaseTimeout);
+        if (!releasedCalled) {
+          releasedCalled = true;
+          if (onReleased) onReleased();
+        }
+      }
       wakeWordRecognitionRef.current = null;
+    } else {
+      if (onReleased) onReleased();
     }
   }, []);
 
@@ -4336,6 +4368,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
       const matched = ["hey apex", "hi apex", "hey abex", "hello apex", "ok apex"].some(phrase => transcript.includes(phrase));
       if (matched) {
         console.log("Wake word matched!");
+        setView("chat");
         stopWakeWordListener();
 
         setWakeWordTriggered(true);
@@ -4384,7 +4417,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
     } catch (err) {
       console.warn("Could not start wake word listener:", err);
     }
-  }, [voiceLang, stopWakeWordListener]);
+  }, [voiceLang, stopWakeWordListener, setView]);
 
   const resetConversationInactivityTimer = useCallback(() => {
     if (wakeInactivityTimeoutRef.current) {
@@ -4408,17 +4441,16 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
     conversationModeRef.current = enabled;
 
     if (enabled) {
-      stopWakeWordListener();
-      stopBargeInListener();
-      try {
-        recognitionRef.current?.stop();
-      } catch (err) {}
-      setListening(false);
-      setConversationStatus("listening");
-      setTimeout(() => {
+      stopWakeWordListener(() => {
+        stopBargeInListener();
+        try {
+          recognitionRef.current?.stop();
+        } catch (err) {}
+        setListening(false);
+        setConversationStatus("listening");
         startSpeech();
-      }, 100);
-      resetConversationInactivityTimer();
+        resetConversationInactivityTimer();
+      });
     } else {
       if (wakeInactivityTimeoutRef.current) {
         clearTimeout(wakeInactivityTimeoutRef.current);
@@ -4535,7 +4567,17 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
             toast("No speech detected. Try speaking closer to the mic.", "warning");
           }
         } else if (event.error === "aborted") {
-          console.log("Speech recognition aborted");
+          console.log("Speech recognition aborted, attempting auto-restart...");
+          if (conversationModeRef.current && conversationStatusRef.current === "listening" && !ceoLoadingRef.current) {
+            setTimeout(() => {
+              try {
+                recognitionRef.current.start();
+                setListening(true);
+              } catch (err) {
+                console.warn("Could not auto-restart aborted speech recognition:", err);
+              }
+            }, 300);
+          }
         } else {
           toast(`Voice input error: ${event.error}`, "error");
         }
