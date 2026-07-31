@@ -1779,6 +1779,15 @@ export default function ApexOS() {
   const [ncbiApiKeySet, setNcbiApiKeySet] = useState(!!import.meta.env?.VITE_NCBI_API_KEY);
   const [activeEmp, setActiveEmp] = useState("cto");
   const [voiceLang, setVoiceLang] = useState("en-US");
+  const [convoMode, setConvoMode] = useState(false);
+  const [convoStatus, setConvoStatus] = useState("Idle");
+  const convoModeRef = useRef(false);
+  const sendCEORef = useRef();
+
+  useEffect(() => {
+    convoModeRef.current = convoMode;
+  }, [convoMode]);
+
   const [ceoInput, setCeoInput] = useState("");
   const [empInput, setEmpInput] = useState("");
   const [ceoLoading, setCeoLoading] = useState(false);
@@ -2456,7 +2465,12 @@ All system metrics and company KPIs have been updated and synchronized with loca
         const t = Array.from(e.results).map(r => r[0].transcript).join("");
         if (view === "chat") setCeoInput(t);
         else setEmpInput(t);
-        if (e.results[e.results.length - 1].isFinal) setListening(false);
+        if (e.results[e.results.length - 1].isFinal) {
+          setListening(false);
+          if (convoModeRef.current && t.trim() && view === "chat" && sendCEORef.current) {
+            sendCEORef.current(t);
+          }
+        }
       };
       recognitionRef.current.onend = () => setListening(false);
       recognitionRef.current.onerror = (event) => {
@@ -2554,6 +2568,50 @@ All system metrics and company KPIs have been updated and synchronized with loca
     }
     clean = clean.replace(/^(on|about|for)\s+/i, "");
     return clean.trim() || "DNA Storage";
+  }, []);
+
+  const speakCEOAndResume = useCallback((text) => {
+    if (!convoModeRef.current) return;
+
+    try {
+      recognitionRef.current?.stop();
+    } catch (e) {}
+    setListening(false);
+    setConvoStatus("Speaking");
+
+    const clean = text.replace(/\[.*?\]/g, "").replace(/[#*`_~]/g, "").slice(0, 500);
+    const u = new SpeechSynthesisUtterance(clean);
+    u.rate = 0.95;
+    u.pitch = 1;
+
+    u.onend = () => {
+      setConvoStatus("Listening");
+      if (convoModeRef.current) {
+        try {
+          recognitionRef.current?.start();
+          setListening(true);
+        } catch (err) {
+          console.warn("Failed to restart speech recognition after speaking:", err);
+        }
+      } else {
+        setConvoStatus("Idle");
+      }
+    };
+
+    u.onerror = (err) => {
+      console.warn("Speech synthesis error:", err);
+      setConvoStatus("Listening");
+      if (convoModeRef.current) {
+        try {
+          recognitionRef.current?.start();
+          setListening(true);
+        } catch (e) {}
+      } else {
+        setConvoStatus("Idle");
+      }
+    };
+
+    window.speechSynthesis?.speak(u);
   }, []);
 
   // ── CEO Chat ──
@@ -3628,6 +3686,7 @@ Completed using: [none] — Gemini was unavailable for this step.`;
 
         dispatch({ type: "UPDATE_CEO_LAST", payload: { content: fallbackReply, streaming: false } });
         setCeoLoading(false);
+        speakCEOAndResume(fallbackReply);
         return;
       }
 
@@ -3998,6 +4057,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
         finalSystem += commandContext;
       }
 
+      let finalSpeakText = "";
       const reply = await callClaude(history, finalSystem, (chunk) => { setCeoStream(chunk); });
 
       let replyWithTrace = reply;
@@ -4005,6 +4065,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
         replyWithTrace += "\n\nNote: [specific step] required Gemini and used it successfully";
       }
 
+      finalSpeakText = replyWithTrace;
       dispatch({ type: "UPDATE_CEO_LAST", payload: { content: replyWithTrace, streaming: false } });
       setCeoStream("");
       processCEOCommands(replyWithTrace);
@@ -4013,11 +4074,17 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
     } catch (e) {
       console.warn("Gemini call failed, displaying unavailable fallback:", e);
       const fallbackReply = e.message;
+      finalSpeakText = fallbackReply;
       dispatch({ type: "UPDATE_CEO_LAST", payload: { content: fallbackReply, streaming: false } });
       toast("AI reasoning is temporarily unavailable.", "error");
     }
     setCeoLoading(false);
-  }, [ceoInput, ceoLoading, attachedFile, state.ceoChats, state.memory, state.company, processCEOCommands, addActivity, toast]);
+    speakCEOAndResume(finalSpeakText);
+  }, [ceoInput, ceoLoading, attachedFile, state.ceoChats, state.memory, state.company, processCEOCommands, addActivity, toast, speakCEOAndResume]);
+
+  useEffect(() => {
+    sendCEORef.current = sendCEO;
+  }, [sendCEO]);
 
   // ── Employee Chat ──
   const sendEmployee = useCallback(async (overrideText) => {
@@ -4107,6 +4174,18 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
     u.rate = 0.95; u.pitch = 1;
     window.speechSynthesis.speak(u);
   };
+
+  useEffect(() => {
+    if (view !== "chat" && convoMode) {
+      setConvoMode(false);
+      setConvoStatus("Idle");
+      try {
+        recognitionRef.current?.stop();
+      } catch (e) {}
+      setListening(false);
+      window.speechSynthesis?.cancel();
+    }
+  }, [view]);
 
   // ── Task Board ──
   const COLS = [
@@ -4693,6 +4772,49 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                     <option value="en-US">🇺🇸 EN</option>
                     <option value="hi-IN">🇮🇳 HI</option>
                   </select>
+                  <button
+                    onClick={() => {
+                      const nextMode = !convoMode;
+                      setConvoMode(nextMode);
+                      if (nextMode) {
+                        setConvoStatus("Listening");
+                        try {
+                          recognitionRef.current?.start();
+                          setListening(true);
+                        } catch (err) {
+                          console.warn("Failed to start speech recognition for Conversation Mode:", err);
+                        }
+                      } else {
+                        setConvoStatus("Idle");
+                        try {
+                          recognitionRef.current?.stop();
+                        } catch (e) {}
+                        setListening(false);
+                        window.speechSynthesis?.cancel();
+                      }
+                    }}
+                    style={{
+                      background: convoMode ? `${T.green}22` : T.surf2,
+                      border: `1px solid ${convoMode ? T.green : T.border2}`,
+                      borderRadius: 8,
+                      color: convoMode ? T.green : T.text2,
+                      fontSize: "0.7rem",
+                      padding: "0 10px",
+                      cursor: "pointer",
+                      outline: "none",
+                      height: 38,
+                      fontWeight: "bold",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      alignSelf: "flex-end",
+                      boxSizing: "border-box",
+                      whiteSpace: "nowrap"
+                    }}
+                    title="Continuous hands-free conversation"
+                  >
+                    🔄 {convoMode ? `Convo: ${convoStatus}` : "Convo Mode"}
+                  </button>
                   <textarea value={ceoInput} onChange={e => setCeoInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendCEO(); } }} placeholder="Message APEX..." rows={1} style={{ ...inputStyle, flex: 1, resize: "none", fontFamily: "inherit" }} />
                   <button onClick={() => sendCEO()} disabled={ceoLoading || !ceoInput.trim()} style={{ padding: "10px 18px", background: `linear-gradient(135deg, ${T.accent}, ${T.accent2})`, border: "none", borderRadius: 9, color: "white", fontWeight: 700, fontSize: "0.82rem", cursor: ceoLoading || !ceoInput.trim() ? "default" : "pointer", opacity: ceoLoading || !ceoInput.trim() ? 0.5 : 1, flexShrink: 0 }}>
                     {ceoLoading ? <Dots color="white" /> : "Send"}
