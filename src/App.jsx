@@ -2110,6 +2110,44 @@ All system metrics and company KPIs have been updated and synchronized with loca
     }
   }, [state?.activePlan, state?.tasks, state?.reviews, dispatch]);
 
+  // Auto-Follow-Up for Completing Task Chains (Domain 3)
+  useEffect(() => {
+    if (!state?.tasks || state.tasks.length === 0) return;
+
+    let notifiedStr = localStorage.getItem("apex_os_notified_completed_chains");
+    let notified = [];
+    try {
+      if (notifiedStr) notified = JSON.parse(notifiedStr);
+    } catch (e) {
+      notified = [];
+    }
+    if (!Array.isArray(notified)) notified = [];
+
+    let updated = false;
+
+    state.tasks.forEach(t => {
+      if (t.chainComplete && !notified.includes(t.id)) {
+        notified.push(t.id);
+        updated = true;
+
+        if (t.chainCompleteMessage) {
+          dispatch({
+            type: "ADD_CEO_MSG",
+            payload: {
+              id: `chain_complete_${t.id}_${Date.now()}`,
+              role: "assistant",
+              content: t.chainCompleteMessage
+            }
+          });
+        }
+      }
+    });
+
+    if (updated) {
+      localStorage.setItem("apex_os_notified_completed_chains", JSON.stringify(notified));
+    }
+  }, [state?.tasks, dispatch]);
+
   const ceoChatEndRef = useRef();
   const empChatEndRef = useRef();
   const fileRef = useRef();
@@ -2333,15 +2371,8 @@ All system metrics and company KPIs have been updated and synchronized with loca
       }
 
       const data = await res.json();
-      if (data && data.chainComplete && data.chainCompleteMessage) {
-        dispatch({
-          type: "ADD_CEO_MSG",
-          payload: {
-            id: `chain_complete_${taskId}_${Date.now()}`,
-            role: "assistant",
-            content: data.chainCompleteMessage
-          }
-        });
+      if (data) {
+        dispatch({ type: "UPDATE_TASK", id: taskId, payload: data });
       }
       toast("Task moved successfully", "success");
     } catch (err) {
