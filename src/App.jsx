@@ -1878,6 +1878,7 @@ export default function ApexOS() {
   const [listening, setListening] = useState(false);
   const [conversationMode, setConversationMode] = useState(false);
   const [conversationStatus, setConversationStatus] = useState("idle"); // 'listening' | 'speaking' | 'idle'
+  const [bargeInInterrupted, setBargeInInterrupted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [autoGoal, setAutoGoal] = useState("");
   const [autoRunning, setAutoRunning] = useState(false);
@@ -2245,6 +2246,11 @@ All system metrics and company KPIs have been updated and synchronized with loca
   const conversationModeRef = useRef(false);
   const conversationStatusRef = useRef("idle");
   const ceoLoadingRef = useRef(false);
+
+  // Barge-in interruption refs
+  const blockInterruptionRef = useRef(false);
+  const blockInterruptionTimeoutRef = useRef(null);
+  const interruptionRecognitionRef = useRef(null);
 
   // Keep refs in sync
   conversationModeRef.current = conversationMode;
@@ -4146,6 +4152,116 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
     }
   }, []);
 
+  const stopInterruptionListener = useCallback(() => {
+    if (blockInterruptionTimeoutRef.current) {
+      clearTimeout(blockInterruptionTimeoutRef.current);
+      blockInterruptionTimeoutRef.current = null;
+    }
+    blockInterruptionRef.current = false;
+    if (interruptionRecognitionRef.current) {
+      try {
+        interruptionRecognitionRef.current.stop();
+      } catch (err) {}
+      interruptionRecognitionRef.current = null;
+    }
+  }, []);
+
+  const startInterruptionListener = useCallback(() => {
+    if (!conversationModeRef.current) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+
+    if (interruptionRecognitionRef.current) {
+      try {
+        interruptionRecognitionRef.current.stop();
+      } catch (err) {}
+      interruptionRecognitionRef.current = null;
+    }
+
+    const ir = new SR();
+    ir.continuous = true;
+    ir.interimResults = true;
+    ir.lang = voiceLang;
+
+    blockInterruptionRef.current = true;
+    if (blockInterruptionTimeoutRef.current) {
+      clearTimeout(blockInterruptionTimeoutRef.current);
+    }
+    blockInterruptionTimeoutRef.current = setTimeout(() => {
+      blockInterruptionRef.current = false;
+    }, 1200);
+
+    const handleInterruptionDetected = () => {
+      if (blockInterruptionRef.current) return;
+      if (conversationStatusRef.current !== "speaking") return;
+
+      console.log("Barge-in interruption detected!");
+
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+
+      if (interruptionRecognitionRef.current) {
+        try {
+          interruptionRecognitionRef.current.stop();
+        } catch (err) {}
+        interruptionRecognitionRef.current = null;
+      }
+
+      setBargeInInterrupted(true);
+      setTimeout(() => {
+        setBargeInInterrupted(false);
+      }, 2500);
+
+      setConversationStatus("listening");
+      startSpeech();
+    };
+
+    ir.onspeechstart = () => {
+      handleInterruptionDetected();
+    };
+
+    ir.onresult = (event) => {
+      const t = Array.from(event.results).map(r => r[0].transcript).join("");
+      if (t.trim()) {
+        handleInterruptionDetected();
+      }
+    };
+
+    ir.onerror = (e) => {
+      console.warn("Interruption listener error:", e.error);
+    };
+
+    ir.onend = () => {
+      if (conversationModeRef.current && conversationStatusRef.current === "speaking" && interruptionRecognitionRef.current === ir) {
+        try {
+          ir.start();
+        } catch (err) {}
+      }
+    };
+
+    interruptionRecognitionRef.current = ir;
+    try {
+      ir.start();
+    } catch (err) {
+      console.warn("Could not start interruption listener:", err);
+    }
+  }, [voiceLang, startSpeech]);
+
+  // Clean up parallel listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (blockInterruptionTimeoutRef.current) {
+        clearTimeout(blockInterruptionTimeoutRef.current);
+      }
+      if (interruptionRecognitionRef.current) {
+        try {
+          interruptionRecognitionRef.current.stop();
+        } catch (e) {}
+      }
+    };
+  }, []);
+
   const handleCEOResponseCompleted = useCallback((responseText) => {
     if (!conversationModeRef.current) return;
 
@@ -4178,6 +4294,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
     setConversationStatus("speaking");
 
     utterance.onend = () => {
+      stopInterruptionListener();
       if (conversationModeRef.current) {
         setConversationStatus("listening");
         startSpeech();
@@ -4188,6 +4305,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
 
     utterance.onerror = (e) => {
       console.warn("SpeechSynthesis utterance error:", e);
+      stopInterruptionListener();
       if (conversationModeRef.current) {
         setConversationStatus("listening");
         startSpeech();
@@ -4197,7 +4315,8 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
     };
 
     window.speechSynthesis.speak(utterance);
-  }, [voiceLang, startSpeech]);
+    startInterruptionListener();
+  }, [voiceLang, startSpeech, startInterruptionListener, stopInterruptionListener]);
 
   const handleToggleConversationMode = useCallback((enabled) => {
     setConversationMode(enabled);
@@ -4217,12 +4336,13 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
         recognitionRef.current?.stop();
       } catch (err) {}
       setListening(false);
+      stopInterruptionListener();
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
       setConversationStatus("idle");
     }
-  }, [startSpeech]);
+  }, [startSpeech, stopInterruptionListener]);
 
   // ── Voice setup ──
   useEffect(() => {
@@ -4890,18 +5010,38 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                     </label>
 
                     {conversationMode && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 9px", borderRadius: 12, background: `${conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.border2}15`, border: `1px solid ${conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.border2}33`, fontSize: "0.7rem", fontWeight: 600 }}>
-                        <span style={{
-                          width: 7,
-                          height: 7,
-                          borderRadius: "50%",
-                          background: conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.text3,
-                          display: "inline-block",
-                          animation: conversationStatus === "listening" || conversationStatus === "speaking" ? "conversationPulse 1.5s infinite" : "none"
-                        }} />
-                        <span style={{ color: conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.text2, textTransform: "uppercase", fontSize: "0.62rem", letterSpacing: "0.5px" }}>
-                          {conversationStatus === "listening" ? "Listening" : conversationStatus === "speaking" ? "Speaking" : "Idle"}
-                        </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 9px", borderRadius: 12, background: `${conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.border2}15`, border: `1px solid ${conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.border2}33`, fontSize: "0.7rem", fontWeight: 600 }}>
+                          <span style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: "50%",
+                            background: conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.text3,
+                            display: "inline-block",
+                            animation: conversationStatus === "listening" || conversationStatus === "speaking" ? "conversationPulse 1.5s infinite" : "none"
+                          }} />
+                          <span style={{ color: conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.text2, textTransform: "uppercase", fontSize: "0.62rem", letterSpacing: "0.5px" }}>
+                            {conversationStatus === "listening" ? "Listening" : conversationStatus === "speaking" ? "Speaking" : "Idle"}
+                          </span>
+                        </div>
+                        {bargeInInterrupted && (
+                          <div style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            padding: "3px 9px",
+                            borderRadius: 12,
+                            background: `${T.red}22`,
+                            border: `1px solid ${T.red}55`,
+                            fontSize: "0.62rem",
+                            fontWeight: 600,
+                            color: T.red,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px"
+                          }}>
+                            ⚡ Interrupted!
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
