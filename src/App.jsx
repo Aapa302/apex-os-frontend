@@ -1881,6 +1881,24 @@ export default function ApexOS() {
   const [wakeWordMode, setWakeWordMode] = useState(false);
   const [wakeWordTriggered, setWakeWordTriggered] = useState(false);
   const [bargeInHappened, setBargeInHappened] = useState(false);
+  const [debugLogs, setDebugLogs] = useState([]);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+
+  // Expose a global logging helper
+  useEffect(() => {
+    window.addDebugLog = (msg) => {
+      const timestamp = new Date().toLocaleTimeString();
+      setDebugLogs(prev => {
+        const updated = [`[${timestamp}] ${msg}`, ...prev];
+        return updated.slice(0, 30); // Keep newest 30
+      });
+      console.log(`[Diagnostic Log] ${msg}`);
+    };
+    return () => {
+      delete window.addDebugLog;
+    };
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [autoGoal, setAutoGoal] = useState("");
   const [autoRunning, setAutoRunning] = useState(false);
@@ -4149,18 +4167,23 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
   // ── Conversation Mode Speech Utilities ──
   const startSpeech = useCallback(() => {
     if (!recognitionRef.current) return;
+    window.addDebugLog?.("Starting main recognition");
     try {
       recognitionRef.current.start();
       setListening(true);
       setConversationStatus("listening");
+      window.addDebugLog?.("Main recognition started successfully");
     } catch (e) {
+      window.addDebugLog?.(`First start failed: ${e.name} - ${e.message}. Retrying in 300ms...`);
       console.warn("SpeechRecognition already started or error, attempting retry in 300ms...", e);
       setTimeout(() => {
         try {
           recognitionRef.current.start();
           setListening(true);
           setConversationStatus("listening");
+          window.addDebugLog?.("Main recognition started successfully on retry");
         } catch (retryError) {
+          window.addDebugLog?.(`SpeechRecognition retry failed: ${retryError.name} - ${retryError.message}`);
           console.warn("SpeechRecognition retry failed:", retryError);
         }
       }, 300);
@@ -4313,12 +4336,14 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
   const handleToggleConversationModeRef = useRef();
 
   const stopWakeWordListener = useCallback((onReleased) => {
+    window.addDebugLog?.("Stopping wake-word listener");
     if (wakeWordRecognitionRef.current) {
       const wwr = wakeWordRecognitionRef.current;
       let releasedCalled = false;
       const releaseTimeout = setTimeout(() => {
         if (!releasedCalled) {
           releasedCalled = true;
+          window.addDebugLog?.("Wake-word listener onend did not fire within timeout - fallback triggered");
           if (onReleased) onReleased();
         }
       }, 800);
@@ -4328,6 +4353,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
           clearTimeout(releaseTimeout);
           if (!releasedCalled) {
             releasedCalled = true;
+            window.addDebugLog?.("Wake-word listener onend fired successfully");
             if (onReleased) onReleased();
           }
         };
@@ -4336,11 +4362,13 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
         clearTimeout(releaseTimeout);
         if (!releasedCalled) {
           releasedCalled = true;
+          window.addDebugLog?.(`Wake-word stop error: ${err.name} - ${err.message}`);
           if (onReleased) onReleased();
         }
       }
       wakeWordRecognitionRef.current = null;
     } else {
+      window.addDebugLog?.("Wake-word listener was not active (already released)");
       if (onReleased) onReleased();
     }
   }, []);
@@ -4368,7 +4396,9 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
       const matched = ["hey apex", "hi apex", "hey abex", "hello apex", "ok apex"].some(phrase => transcript.includes(phrase));
       if (matched) {
         console.log("Wake word matched!");
+        window.addDebugLog?.(`Wake word detected! Transcript matched: "${transcript}"`);
         setView("chat");
+        window.addDebugLog?.("View switched to chat");
         stopWakeWordListener();
 
         setWakeWordTriggered(true);
@@ -4517,6 +4547,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
       recognitionRef.current.onresult = (e) => {
         resetConversationInactivityTimerRef.current?.();
         const t = Array.from(e.results).map(r => r[0].transcript).join("");
+        window.addDebugLog?.(`Main recognition result: "${t}" (isFinal: ${e.results[e.results.length - 1].isFinal})`);
 
         if (view === "chat") {
           setCeoInput(t);
@@ -4551,6 +4582,7 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
 
       recognitionRef.current.onerror = (event) => {
         console.warn("Speech recognition error:", event.error);
+        window.addDebugLog?.(`Main recognition onerror: "${event.error}"`);
         if (event.error === "not-allowed") {
           toast("Microphone permission denied", "error");
           if (conversationModeRef.current) {
@@ -5191,6 +5223,16 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                       <span style={{ fontWeight: wakeWordMode ? 600 : 400, color: wakeWordMode ? T.text1 : T.text3 }}>👂 Wake Word Activation</span>
                     </label>
 
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "0.76rem", color: T.text2, userSelect: "none" }}>
+                      <input
+                        type="checkbox"
+                        checked={showDebugPanel}
+                        onChange={(e) => setShowDebugPanel(e.target.checked)}
+                        style={{ cursor: "pointer", width: 14, height: 14, accentColor: T.accent }}
+                      />
+                      <span style={{ fontWeight: showDebugPanel ? 600 : 400, color: showDebugPanel ? T.text1 : T.text3 }}>🐞 Toggle Debug Log</span>
+                    </label>
+
                     {conversationMode && (
                       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 9px", borderRadius: 12, background: `${conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.border2}15`, border: `1px solid ${conversationStatus === "listening" ? T.green : conversationStatus === "speaking" ? T.accent : T.border2}33`, fontSize: "0.7rem", fontWeight: 600 }}>
                         <span style={{
@@ -5275,6 +5317,33 @@ Please announce this monumental achievement! The CTO (Marcus Vance) and the Engi
                     )}
                   </div>
                 </div>
+
+                {showDebugPanel && (
+                  <div style={{
+                    margin: "8px 0 12px 0",
+                    background: "#080810",
+                    border: "1px dashed #303050",
+                    borderRadius: 8,
+                    padding: "10px 14px",
+                    maxHeight: 180,
+                    overflowY: "auto",
+                    fontFamily: "monospace",
+                    fontSize: "0.72rem",
+                    color: "#20c080"
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid #151530", paddingBottom: 4, marginBottom: 6, color: "#8888b0", fontWeight: "bold" }}>
+                      <span>DEBUG HANDOFF TRACE LOG (Last 30 entries, newest first)</span>
+                      <button onClick={() => setDebugLogs([])} style={{ background: "none", border: "none", color: T.red, fontSize: "0.7rem", cursor: "pointer", padding: 0 }}>Clear logs</button>
+                    </div>
+                    {debugLogs.length === 0 ? (
+                      <div style={{ color: "#505070", fontStyle: "italic" }}>No log entries yet. Activate Wake Word Mode or speak.</div>
+                    ) : (
+                      debugLogs.map((log, index) => (
+                        <div key={index} style={{ marginBottom: 3, wordBreak: "break-all" }}>{log}</div>
+                      ))
+                    )}
+                  </div>
+                )}
 
                 {attachedFile && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, padding: "6px 10px", background: T.surf2, borderRadius: 8, fontSize: "0.74rem", color: T.text2 }}>
